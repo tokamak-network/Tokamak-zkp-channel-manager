@@ -184,7 +184,7 @@ export default function HomePage() {
       {/* Main Content Area */}
       <div className={`${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
         {/* Header with Connect Button */}
-        <header className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 sticky top-0 z-40 transition-colors duration-300">
+        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
           <div className="px-4 py-4 lg:px-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 ml-12 lg:ml-0">
