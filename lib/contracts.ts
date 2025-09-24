@@ -1,7 +1,7 @@
 import { Address } from 'wagmi';
 
 // Contract addresses - update these with actual deployed contract addresses
-export const ROLLUP_BRIDGE_ADDRESS: Address = '0x56899c29E9E118D704CB9B418AC572C4EaD429C7' as Address; // Replace with actual address
+export const ROLLUP_BRIDGE_ADDRESS: Address = '0x4590a039e17Cf555722691A77EBdC0b052707761' as Address; // Updated with new deployment
 export const VERIFIER_ADDRESS: Address = '0x708fbfE3acC1F65948304015f1789a05383a674b' as Address; // Replace with actual address
 export const ZECFROST_ADDRESS: Address = '0x242E4891d939ec102cA5bBC597ea6490DA0902CD' as Address; // Replace with actual address
 
@@ -333,6 +333,17 @@ export const ROLLUP_BRIDGE_ABI = [
     ],
     name: 'Withdrawn',
     type: 'event'
+  },
+  // Additional view functions
+  {
+    inputs: [
+      { name: 'channelId', type: 'uint256' },
+      { name: 'user', type: 'address' }
+    ],
+    name: 'hasWithdrawn',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function'
   }
 ] as const;
 

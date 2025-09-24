@@ -93,8 +93,8 @@ export function Sidebar({ isConnected }: SidebarProps) {
   // User action items (shown when connected)
   const userActions = [];
   if (isConnected) {
-    // Create Channel - only for authorized users who are not just participants
-    if (isAuthorized && !isParticipant) {
+    // Create Channel - for authorized users (even if they are participants, but not if they're already leaders)
+    if (isAuthorized && !hasChannels) {
       userActions.push({
         name: 'Create Channel',
         href: '/create-channel',
@@ -116,11 +116,10 @@ export function Sidebar({ isConnected }: SidebarProps) {
         },
         {
           name: 'Withdraw Tokens',
-          href: '#',
+          href: '/withdraw-tokens',
           icon: '💳',
           description: 'Withdraw from closed channel',
-          requiresConnection: true,
-          onClick: () => console.log('Withdraw tokens clicked')
+          requiresConnection: true
         }
       );
     }
