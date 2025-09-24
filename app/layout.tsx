@@ -11,6 +11,11 @@ export const metadata: Metadata = {
   keywords: ['Tokamak', 'ZK Rollup', 'Bridge', 'Ethereum', 'DeFi'],
   authors: [{ name: 'Tokamak Network' }],
   metadataBase: new URL('http://localhost:3000'),
+  icons: {
+    icon: '/favicon.ico',
+    shortcut: '/favicon.ico',
+    apple: '/favicon.ico',
+  },
   other: {
     'Content-Language': 'en-US',
   },
