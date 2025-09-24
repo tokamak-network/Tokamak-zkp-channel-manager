@@ -215,7 +215,7 @@ export default function HomePage() {
         <main className="px-4 py-8 lg:px-6">
           <div className="max-w-4xl mx-auto text-center">
             <h2 className="text-4xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-              Welcome to Tokamak ZK Bridge
+              Welcome to the Tokamak zk-Rollup manager
             </h2>
             <p className="text-lg text-gray-600 dark:text-gray-300 mb-8">
               Connect your wallet to start using the Zero-Knowledge Rollup Bridge
@@ -436,7 +436,7 @@ export default function HomePage() {
               Powered by Tokamak Network
             </p>
             <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-              <p>⚠️ Testnet Version - Do not use with mainnet funds</p>
+              <p>⚠️ Testnet Version</p>
             </div>
           </div>
         </footer>
