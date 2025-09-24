@@ -7,9 +7,10 @@ import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 
 interface SidebarProps {
   isConnected: boolean;
+  onCollapse?: (isCollapsed: boolean) => void;
 }
 
-export function Sidebar({ isConnected }: SidebarProps) {
+export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { disconnect } = useDisconnect();
@@ -131,43 +132,38 @@ export function Sidebar({ isConnected }: SidebarProps) {
     leaderActions.push(
       {
         name: 'Initialize State',
-        href: '#',
+        href: '/initialize-state',
         icon: '⚡',
         description: 'Initialize channel state',
-        requiresConnection: true,
-        onClick: () => console.log('Initialize state clicked')
+        requiresConnection: true
       },
       {
         name: 'Submit Proof',
-        href: '#',
+        href: '/submit-proof',
         icon: '📋',
         description: 'Submit aggregated proof',
-        requiresConnection: true,
-        onClick: () => console.log('Submit proof clicked')
+        requiresConnection: true
       },
       {
         name: 'Sign Proof',
-        href: '#',
+        href: '/sign-proof',
         icon: '✍️',
         description: 'Sign aggregated proof',
-        requiresConnection: true,
-        onClick: () => console.log('Sign proof clicked')
+        requiresConnection: true
       },
       {
         name: 'Close Channel',
-        href: '#',
+        href: '/close-channel',
         icon: '🔐',
         description: 'Close the channel',
-        requiresConnection: true,
-        onClick: () => console.log('Close channel clicked')
+        requiresConnection: true
       },
       {
         name: 'Delete Channel',
-        href: '#',
+        href: '/delete-channel',
         icon: '🗑️',
         description: 'Delete the channel',
-        requiresConnection: true,
-        onClick: () => console.log('Delete channel clicked')
+        requiresConnection: true
       }
     );
   }
@@ -221,7 +217,11 @@ export function Sidebar({ isConnected }: SidebarProps) {
             </div>
           )}
           <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
+            onClick={() => {
+              const newCollapsed = !isCollapsed;
+              setIsCollapsed(newCollapsed);
+              onCollapse?.(newCollapsed);
+            }}
             className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           >
             <span className="text-gray-600 dark:text-gray-300">{isCollapsed ? '→' : '←'}</span>
@@ -327,7 +327,11 @@ export function Sidebar({ isConnected }: SidebarProps) {
 
       {/* Toggle button for mobile */}
       <button
-        onClick={() => setIsCollapsed(!isCollapsed)}
+        onClick={() => {
+          const newCollapsed = !isCollapsed;
+          setIsCollapsed(newCollapsed);
+          onCollapse?.(newCollapsed);
+        }}
         className="fixed top-4 left-4 z-60 lg:hidden bg-white border border-gray-200 rounded-lg p-2 shadow-sm"
       >
         <span className="text-gray-600">☰</span>
