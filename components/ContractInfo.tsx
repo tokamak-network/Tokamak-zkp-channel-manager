@@ -83,10 +83,19 @@ export function ContractInfo() {
     enabled: isConnected && !!totalChannels && Number(totalChannels) > 1,
   });
 
+  const { data: channelStats2 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelStats',
+    args: [BigInt(2)],
+    enabled: isConnected && !!totalChannels && Number(totalChannels) > 2,
+  });
+
   // Check if user is a leader of any channels
   const hasChannels = address && (
     (channelStats0 && channelStats0[5] && channelStats0[5].toLowerCase() === address.toLowerCase()) ||
-    (channelStats1 && channelStats1[5] && channelStats1[5].toLowerCase() === address.toLowerCase())
+    (channelStats1 && channelStats1[5] && channelStats1[5].toLowerCase() === address.toLowerCase()) ||
+    (channelStats2 && channelStats2[5] && channelStats2[5].toLowerCase() === address.toLowerCase())
   );
 
   // Get token info for channel 0
@@ -178,6 +187,11 @@ export function ContractInfo() {
     participatingChannelStates.push(channelStats1[2]);
   }
   
+  // Check channel 2 if user is participant  
+  if (participantsChannel2 && address && participantsChannel2.includes(address) && channelStats2?.[2] !== undefined) {
+    participatingChannelStates.push(channelStats2[2]);
+  }
+  
   // Check if user can deposit (channels in Initialized state - state 1)
   const canDeposit = participatingChannelStates.some(state => state === 1);
   
@@ -204,37 +218,7 @@ export function ContractInfo() {
     .filter(state => state !== 0) // Filter out "None" states
     .map(state => getChannelStateName(state as number));
 
-  // Debug logging to check if data is being fetched
-  if (typeof window !== 'undefined') {
-    console.log('Contract Info Debug:', {
-      totalChannels: totalChannels?.toString(),
-      isAuthorized,
-      isParticipant,
-      hasChannels,
-      participatingChannelStates,
-      channelStateNames,
-      canDeposit,
-      canWithdraw,
-      participantsChannel0,
-      participantsChannel1,
-      channelStats0,
-      channelStats1,
-      userDepositChannel0: userDepositChannel0?.toString(),
-      userDepositChannel1: userDepositChannel1?.toString(),
-      tokenDecimals0,
-      tokenDecimals1,
-      tokenSymbol0,
-      tokenSymbol1,
-      userDeposits: userDeposits.map(d => ({
-        amount: d.amount.toString(),
-        decimals: d.decimals,
-        symbol: d.symbol,
-        channelId: d.channelId,
-        formatted: formatUnits(d.amount, d.decimals)
-      })),
-      address
-    });
-  }
+
 
   if (!isConnected) {
     return (
@@ -347,9 +331,29 @@ export function ContractInfo() {
                   <span className="font-medium text-gray-900 dark:text-gray-100">{totalChannels?.toString() || '0'}</span>
                 </div>
                 {isParticipant && channelStateNames.length > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Your Channel State:</span>
-                    <span className="font-medium text-gray-900 dark:text-gray-100">{channelStateNames[0]}</span>
+                  <div className="space-y-2">
+                    <span className="text-gray-600 dark:text-gray-400 block">Your Channel States:</span>
+                    <div className="space-y-1">
+                      {/* Display each channel the user participates in */}
+                      {participantsChannel0 && address && participantsChannel0.includes(address) && channelStats0?.[2] !== undefined && typeof channelStats0[2] === 'number' && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500 dark:text-gray-400">Channel 0:</span>
+                          <span className="font-medium text-gray-900 dark:text-gray-100">{getChannelStateName(channelStats0[2])}</span>
+                        </div>
+                      )}
+                      {participantsChannel1 && address && participantsChannel1.includes(address) && channelStats1?.[2] !== undefined && typeof channelStats1[2] === 'number' && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500 dark:text-gray-400">Channel 1:</span>
+                          <span className="font-medium text-gray-900 dark:text-gray-100">{getChannelStateName(channelStats1[2])}</span>
+                        </div>
+                      )}
+                      {participantsChannel2 && address && participantsChannel2.includes(address) && channelStats2?.[2] !== undefined && typeof channelStats2[2] === 'number' && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500 dark:text-gray-400">Channel 2:</span>
+                          <span className="font-medium text-gray-900 dark:text-gray-100">{getChannelStateName(channelStats2[2])}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
