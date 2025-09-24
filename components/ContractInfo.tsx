@@ -419,26 +419,76 @@ export function ContractInfo() {
                     {isAuthorized ? 'Allowed' : 'Denied'}
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full ${isParticipant ? 'bg-orange-500' : 'bg-gray-400'}`}></span>
-                  <span className="text-gray-600 dark:text-gray-400">Channel Participant: </span>
-                  <span className={`font-medium ${isParticipant ? 'text-orange-700 dark:text-orange-300' : 'text-gray-600 dark:text-gray-400'}`}>
-                    {participatingChannels.length > 0 ? `Channels: ${participatingChannels.join(', ')}` : 'No'}
-                  </span>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full ${isParticipant ? 'bg-orange-500' : 'bg-gray-400'}`}></span>
+                    <span className="text-gray-600 dark:text-gray-400">Channel Participant:</span>
+                  </div>
+                  {participatingChannels.length > 0 ? (
+                    <div className="ml-4 space-y-1 text-sm">
+                      {participatingChannels.map(channelId => (
+                        <div key={channelId} className="text-orange-700 dark:text-orange-300 font-medium">
+                          - Channel {channelId}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="ml-4 text-sm text-gray-600 dark:text-gray-400 font-medium">
+                      No
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full ${canDeposit ? 'bg-blue-500' : 'bg-gray-400'}`}></span>
-                  <span className="text-gray-600 dark:text-gray-400">Deposit Tokens: </span>
-                  <span className={`font-medium ${canDeposit ? 'text-blue-700 dark:text-blue-300' : 'text-gray-600 dark:text-gray-400'}`}>
-                    {depositableChannels.length > 0 ? `Channels: ${depositableChannels.join(', ')}` : isParticipant ? 'Channels Not Initialized' : 'No'}
-                  </span>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full ${canDeposit ? 'bg-blue-500' : 'bg-gray-400'}`}></span>
+                    <span className="text-gray-600 dark:text-gray-400">Deposit Tokens:</span>
+                  </div>
+                  {participatingChannels.length > 0 ? (
+                    <div className="ml-4 space-y-1 text-sm">
+                      {participatingChannels.map(channelId => {
+                        const canDepositInChannel = depositableChannels.includes(channelId);
+                        return (
+                          <div key={channelId} className={`font-medium ${
+                            canDepositInChannel 
+                              ? 'text-blue-700 dark:text-blue-300' 
+                              : 'text-gray-600 dark:text-gray-400'
+                          }`}>
+                            - Channel {channelId}: {canDepositInChannel ? 'Available' : 'Not Available'}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="ml-4 text-sm text-gray-600 dark:text-gray-400 font-medium">
+                      No
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full ${canWithdraw ? 'bg-purple-500' : 'bg-gray-400'}`}></span>
-                  <span className="text-gray-600 dark:text-gray-400">Withdraw Tokens: </span>
-                  <span className={`font-medium ${canWithdraw ? 'text-purple-700 dark:text-purple-300' : 'text-gray-600 dark:text-gray-400'}`}>
-                    {withdrawableChannels.length > 0 ? `Channels: ${withdrawableChannels.join(', ')}` : isParticipant ? 'Channels Not Closed' : 'No'}
-                  </span>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full ${canWithdraw ? 'bg-purple-500' : 'bg-gray-400'}`}></span>
+                    <span className="text-gray-600 dark:text-gray-400">Withdraw Tokens:</span>
+                  </div>
+                  {participatingChannels.length > 0 ? (
+                    <div className="ml-4 space-y-1 text-sm">
+                      {participatingChannels.map(channelId => {
+                        const canWithdrawFromChannel = withdrawableChannels.includes(channelId);
+                        return (
+                          <div key={channelId} className={`font-medium ${
+                            canWithdrawFromChannel 
+                              ? 'text-purple-700 dark:text-purple-300' 
+                              : 'text-gray-600 dark:text-gray-400'
+                          }`}>
+                            - Channel {channelId}: {canWithdrawFromChannel ? 'Available' : 'Not Available'}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="ml-4 text-sm text-gray-600 dark:text-gray-400 font-medium">
+                      No
+                    </div>
+                  )}
                 </div>
                 {isParticipant && userDeposits.length > 0 && (
                   <div className="space-y-2">
