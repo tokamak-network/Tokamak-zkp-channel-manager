@@ -490,21 +490,6 @@ export function ContractInfo() {
                     </div>
                   )}
                 </div>
-                {isParticipant && userDeposits.length > 0 && (
-                  <div className="space-y-2">
-                    {userDeposits.map((deposit, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-indigo-500"></span>
-                        <span className="text-gray-600 dark:text-gray-400">
-                          Channel {deposit.channelId} Balance: 
-                        </span>
-                        <span className="font-medium text-indigo-700 dark:text-indigo-300">
-                          {formatUnits(deposit.amount, deposit.decimals)} {deposit.symbol}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -524,7 +509,7 @@ export function ContractInfo() {
                 <div className="bg-white dark:bg-gray-800/50 p-4 rounded-lg border border-indigo-100 dark:border-indigo-800">
                   <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
                     <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                    Initial Balance (Deposited)
+                    Initial Balances (Deposited)
                   </h5>
                   <div className="space-y-2">
                     {userDeposits.map((deposit, index) => (
@@ -566,7 +551,7 @@ export function ContractInfo() {
                 <div className="bg-white dark:bg-gray-800/50 p-4 rounded-lg border border-indigo-100 dark:border-indigo-800">
                   <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
                     <div className="h-2 w-2 bg-purple-500 rounded-full"></div>
-                    Final Amount (Withdrawable)
+                    Final Amounts (Withdrawable)
                   </h5>
                   <div className="space-y-2">
                     {withdrawableChannels.length > 0 ? (
