@@ -16,6 +16,7 @@ export default function HomePage() {
   const { address, isConnected } = useAccount();
   const [creatorAddress, setCreatorAddress] = useState('');
   const [showUnauthorizedModal, setShowUnauthorizedModal] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Check if the current user is the owner
   const { data: owner } = useContractRead({
@@ -177,11 +178,11 @@ export default function HomePage() {
 
       {/* Sidebar */}
       <ClientOnly>
-        <Sidebar isConnected={isConnected} />
+        <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
       </ClientOnly>
 
       {/* Main Content Area */}
-      <div className="lg:ml-64 transition-all duration-300">
+      <div className={`${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
         {/* Header with Connect Button */}
         <header className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 sticky top-0 z-40 transition-colors duration-300">
           <div className="px-4 py-4 lg:px-6">
@@ -191,8 +192,8 @@ export default function HomePage() {
                   <span className="text-white font-bold text-lg">ZK</span>
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold text-blue-600 dark:text-blue-400">Tokamak ZK Bridge</h1>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Zero-Knowledge Rollup Bridge</p>
+                  <h1 className="text-xl font-bold text-blue-600 dark:text-blue-400">Tokamak ZK-Rollup Manager</h1>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Zero-Knowledge Rollup Manager</p>
                 </div>
               </div>
               
@@ -430,7 +431,7 @@ export default function HomePage() {
               <div className="h-6 w-6 rounded bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-center">
                 <span className="text-white text-xs font-bold">ZK</span>
               </div>
-              <span className="font-semibold text-gray-800 dark:text-gray-200">Tokamak ZK Bridge</span>
+              <span className="font-semibold text-gray-800 dark:text-gray-200">Tokamak ZK-Rollup Manager</span>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
               Powered by Tokamak Network

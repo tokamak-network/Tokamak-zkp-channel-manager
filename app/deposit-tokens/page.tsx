@@ -12,6 +12,7 @@ import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 export default function DepositTokensPage() {
   const { address, isConnected } = useAccount();
   const [isMounted, setIsMounted] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Prevent hydration mismatches by ensuring we're on client side
   useEffect(() => {
@@ -107,9 +108,6 @@ export default function DepositTokensPage() {
     enabled: isMounted && isConnected && channelStats1?.[1] && isAddress(channelStats1[1]) && channelStats1[1] !== '0x0000000000000000000000000000000000000000',
   });
 
-  // Find channels user can deposit to (participating and in Initialized state - state 1)
-  const availableChannels = [];
-
   // Get user's deposits for each channel
   const { data: userDepositChannel0 } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
@@ -127,7 +125,10 @@ export default function DepositTokensPage() {
     enabled: isMounted && isConnected && !!address && participantsChannel1 && participantsChannel1.includes(address),
   });
 
-  if (participantsChannel0 && address && participantsChannel0.includes(address) && channelStats0?.[2] === 1) {
+  // Find channels user can deposit to (participating and in Initialized state - state 1)
+  const availableChannels = [];
+
+  if (isMounted && participantsChannel0 && address && participantsChannel0.includes(address) && channelStats0?.[2] === 1) {
     const isETH = !channelStats0[1] || channelStats0[1] === '0x0000000000000000000000000000000000000000';
     availableChannels.push({
       channelId: BigInt(0),
@@ -141,7 +142,7 @@ export default function DepositTokensPage() {
     });
   }
 
-  if (participantsChannel1 && address && participantsChannel1.includes(address) && channelStats1?.[2] === 1) {
+  if (isMounted && participantsChannel1 && address && participantsChannel1.includes(address) && channelStats1?.[2] === 1) {
     const isETH = !channelStats1[1] || channelStats1[1] === '0x0000000000000000000000000000000000000000';
     availableChannels.push({
       channelId: BigInt(1),
@@ -466,13 +467,17 @@ export default function DepositTokensPage() {
     }
   }, [usdtMustSpendExisting, selectedChannel, effectiveAllowance, depositAmount]);
 
+  if (!isMounted) {
+    return <div className="min-h-screen bg-gray-50 dark:bg-gray-900"></div>;
+  }
+
   if (!isConnected) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <ClientOnly>
-          <Sidebar isConnected={isConnected} />
+          <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
         </ClientOnly>
-        <div className="lg:ml-64 transition-all duration-300">
+        <div className={`${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
           <div className="flex items-center justify-center min-h-screen">
             <div className="text-center">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Connect Your Wallet</h1>
@@ -491,11 +496,11 @@ export default function DepositTokensPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Sidebar */}
       <ClientOnly>
-        <Sidebar isConnected={isConnected} />
+        <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
       </ClientOnly>
 
       {/* Main Content Area */}
-      <div className="lg:ml-64 transition-all duration-300">
+      <div className={`${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
         {/* Header */}
         <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
           <div className="px-4 py-4 lg:px-6">
@@ -530,7 +535,15 @@ export default function DepositTokensPage() {
               </div>
 
               <ClientOnly>
-                {availableChannels.length === 0 ? (
+                {!isMounted ? (
+                  <div className="text-center py-12">
+                    <div className="h-16 w-16 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                      <span className="text-2xl">⏳</span>
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Loading...</h3>
+                    <p className="text-gray-600 dark:text-gray-400">Fetching channel information...</p>
+                  </div>
+                ) : availableChannels.length === 0 ? (
                 <div className="text-center py-12">
                   <div className="h-16 w-16 bg-yellow-100 dark:bg-yellow-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
                     <span className="text-3xl">📭</span>
@@ -662,7 +675,7 @@ export default function DepositTokensPage() {
                                   }
                                 }}
 disabled={
-                                  !depositAmount || isApproving || isWaitingApproval || isResettingApproval || isWaitingResetApproval || (!approveToken && !resetApproveToken)
+                                  !depositAmount || isApproving || isWaitingApproval || isResettingApproval || isWaitingResetApproval || (!approveToken && !resetApproveToken) || channel.state !== 1
                                 }
                                 className="px-6 py-2 bg-orange-600 dark:bg-orange-700 text-white rounded-md hover:bg-orange-700 dark:hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-orange-500 transition-colors duration-200"
                               >
@@ -675,6 +688,11 @@ disabled={
                               {approvalError && (
                                 <p className="text-xs text-red-600 dark:text-red-400">
                                   {approvalError}
+                                </p>
+                              )}
+                              {channel.state !== 1 && (
+                                <p className="text-xs text-red-600 dark:text-red-400">
+                                  ⚠️ Channel must be in "Initialized" state for approvals.
                                 </p>
                               )}
                             </div>
@@ -698,7 +716,8 @@ disabled={
                                   isWaitingDeposit ||
                                   (!channel.isETH && needsApproval) ||
                                   (!channel.isETH && !hasSufficientAllowance) ||
-                                  (!usdtMustSpendExisting && !isDepositAmountValid(depositAmount, getTokenDecimals(channel)))
+                                  (!usdtMustSpendExisting && !isDepositAmountValid(depositAmount, getTokenDecimals(channel))) ||
+                                  channel.state !== 1
                                 }
                                 className={`px-6 py-2 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 transition-colors duration-200 ${
                                   usdtMustSpendExisting && selectedChannel?.channelId === channel.channelId ?
@@ -712,6 +731,11 @@ disabled={
                               {/* Validation messages */}
                               {selectedChannel?.channelId === channel.channelId && depositAmount && (
                                 <div className="text-xs space-y-1">
+                                  {channel.state !== 1 && (
+                                    <p className="text-red-600 dark:text-red-400">
+                                      ⚠️ Channel must be in "Initialized" state for deposits.
+                                    </p>
+                                  )}
                                   {!isDepositAmountValid(depositAmount, getTokenDecimals(channel)) && (
                                     <p className="text-red-600 dark:text-red-400">
                                       ⚠️ Invalid amount. Maximum 1,000,000 tokens allowed.

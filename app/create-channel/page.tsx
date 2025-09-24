@@ -17,6 +17,7 @@ interface Participant {
 export default function CreateChannelPage() {
   const router = useRouter();
   const { address, isConnected } = useAccount();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   
   // Check if user is already leading a channel
   const { data: totalChannels } = useContractRead({
@@ -251,11 +252,11 @@ export default function CreateChannelPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Sidebar */}
       <ClientOnly>
-        <Sidebar isConnected={isConnected} />
+        <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
       </ClientOnly>
 
       {/* Main Content Area */}
-      <div className="lg:ml-64 transition-all duration-300">
+      <div className={`${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
         {/* Header */}
         <ClientOnly>
           <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
