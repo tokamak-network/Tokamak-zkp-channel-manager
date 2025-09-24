@@ -11,6 +11,12 @@ import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 
 export default function DepositTokensPage() {
   const { address, isConnected } = useAccount();
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Prevent hydration mismatches by ensuring we're on client side
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
   const [selectedChannel, setSelectedChannel] = useState<{
     channelId: bigint;
     targetContract: string;
@@ -35,7 +41,7 @@ export default function DepositTokensPage() {
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'getTotalChannels',
-    enabled: isConnected,
+    enabled: isMounted && isConnected,
   });
 
   // Get channel participants for first few channels to check participation
@@ -44,7 +50,7 @@ export default function DepositTokensPage() {
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'getChannelParticipants',
     args: [BigInt(0)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 0,
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 0,
   });
 
   const { data: participantsChannel1 } = useContractRead({
@@ -52,7 +58,7 @@ export default function DepositTokensPage() {
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'getChannelParticipants',
     args: [BigInt(1)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 1,
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 1,
   });
 
   // Get channel stats to check states and target contracts
@@ -61,7 +67,7 @@ export default function DepositTokensPage() {
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'getChannelStats',
     args: [BigInt(0)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 0,
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 0,
   });
 
   const { data: channelStats1 } = useContractRead({
@@ -69,7 +75,7 @@ export default function DepositTokensPage() {
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'getChannelStats',
     args: [BigInt(1)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 1,
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 1,
   });
 
   // Get token info for each channel's target contract
@@ -77,28 +83,28 @@ export default function DepositTokensPage() {
     address: channelStats0?.[1] as `0x${string}`,
     abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
     functionName: 'decimals',
-    enabled: isConnected && channelStats0?.[1] && isAddress(channelStats0[1]) && channelStats0[1] !== '0x0000000000000000000000000000000000000000',
+    enabled: isMounted && isConnected && channelStats0?.[1] && isAddress(channelStats0[1]) && channelStats0[1] !== '0x0000000000000000000000000000000000000000',
   });
 
   const { data: tokenSymbol0 } = useContractRead({
     address: channelStats0?.[1] as `0x${string}`,
     abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
     functionName: 'symbol',
-    enabled: isConnected && channelStats0?.[1] && isAddress(channelStats0[1]) && channelStats0[1] !== '0x0000000000000000000000000000000000000000',
+    enabled: isMounted && isConnected && channelStats0?.[1] && isAddress(channelStats0[1]) && channelStats0[1] !== '0x0000000000000000000000000000000000000000',
   });
 
   const { data: tokenDecimals1 } = useContractRead({
     address: channelStats1?.[1] as `0x${string}`,
     abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
     functionName: 'decimals',
-    enabled: isConnected && channelStats1?.[1] && isAddress(channelStats1[1]) && channelStats1[1] !== '0x0000000000000000000000000000000000000000',
+    enabled: isMounted && isConnected && channelStats1?.[1] && isAddress(channelStats1[1]) && channelStats1[1] !== '0x0000000000000000000000000000000000000000',
   });
 
   const { data: tokenSymbol1 } = useContractRead({
     address: channelStats1?.[1] as `0x${string}`,
     abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
     functionName: 'symbol',
-    enabled: isConnected && channelStats1?.[1] && isAddress(channelStats1[1]) && channelStats1[1] !== '0x0000000000000000000000000000000000000000',
+    enabled: isMounted && isConnected && channelStats1?.[1] && isAddress(channelStats1[1]) && channelStats1[1] !== '0x0000000000000000000000000000000000000000',
   });
 
   // Find channels user can deposit to (participating and in Initialized state - state 1)
@@ -110,7 +116,7 @@ export default function DepositTokensPage() {
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'getParticipantDeposit',
     args: address ? [BigInt(0), address] : undefined,
-    enabled: isConnected && !!address && participantsChannel0 && participantsChannel0.includes(address),
+    enabled: isMounted && isConnected && !!address && participantsChannel0 && participantsChannel0.includes(address),
   });
 
   const { data: userDepositChannel1 } = useContractRead({
@@ -118,7 +124,7 @@ export default function DepositTokensPage() {
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'getParticipantDeposit',
     args: address ? [BigInt(1), address] : undefined,
-    enabled: isConnected && !!address && participantsChannel1 && participantsChannel1.includes(address),
+    enabled: isMounted && isConnected && !!address && participantsChannel1 && participantsChannel1.includes(address),
   });
 
   if (participantsChannel0 && address && participantsChannel0.includes(address) && channelStats0?.[2] === 1) {
@@ -184,7 +190,7 @@ export default function DepositTokensPage() {
     functionName: 'depositETH',
     args: selectedChannel ? [selectedChannel.channelId] : undefined,
     value: selectedChannel && depositAmount ? parseUnits(depositAmount, selectedChannel.decimals || 18) : undefined,
-    enabled: Boolean(selectedChannel?.isETH && depositAmount && address),
+    enabled: Boolean(isMounted && selectedChannel?.isETH && depositAmount && address),
   });
 
   const { write: depositETH, isLoading: isDepositingETH } = useContractWrite(depositETHConfig);
@@ -220,7 +226,7 @@ export default function DepositTokensPage() {
     abi: [{ name: 'allowance', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function', inputs: [{ type: 'address' }, { type: 'address' }] }],
     functionName: 'allowance',
     args: selectedChannel && address ? [address, ROLLUP_BRIDGE_ADDRESS] : undefined,
-    enabled: Boolean(selectedChannel && !selectedChannel.isETH && address),
+    enabled: Boolean(isMounted && selectedChannel && !selectedChannel.isETH && address),
   });
 
   // USDT-specific allowance check with alternative ABI
@@ -242,7 +248,7 @@ export default function DepositTokensPage() {
     ],
     functionName: 'allowance',
     args: selectedChannel && address ? [address, ROLLUP_BRIDGE_ADDRESS] : undefined,
-    enabled: Boolean(selectedChannel && !selectedChannel.isETH && address && isUSDT),
+    enabled: Boolean(isMounted && selectedChannel && !selectedChannel.isETH && address && isUSDT),
   });
 
   // Use USDT-specific allowance if available, fallback to regular allowance
@@ -260,7 +266,7 @@ export default function DepositTokensPage() {
       ROLLUP_BRIDGE_ADDRESS,
       BigInt(0)
     ],
-    enabled: Boolean(isUSDT && approvalStep === 'reset'),
+    enabled: Boolean(isMounted && isUSDT && approvalStep === 'reset'),
   });
 
   const { write: resetApproveToken, isLoading: isResettingApproval, data: resetApproveData } = useContractWrite(resetApproveConfig);
@@ -280,7 +286,7 @@ export default function DepositTokensPage() {
       ROLLUP_BRIDGE_ADDRESS,
       parseUnits(depositAmount, getTokenDecimals(selectedChannel))
     ] : undefined,
-    enabled: Boolean(selectedChannel && !selectedChannel.isETH && depositAmount && address && getTokenDecimals(selectedChannel) && 
+    enabled: Boolean(isMounted && selectedChannel && !selectedChannel.isETH && depositAmount && address && getTokenDecimals(selectedChannel) && 
       (approvalStep === 'approve' || (!isUSDT && approvalStep === 'idle') || (isUSDT && approvalStep === 'idle' && effectiveAllowance === BigInt(0)))),
   });
 
@@ -411,7 +417,7 @@ export default function DepositTokensPage() {
       selectedChannel.targetContract as `0x${string}`,
       parseUnits(depositAmount, getTokenDecimals(selectedChannel))
     ] : undefined,
-    enabled: Boolean(selectedChannel && !selectedChannel.isETH && depositAmount && address && getTokenDecimals(selectedChannel) && !needsApproval && hasSufficientAllowance),
+    enabled: Boolean(isMounted && selectedChannel && !selectedChannel.isETH && depositAmount && address && getTokenDecimals(selectedChannel) && !needsApproval && hasSufficientAllowance),
   });
 
   const { write: depositToken, isLoading: isDepositingToken, error: depositError, data: depositData } = useContractWrite(depositTokenConfig);
