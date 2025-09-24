@@ -276,7 +276,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## ⚠️ Disclaimer
 
-This is a testnet application. Do not use with mainnet funds. Always verify contract addresses and transactions before signing. The developers are not responsible for any loss of funds due to user error or contract bugs.
+This is a testnet application. Always verify contract addresses and transactions before signing. The developers are not responsible for any loss of funds due to user error or contract bugs.
 
 ---
 
