@@ -218,6 +218,55 @@ export function ContractInfo() {
     .filter(state => state !== 0) // Filter out "None" states
     .map(state => getChannelStateName(state as number));
 
+  // Get specific channels user participates in
+  const getParticipatingChannels = () => {
+    const channels = [];
+    if (participantsChannel0 && address && participantsChannel0.includes(address)) {
+      channels.push(0);
+    }
+    if (participantsChannel1 && address && participantsChannel1.includes(address)) {
+      channels.push(1);
+    }
+    if (participantsChannel2 && address && participantsChannel2.includes(address)) {
+      channels.push(2);
+    }
+    return channels;
+  };
+
+  // Get channels where user can deposit (Initialized state - state 1)
+  const getDepositableChannels = () => {
+    const channels = [];
+    if (participantsChannel0 && address && participantsChannel0.includes(address) && channelStats0?.[2] === 1) {
+      channels.push(0);
+    }
+    if (participantsChannel1 && address && participantsChannel1.includes(address) && channelStats1?.[2] === 1) {
+      channels.push(1);
+    }
+    if (participantsChannel2 && address && participantsChannel2.includes(address) && channelStats2?.[2] === 1) {
+      channels.push(2);
+    }
+    return channels;
+  };
+
+  // Get channels where user can withdraw (Closed state - state 5)
+  const getWithdrawableChannels = () => {
+    const channels = [];
+    if (participantsChannel0 && address && participantsChannel0.includes(address) && channelStats0?.[2] === 5) {
+      channels.push(0);
+    }
+    if (participantsChannel1 && address && participantsChannel1.includes(address) && channelStats1?.[2] === 5) {
+      channels.push(1);
+    }
+    if (participantsChannel2 && address && participantsChannel2.includes(address) && channelStats2?.[2] === 5) {
+      channels.push(2);
+    }
+    return channels;
+  };
+
+  const participatingChannels = getParticipatingChannels();
+  const depositableChannels = getDepositableChannels();
+  const withdrawableChannels = getWithdrawableChannels();
+
 
 
   if (!isConnected) {
@@ -374,21 +423,21 @@ export function ContractInfo() {
                   <span className={`h-2 w-2 rounded-full ${isParticipant ? 'bg-orange-500' : 'bg-gray-400'}`}></span>
                   <span className="text-gray-600 dark:text-gray-400">Channel Participant: </span>
                   <span className={`font-medium ${isParticipant ? 'text-orange-700 dark:text-orange-300' : 'text-gray-600 dark:text-gray-400'}`}>
-                    {isParticipant ? 'Active' : 'None'}
+                    {participatingChannels.length > 0 ? `Channels: ${participatingChannels.join(', ')}` : 'No'}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`h-2 w-2 rounded-full ${canDeposit ? 'bg-blue-500' : 'bg-gray-400'}`}></span>
                   <span className="text-gray-600 dark:text-gray-400">Deposit Tokens: </span>
                   <span className={`font-medium ${canDeposit ? 'text-blue-700 dark:text-blue-300' : 'text-gray-600 dark:text-gray-400'}`}>
-                    {canDeposit ? 'Available' : isParticipant ? 'Channel Not Initialized' : 'Not Participating'}
+                    {depositableChannels.length > 0 ? `Channels: ${depositableChannels.join(', ')}` : isParticipant ? 'Channels Not Initialized' : 'No'}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`h-2 w-2 rounded-full ${canWithdraw ? 'bg-purple-500' : 'bg-gray-400'}`}></span>
                   <span className="text-gray-600 dark:text-gray-400">Withdraw Tokens: </span>
                   <span className={`font-medium ${canWithdraw ? 'text-purple-700 dark:text-purple-300' : 'text-gray-600 dark:text-gray-400'}`}>
-                    {canWithdraw ? 'Available' : isParticipant ? 'Channel Not Closed' : 'Not Participating'}
+                    {withdrawableChannels.length > 0 ? `Channels: ${withdrawableChannels.join(', ')}` : isParticipant ? 'Channels Not Closed' : 'No'}
                   </span>
                 </div>
                 {isParticipant && userDeposits.length > 0 && (
