@@ -20,6 +20,15 @@ export default function DepositTokensPage() {
   } | null>(null);
   const [depositAmount, setDepositAmount] = useState('');
   const [showDepositModal, setShowDepositModal] = useState(false);
+  const [approvalError, setApprovalError] = useState<string>('');
+  const [approvalStep, setApprovalStep] = useState<'idle' | 'reset' | 'approve'>('idle');
+  const [showDepositSuccessPopup, setShowDepositSuccessPopup] = useState(false);
+  const [successDepositInfo, setSuccessDepositInfo] = useState<{
+    channelId: string;
+    tokenSymbol: string;
+    amount: string;
+    txHash: string;
+  } | null>(null);
 
   // Get total number of channels
   const { data: totalChannels } = useContractRead({
@@ -120,8 +129,8 @@ export default function DepositTokensPage() {
       state: channelStats0[2],
       totalDeposits: channelStats0[4],
       userDeposit: userDepositChannel0 || BigInt(0),
-      decimals: isETH ? 18 : (tokenDecimals0 || 18),
-      symbol: isETH ? 'ETH' : (tokenSymbol0 || 'TOKEN'),
+      decimals: isETH ? 18 : tokenDecimals0,
+      symbol: isETH ? 'ETH' : (typeof tokenSymbol0 === 'string' ? tokenSymbol0 : 'TOKEN'),
       isETH
     });
   }
@@ -134,8 +143,8 @@ export default function DepositTokensPage() {
       state: channelStats1[2],
       totalDeposits: channelStats1[4],
       userDeposit: userDepositChannel1 || BigInt(0),
-      decimals: isETH ? 18 : (tokenDecimals1 || 18),
-      symbol: isETH ? 'ETH' : (tokenSymbol1 || 'TOKEN'),
+      decimals: isETH ? 18 : tokenDecimals1,
+      symbol: isETH ? 'ETH' : (typeof tokenSymbol1 === 'string' ? tokenSymbol1 : 'TOKEN'),
       isETH
     });
   }
@@ -151,7 +160,16 @@ export default function DepositTokensPage() {
         // ETH deposit
         if (depositETH) await depositETH();
       } else {
-        // ERC20 token deposit  
+        // ERC20 token deposit - check allowance first
+        // Force refresh allowance before deposit
+        const { data: freshAllowance } = await refetchAllowance();
+
+        // Only proceed with deposit if we have sufficient allowance
+        if (!hasSufficientAllowance || !effectiveAllowance || effectiveAllowance < parsedAmount || !freshAllowance || freshAllowance < parsedAmount) {
+          setApprovalError('Insufficient token allowance. Please approve tokens first and wait for confirmation.');
+          return;
+        }
+        
         if (depositToken) await depositToken();
       }
     } catch (error) {
@@ -171,43 +189,33 @@ export default function DepositTokensPage() {
 
   const { write: depositETH, isLoading: isDepositingETH } = useContractWrite(depositETHConfig);
 
-  // Prepare Token deposit
-  const { config: depositTokenConfig } = usePrepareContractWrite({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'depositToken',
-    args: selectedChannel && depositAmount ? [
-      selectedChannel.channelId,
-      selectedChannel.targetContract as `0x${string}`,
-      parseUnits(depositAmount, selectedChannel.decimals || 18)
-    ] : undefined,
-    enabled: Boolean(selectedChannel && !selectedChannel.isETH && depositAmount && address),
-  });
+  // Get the actual token decimals for the selected channel
+  const getTokenDecimals = (channel: any): number => {
+  if (!channel || channel.isETH) return 18;
+  
+  // Use the specific token decimals loaded for each channel
+  if (channel.channelId === BigInt(0)) {
+  return tokenDecimals0 || 18;
+  }
+  if (channel.channelId === BigInt(1)) {
+  return tokenDecimals1 || 18;
+  }
+  return channel.decimals || 18;
+  };
 
-  const { write: depositToken, isLoading: isDepositingToken } = useContractWrite(depositTokenConfig);
+  // Token deposit preparation moved after needsApproval calculation
 
-  // Prepare approval transaction
-  const { config: approveConfig } = usePrepareContractWrite({
-    address: selectedChannel && !selectedChannel.isETH ? selectedChannel.targetContract as `0x${string}` : undefined,
-    abi: [{ name: 'approve', outputs: [{ type: 'bool' }], stateMutability: 'nonpayable', type: 'function', inputs: [{ type: 'address' }, { type: 'uint256' }] }],
-    functionName: 'approve',
-    args: selectedChannel && depositAmount ? [
-      ROLLUP_BRIDGE_ADDRESS,
-      parseUnits(depositAmount, selectedChannel.decimals || 18)
-    ] : undefined,
-    enabled: Boolean(selectedChannel && !selectedChannel.isETH && depositAmount && address),
-  });
+  // Watch for deposit transaction completion - moved after deposit preparation
 
-  const { write: approveToken, isLoading: isApproving, data: approveData } = useContractWrite(approveConfig);
+  // Determine if we need to reset allowance first (USDT pattern)
+  const isUSDT = selectedChannel && (selectedChannel.targetContract === '0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A' || 
+    selectedChannel.symbol?.toLowerCase().includes('usdt') || 
+    selectedChannel.symbol?.toLowerCase().includes('tether'));
 
-  // Watch for approval transaction completion
-  const { isLoading: isWaitingApproval, isSuccess: approvalSuccess } = useWaitForTransaction({
-    hash: approveData?.hash,
-    enabled: !!approveData?.hash,
-  });
+  // Approval configurations moved after effectiveAllowance calculation
 
-  // Get allowance with refetch capability
-  const { data: allowance, refetch: refetchAllowance } = useContractRead({
+  // Get allowance with refetch capability - enhanced for USDT compatibility
+  const { data: allowance, refetch: refetchAllowance, error: allowanceError, isError: isAllowanceError } = useContractRead({
     address: selectedChannel && !selectedChannel.isETH ? selectedChannel.targetContract as `0x${string}` : undefined,
     abi: [{ name: 'allowance', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function', inputs: [{ type: 'address' }, { type: 'address' }] }],
     functionName: 'allowance',
@@ -215,25 +223,246 @@ export default function DepositTokensPage() {
     enabled: Boolean(selectedChannel && !selectedChannel.isETH && address),
   });
 
-  // Refetch allowance when approval transaction succeeds
+  // USDT-specific allowance check with alternative ABI
+  const { data: usdtAllowance } = useContractRead({
+    address: selectedChannel && !selectedChannel.isETH && isUSDT ? selectedChannel.targetContract as `0x${string}` : undefined,
+    abi: [
+      {
+        constant: true,
+        inputs: [
+          { name: '_owner', type: 'address' },
+          { name: '_spender', type: 'address' }
+        ],
+        name: 'allowance',
+        outputs: [{ name: 'remaining', type: 'uint256' }],
+        payable: false,
+        stateMutability: 'view',
+        type: 'function'
+      }
+    ],
+    functionName: 'allowance',
+    args: selectedChannel && address ? [address, ROLLUP_BRIDGE_ADDRESS] : undefined,
+    enabled: Boolean(selectedChannel && !selectedChannel.isETH && address && isUSDT),
+  });
+
+  // Use USDT-specific allowance if available, fallback to regular allowance
+  const effectiveAllowance = (isUSDT && usdtAllowance !== undefined ? usdtAllowance : allowance) as bigint | undefined;
+
+  // Determine if we need to reset allowance first (USDT pattern)
+  const needsAllowanceReset = selectedChannel && !selectedChannel.isETH && effectiveAllowance !== undefined && effectiveAllowance > 0 && approvalStep === 'idle';
+
+  // Prepare approval reset transaction (approve 0) - for USDT compatibility
+  const { config: resetApproveConfig } = usePrepareContractWrite({
+    address: selectedChannel && !selectedChannel.isETH ? selectedChannel.targetContract as `0x${string}` : undefined,
+    abi: [{ name: 'approve', outputs: [], stateMutability: 'nonpayable', type: 'function', inputs: [{ type: 'address' }, { type: 'uint256' }] }],
+    functionName: 'approve',
+    args: [
+      ROLLUP_BRIDGE_ADDRESS,
+      BigInt(0)
+    ],
+    enabled: Boolean(isUSDT && approvalStep === 'reset'),
+  });
+
+  const { write: resetApproveToken, isLoading: isResettingApproval, data: resetApproveData } = useContractWrite(resetApproveConfig);
+
+  // Watch for reset approval transaction completion
+  const { isLoading: isWaitingResetApproval, isSuccess: resetApprovalSuccess } = useWaitForTransaction({
+    hash: resetApproveData?.hash,
+    enabled: !!resetApproveData?.hash,
+  });
+
+  // Prepare approval transaction - using ABI without return value for USDT compatibility
+  const { config: approveConfig } = usePrepareContractWrite({
+    address: selectedChannel && !selectedChannel.isETH ? selectedChannel.targetContract as `0x${string}` : undefined,
+    abi: [{ name: 'approve', outputs: [], stateMutability: 'nonpayable', type: 'function', inputs: [{ type: 'address' }, { type: 'uint256' }] }],
+    functionName: 'approve',
+    args: selectedChannel && depositAmount ? [
+      ROLLUP_BRIDGE_ADDRESS,
+      parseUnits(depositAmount, getTokenDecimals(selectedChannel))
+    ] : undefined,
+    enabled: Boolean(selectedChannel && !selectedChannel.isETH && depositAmount && address && getTokenDecimals(selectedChannel) && 
+      (approvalStep === 'approve' || (!isUSDT && approvalStep === 'idle') || (isUSDT && approvalStep === 'idle' && effectiveAllowance === BigInt(0)))),
+  });
+
+  const { write: approveToken, isLoading: isApproving, data: approveData, error: approvalWriteError, isError: isApprovalWriteError } = useContractWrite(approveConfig);
+
+  // Watch for approval transaction completion
+  const { isLoading: isWaitingApproval, isSuccess: approvalSuccess, error: approvalTxError, isError: isApprovalTxError } = useWaitForTransaction({
+    hash: approveData?.hash,
+    enabled: !!approveData?.hash,
+  });
+  
+  // Handle reset approval completion - move to approve step
   useEffect(() => {
-    if (approvalSuccess && refetchAllowance) {
-      // Small delay to ensure blockchain state is updated
+    if (resetApprovalSuccess) {
+      setApprovalStep('approve');
       setTimeout(() => {
         refetchAllowance();
       }, 2000);
     }
+  }, [resetApprovalSuccess, refetchAllowance]);
+
+  // Refetch allowance when approval transaction succeeds
+  useEffect(() => {
+    if (approvalSuccess && refetchAllowance) {
+      setApprovalStep('idle');
+      // Small delay to ensure blockchain state is updated
+      setTimeout(() => {
+        refetchAllowance().then((result) => {
+          // Only clear errors if we actually have some allowance
+          if (result.data && result.data > 0) {
+            setApprovalError(''); // Clear any previous errors
+          }
+        });
+      }, 3000); // Increased delay from 2 to 3 seconds
+      
+      // Additional refetch after longer delay to ensure allowance is properly updated
+      setTimeout(() => {
+        refetchAllowance();
+      }, 7000); // Increased delay from 5 to 7 seconds
+    }
   }, [approvalSuccess, refetchAllowance]);
 
-  // Check if approval is needed
-  const needsApproval = selectedChannel && !selectedChannel.isETH && depositAmount && allowance !== undefined
-    ? allowance < parseUnits(depositAmount, selectedChannel.decimals || 18)
+  // Handle approval errors and non-standard ERC20 tokens
+  useEffect(() => {
+    if (isApprovalWriteError && approvalWriteError) {
+      const errorMessage = approvalWriteError.message;
+      
+      // Handle common non-standard ERC20 token issues
+      const isNonStandardTokenError = 
+        errorMessage.includes('returned no data') || 
+        errorMessage.includes('0x') ||
+        errorMessage.includes('ContractFunctionExecutionError') ||
+        errorMessage.includes('execution reverted') ||
+        errorMessage.toLowerCase().includes('usdt') ||
+        errorMessage.toLowerCase().includes('tether');
+      
+      if (isNonStandardTokenError) {
+        // For non-standard tokens, the transaction might still succeed despite the error
+        setApprovalError('');
+        
+        // Extended delay for non-standard tokens
+        setTimeout(() => {
+          refetchAllowance();
+        }, 5000);
+      } else {
+        setApprovalError(`Approval failed: ${errorMessage}`);
+      }
+    }
+    
+    if (isApprovalTxError && approvalTxError) {
+      setApprovalError(`Transaction failed: ${approvalTxError.message}`);
+    }
+  }, [isApprovalWriteError, approvalWriteError, isApprovalTxError, approvalTxError, refetchAllowance]);
+
+  // Validate deposit amount is reasonable (not more than 1 million tokens)
+  const isDepositAmountValid = (amount: string, decimals: number = 18): boolean => {
+    if (!amount || isNaN(Number(amount))) return false;
+    try {
+      const parsedAmount = parseUnits(amount, decimals);
+      const maxAmount = parseUnits('1000000', decimals); // 1 million tokens max
+      return parsedAmount > 0 && parsedAmount <= maxAmount;
+    } catch {
+      return false;
+    }
+  };
+
+  // Check if USDT has existing allowance that must be spent first  
+  const usdtMustSpendExisting = selectedChannel && !selectedChannel.isETH && depositAmount && isUSDT && effectiveAllowance !== undefined
+    ? (() => {
+        const requiredAmount = parseUnits(depositAmount, getTokenDecimals(selectedChannel));
+        const hasExistingAllowance = effectiveAllowance > BigInt(0);
+        const wantsDifferentAmount = effectiveAllowance !== requiredAmount;
+        return hasExistingAllowance && wantsDifferentAmount;
+      })()
     : false;
+
+  // Check if approval is needed - more strict validation
+  const needsApproval = selectedChannel && !selectedChannel.isETH && depositAmount && effectiveAllowance !== undefined
+    ? (() => {
+        const requiredAmount = parseUnits(depositAmount, getTokenDecimals(selectedChannel));
+        
+        // For USDT: if user has existing allowance but wants different amount, they must spend existing first
+        if (usdtMustSpendExisting) {
+          return false; // Don't show approve button, force deposit existing amount first
+        }
+        
+        return effectiveAllowance < requiredAmount;
+      })()
+    : true;
+
+  // Check if we have sufficient allowance for the exact deposit amount
+  const hasSufficientAllowance = selectedChannel && !selectedChannel.isETH && depositAmount
+    ? (() => {
+        // If allowance fetch failed or is undefined, assume no allowance
+        if (effectiveAllowance === undefined || isAllowanceError) {
+          console.warn('⚠️ Effective allowance is undefined or error occurred, assuming 0 allowance');
+          return false;
+        }
+        
+        const requiredAmount = parseUnits(depositAmount, getTokenDecimals(selectedChannel));
+        return effectiveAllowance >= requiredAmount;
+      })()
+    : false;
+
+  // Prepare Token deposit (after needsApproval and hasSufficientAllowance are calculated)
+  const { config: depositTokenConfig } = usePrepareContractWrite({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'depositToken',
+    args: selectedChannel && depositAmount ? [
+      selectedChannel.channelId,
+      selectedChannel.targetContract as `0x${string}`,
+      parseUnits(depositAmount, getTokenDecimals(selectedChannel))
+    ] : undefined,
+    enabled: Boolean(selectedChannel && !selectedChannel.isETH && depositAmount && address && getTokenDecimals(selectedChannel) && !needsApproval && hasSufficientAllowance),
+  });
+
+  const { write: depositToken, isLoading: isDepositingToken, error: depositError, data: depositData } = useContractWrite(depositTokenConfig);
+
+  // Watch for deposit transaction completion
+  const { isLoading: isWaitingDeposit, isSuccess: depositSuccess, error: depositTxError } = useWaitForTransaction({
+    hash: depositData?.hash,
+    enabled: !!depositData?.hash,
+  });
+
+  // Handle deposit success - show popup and reset form
+  useEffect(() => {
+    if (depositSuccess && selectedChannel && depositAmount) {
+      
+      // Set success info for popup
+      setSuccessDepositInfo({
+        channelId: selectedChannel.channelId.toString(),
+        tokenSymbol: selectedChannel.symbol || (selectedChannel.isETH ? 'ETH' : 'Token'),
+        amount: depositAmount,
+        txHash: depositData?.hash || ''
+      });
+      
+      // Show success popup
+      setShowDepositSuccessPopup(true);
+      
+      // Reset form after a short delay
+      setTimeout(() => {
+        setSelectedChannel(null);
+        setDepositAmount('');
+        setApprovalError('');
+        setApprovalStep('idle');
+      }, 1000);
+    }
+  }, [depositSuccess, selectedChannel, depositAmount, depositData?.hash]);
 
   const handleChannelSelect = (channel: any) => {
     setSelectedChannel(channel);
     setDepositAmount('');
   };
+
+  // Auto-set deposit amount when USDT edge case is detected
+  useEffect(() => {
+    if (usdtMustSpendExisting && selectedChannel && effectiveAllowance && !depositAmount) {
+      const forcedAmount = formatUnits(effectiveAllowance, getTokenDecimals(selectedChannel));
+      setDepositAmount(forcedAmount);
+    }
+  }, [usdtMustSpendExisting, selectedChannel, effectiveAllowance, depositAmount]);
 
   if (!isConnected) {
     return (
@@ -334,7 +563,7 @@ export default function DepositTokensPage() {
                         <div className="text-right">
                           <p className="text-sm text-gray-600 dark:text-gray-400">Your Deposits</p>
                           <p className="font-medium text-gray-900 dark:text-gray-100">
-                            {formatUnits(channel.userDeposit || BigInt(0), channel.decimals)} {channel.symbol}
+                            {formatUnits(channel.userDeposit || BigInt(0), getTokenDecimals(channel))} {channel.symbol}
                           </p>
                         </div>
                       </div>
@@ -365,15 +594,40 @@ export default function DepositTokensPage() {
                                 type="number"
                                 step="any"
                                 min="0"
-                                value={selectedChannel?.channelId === channel.channelId ? depositAmount : ''}
+                                value={selectedChannel?.channelId === channel.channelId ? 
+                                  (usdtMustSpendExisting && selectedChannel.channelId === channel.channelId && effectiveAllowance ? 
+                                    formatUnits(effectiveAllowance, getTokenDecimals(selectedChannel)) : 
+                                    depositAmount
+                                  ) : 
+                                  ''
+                                }
                                 onChange={(e) => {
                                   if (selectedChannel?.channelId !== channel.channelId) {
                                     handleChannelSelect(channel);
                                   }
-                                  setDepositAmount(e.target.value);
+                                  const value = e.target.value;
+                                  
+                                  // If USDT must spend existing allowance, don't allow changing the amount
+                                  if (usdtMustSpendExisting && selectedChannel?.channelId === channel.channelId) {
+                                    return; // Keep the enforced amount
+                                  }
+                                  
+                                  // Prevent entering extremely large numbers
+                                  if (value && !isNaN(Number(value)) && Number(value) > 1000000) {
+                                    return; // Don't update if over 1M
+                                  }
+                                  setDepositAmount(value);
                                 }}
-                                placeholder={`0.0`}
-                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                                disabled={usdtMustSpendExisting && selectedChannel?.channelId === channel.channelId}
+                                placeholder={usdtMustSpendExisting && selectedChannel?.channelId === channel.channelId ? 
+                                  `Must deposit ${effectiveAllowance ? formatUnits(effectiveAllowance, getTokenDecimals(selectedChannel)) : '0'} ${channel.symbol}` :
+                                  `0.0 (max 1,000,000)`
+                                }
+                                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 transition-colors duration-200 ${
+                                  usdtMustSpendExisting && selectedChannel?.channelId === channel.channelId ?
+                                    'border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-100 cursor-not-allowed focus:ring-amber-500 focus:border-amber-500' :
+                                    'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500'
+                                }`}
                               />
                               <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                                 <span className="text-gray-500 dark:text-gray-400 text-sm font-medium">
@@ -383,28 +637,92 @@ export default function DepositTokensPage() {
                             </div>
                           </div>
                           {/* Approval/Deposit buttons */}
-                          {selectedChannel?.channelId === channel.channelId && !channel.isETH && needsApproval ? (
-                            <button
-                              onClick={() => approveToken?.()}
-                              disabled={!depositAmount || isApproving || isWaitingApproval || !approveToken}
-                              className="px-6 py-2 bg-orange-600 dark:bg-orange-700 text-white rounded-md hover:bg-orange-700 dark:hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-orange-500 transition-colors duration-200"
-                            >
-                              {isApproving ? 'Approving...' : isWaitingApproval ? 'Confirming...' : 'Approve'}
-                            </button>
+                          {(() => {
+                            return selectedChannel?.channelId === channel.channelId && !channel.isETH && needsApproval;
+                          })() ? (
+                            <div className="flex flex-col gap-2">
+                              <button
+                                onClick={() => {
+                                  setApprovalError(''); // Clear previous errors
+                                  
+                                  // Check if this is USDT and we need to reset allowance first
+                                  const isUSDTToken = channel.targetContract === '0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A' || 
+                                  (typeof channel.symbol === 'string' && channel.symbol.toLowerCase().includes('usdt')) || 
+                                  (typeof channel.symbol === 'string' && channel.symbol.toLowerCase().includes('tether'));
+                                  
+                                  if (isUSDTToken && allowance && allowance > 0 && approvalStep === 'idle') {
+                                  setApprovalStep('reset');
+                                  setTimeout(() => {
+                                  resetApproveToken?.();
+                                  }, 100);
+                                  } else if (approvalStep === 'approve' || (!isUSDTToken && approvalStep === 'idle') || (isUSDTToken && (!allowance || allowance === BigInt(0)) && approvalStep === 'idle')) {
+                                  approveToken?.();
+                                  }
+                                }}
+disabled={
+                                  !depositAmount || isApproving || isWaitingApproval || isResettingApproval || isWaitingResetApproval || (!approveToken && !resetApproveToken)
+                                }
+                                className="px-6 py-2 bg-orange-600 dark:bg-orange-700 text-white rounded-md hover:bg-orange-700 dark:hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-orange-500 transition-colors duration-200"
+                              >
+                                {isResettingApproval ? 'Resetting...' : 
+                                 isWaitingResetApproval ? 'Confirming Reset...' :
+                                 isApproving ? 'Approving...' : 
+                                 isWaitingApproval ? 'Confirming...' : 
+                                 (approvalStep === 'reset' ? 'Reset Allowance' : 'Approve')}
+                              </button>
+                              {approvalError && (
+                                <p className="text-xs text-red-600 dark:text-red-400">
+                                  {approvalError}
+                                </p>
+                              )}
+                            </div>
                           ) : (
-                            <button
-                              onClick={() => handleDeposit(channel, selectedChannel?.channelId === channel.channelId ? depositAmount : '')}
-                              disabled={
-                                !depositAmount || 
-                                (selectedChannel?.channelId !== channel.channelId) || 
-                                isDepositingETH || 
-                                isDepositingToken ||
-                                (!channel.isETH && needsApproval)
-                              }
-                              className="px-6 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200"
-                            >
-                              {(isDepositingETH || isDepositingToken) ? 'Depositing...' : 'Deposit'}
-                            </button>
+                            <div className="flex flex-col gap-2">
+                              <button
+                                onClick={() => {
+                                  const amountToDeposit = selectedChannel?.channelId === channel.channelId ? 
+                                    (usdtMustSpendExisting && effectiveAllowance ? 
+                                      formatUnits(effectiveAllowance, getTokenDecimals(selectedChannel)) : 
+                                      depositAmount
+                                    ) : 
+                                    '';
+                                  handleDeposit(channel, amountToDeposit);
+                                }}
+                                disabled={
+                                  (!depositAmount && !usdtMustSpendExisting) || 
+                                  (selectedChannel?.channelId !== channel.channelId) || 
+                                  isDepositingETH || 
+                                  isDepositingToken ||
+                                  isWaitingDeposit ||
+                                  (!channel.isETH && needsApproval) ||
+                                  (!channel.isETH && !hasSufficientAllowance) ||
+                                  (!usdtMustSpendExisting && !isDepositAmountValid(depositAmount, getTokenDecimals(channel)))
+                                }
+                                className={`px-6 py-2 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 transition-colors duration-200 ${
+                                  usdtMustSpendExisting && selectedChannel?.channelId === channel.channelId ?
+                                    'bg-amber-600 dark:bg-amber-700 hover:bg-amber-700 dark:hover:bg-amber-600 focus:ring-amber-500' :
+                                    'bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 focus:ring-blue-500'
+                                }`}
+                              >
+                                {(isDepositingETH || isDepositingToken) ? 'Depositing...' : isWaitingDeposit ? 'Confirming...' : 
+                                 (usdtMustSpendExisting && selectedChannel?.channelId === channel.channelId ? 'Spend Existing Allowance' : 'Deposit')}
+                              </button>
+                              {/* Validation messages */}
+                              {selectedChannel?.channelId === channel.channelId && depositAmount && (
+                                <div className="text-xs space-y-1">
+                                  {!isDepositAmountValid(depositAmount, getTokenDecimals(channel)) && (
+                                    <p className="text-red-600 dark:text-red-400">
+                                      ⚠️ Invalid amount. Maximum 1,000,000 tokens allowed.
+                                    </p>
+                                  )}
+                                  {!channel.isETH && !needsApproval && !hasSufficientAllowance && (
+                                    <p className="text-orange-600 dark:text-orange-400">
+                                      ⚠️ Insufficient allowance. Current: {allowance ? formatUnits(allowance, getTokenDecimals(channel)) : '0'} {channel.symbol}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
                         {channel.isETH ? (
@@ -413,13 +731,34 @@ export default function DepositTokensPage() {
                           </p>
                         ) : (
                           <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                            {selectedChannel?.channelId === channel.channelId && needsApproval ? (
-                              <p className="text-orange-600 dark:text-orange-400">
-                                ⚠️ First approve the bridge contract to spend your {channel.symbol} tokens
-                              </p>
-                            ) : selectedChannel?.channelId === channel.channelId && !needsApproval && allowance !== undefined ? (
+                            {selectedChannel?.channelId === channel.channelId && usdtMustSpendExisting ? (
+                              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-md">
+                                <p className="text-amber-800 dark:text-amber-300 font-medium mb-1">
+                                  🚨 USDT Allowance Must Be Spent First
+                                </p>
+                                <p className="text-amber-700 dark:text-amber-400 mb-2">
+                                  You have {effectiveAllowance ? formatUnits(effectiveAllowance, getTokenDecimals(channel)) : '0'} {typeof channel.symbol === 'string' ? channel.symbol : 'USDT'} approved. 
+                                  USDT requires spending this amount before approving a new amount.
+                                </p>
+                                <p className="text-amber-600 dark:text-amber-500 text-xs">
+                                  💡 Solution: First deposit the approved amount ({effectiveAllowance ? formatUnits(effectiveAllowance, getTokenDecimals(channel)) : '0'} {typeof channel.symbol === 'string' ? channel.symbol : 'USDT'}), 
+                                  then you can approve and deposit the new amount.
+                                </p>
+                              </div>
+                            ) : selectedChannel?.channelId === channel.channelId && needsApproval ? (
+                              <div>
+                                <p className="text-orange-600 dark:text-orange-400">
+                                  ⚠️ First approve the bridge contract to spend your {typeof channel.symbol === 'string' ? channel.symbol : 'token'} tokens
+                                </p>
+                                {((typeof channel.symbol === 'string' && channel.symbol === 'USDT') || (typeof channel.symbol === 'string' && channel.symbol.toLowerCase().includes('usdt')) || (typeof channel.symbol === 'string' && channel.symbol.toLowerCase().includes('tether'))) && (
+                                  <p className="text-blue-600 dark:text-blue-400 mt-1">
+                                    ℹ️ USDT may show "no data" error but approval can still succeed. Wait for confirmation.
+                                  </p>
+                                )}
+                              </div>
+                            ) : selectedChannel?.channelId === channel.channelId && !needsApproval && effectiveAllowance !== undefined ? (
                               <p className="text-green-600 dark:text-green-400">
-                                ✅ Bridge contract approved to spend your {channel.symbol} tokens
+                                ✅ Bridge contract approved to spend your {typeof channel.symbol === 'string' ? channel.symbol : 'token'} tokens
                               </p>
                             ) : (
                               <p>
@@ -439,6 +778,73 @@ export default function DepositTokensPage() {
         </main>
       </div>
 
+      {/* Success Popup */}
+      {showDepositSuccessPopup && successDepositInfo && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 transition-colors duration-300">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                  <span className="text-2xl">✅</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Deposit Successful!</h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    Channel {successDepositInfo.channelId} • {successDepositInfo.amount} {successDepositInfo.tokenSymbol}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Deposit Confirmed</h3>
+              <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
+                <div className="flex items-start gap-3">
+                  <span className="text-green-500 font-bold">✓</span>
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">Transaction Confirmed</p>
+                    <p>Your {successDepositInfo.tokenSymbol} tokens have been deposited into the channel.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-blue-500 font-bold">→</span>
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">Next Steps</p>
+                    <p>Wait for other participants to deposit, then the channel leader will initialize the channel state.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg">
+                <p className="text-sm text-green-800 dark:text-green-300">
+                  <span className="font-medium">💰 Deposit Details:</span> {successDepositInfo.amount} {successDepositInfo.tokenSymbol} deposited to Channel {successDepositInfo.channelId}
+                </p>
+                {successDepositInfo.txHash && (
+                  <p className="text-xs text-green-600 dark:text-green-400 mt-1 font-mono break-all">
+                    TX: {successDepositInfo.txHash}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-200 dark:border-gray-700">
+              <button
+                onClick={() => {
+                  setShowDepositSuccessPopup(false);
+                  setSuccessDepositInfo(null);
+                  window.location.reload(); // Refresh the page
+                }}
+                className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 text-white rounded-lg hover:bg-green-700 dark:hover:bg-green-600 transition-colors font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

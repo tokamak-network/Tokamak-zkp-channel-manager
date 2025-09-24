@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAccount, useContractWrite, usePrepareContractWrite, useContractRead } from 'wagmi';
+import { useAccount, useContractWrite, usePrepareContractWrite, useContractRead, useWaitForTransaction } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { ROLLUP_BRIDGE_ABI, ROLLUP_BRIDGE_ADDRESS } from '@/lib/contracts';
 import { Sidebar } from '@/components/Sidebar';
@@ -42,6 +42,15 @@ export default function CreateChannelPage() {
     enabled: isConnected && !!totalChannels && Number(totalChannels) > 1,
   });
 
+  // Check if user is authorized to create channels
+  const { data: isAuthorized } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'isAuthorizedCreator',
+    args: address ? [address] : undefined,
+    enabled: isConnected && !!address,
+  });
+
   // Check if user is already a channel leader
   const isAlreadyLeader = address && (
     (channelStats0 && channelStats0[5] && channelStats0[5].toLowerCase() === address.toLowerCase() && channelStats0[2] !== 5) ||
@@ -63,6 +72,9 @@ export default function CreateChannelPage() {
     preprocess_entries_part2: string[];
   } | null>(null);
   const [preprocessError, setPreprocessError] = useState<string>('');
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [createdChannelId, setCreatedChannelId] = useState<string>('');
+  const [txHash, setTxHash] = useState<string>('');
 
   // Add/Remove participants
   const addParticipant = () => {
@@ -147,6 +159,7 @@ export default function CreateChannelPage() {
 
   const isFormValid = () => {
     return (
+      isAuthorized && // User must be authorized to create channels
       !isAlreadyLeader && // Prevent creation if already leading a channel
       isValidEthereumAddress(targetContract) &&
       participants.every(p => 
@@ -184,7 +197,34 @@ export default function CreateChannelPage() {
     enabled: isFormValid() && isConnected,
   });
 
-  const { write: createChannel, isLoading: isCreating } = useContractWrite(config);
+  const { write: createChannel, isLoading: isCreating, data: txData } = useContractWrite({
+    ...config,
+    onSuccess(data) {
+      console.log('Transaction submitted:', data);
+      setTxHash(data.hash);
+    },
+    onError(error) {
+      console.error('Failed to submit transaction:', error);
+      setTxHash('');
+    },
+  });
+
+  // Wait for transaction confirmation
+  const { isLoading: isConfirming } = useWaitForTransaction({
+    hash: txData?.hash,
+    enabled: !!txData?.hash,
+    onSuccess(data) {
+      console.log('Transaction confirmed:', data);
+      // Extract channel ID from transaction or use total channels + 1
+      setCreatedChannelId(totalChannels ? String(Number(totalChannels)) : '0');
+      setShowSuccessPopup(true);
+      setTxHash('');
+    },
+    onError(error) {
+      console.error('Transaction failed:', error);
+      setTxHash('');
+    },
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -270,6 +310,42 @@ export default function CreateChannelPage() {
               )}
             </ClientOnly>
 
+            {/* Info message for authorized users who can create channels */}
+            <ClientOnly>
+              {!isAlreadyLeader && isAuthorized && address && (
+                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-blue-600 dark:text-blue-400 text-lg">ℹ️</span>
+                    <h3 className="text-lg font-semibold text-blue-800 dark:text-blue-300">Channel Creation Available</h3>
+                  </div>
+                  <p className="text-blue-700 dark:text-blue-400 mb-3">
+                    As an authorized creator, you can create your own channel even while participating in other channels.
+                  </p>
+                  <p className="text-sm text-blue-600 dark:text-blue-500">
+                    You can lead one channel while participating in others. Fill out the form below to create your channel.
+                  </p>
+                </div>
+              )}
+            </ClientOnly>
+
+            {/* Warning for unauthorized users */}
+            <ClientOnly>
+              {!isAlreadyLeader && !isAuthorized && address && (
+                <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-red-600 dark:text-red-400 text-lg">🚫</span>
+                    <h3 className="text-lg font-semibold text-red-800 dark:text-red-300">Not Authorized</h3>
+                  </div>
+                  <p className="text-red-700 dark:text-red-400 mb-3">
+                    You are not authorized to create channels. Only authorized creators can create new bridge channels.
+                  </p>
+                  <p className="text-sm text-red-600 dark:text-red-500">
+                    Please contact the system administrator to request channel creation permissions.
+                  </p>
+                </div>
+              )}
+            </ClientOnly>
+
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Target Contract */}
               <div>
@@ -286,6 +362,35 @@ export default function CreateChannelPage() {
                 {targetContract && !isValidEthereumAddress(targetContract) && (
                   <p className="text-red-600 dark:text-red-400 text-sm mt-1">Invalid Ethereum address</p>
                 )}
+                
+                {/* Warning for supported tokens */}
+                <div className="mt-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <span className="text-amber-600 dark:text-amber-400 text-lg">⚠️</span>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-2">
+                        Supported Target Tokens
+                      </h4>
+                      <p className="text-amber-700 dark:text-amber-400 text-sm mb-3">
+                        Currently, only WTON and USDT tokens are supported as target contracts.
+                      </p>
+                      <div className="space-y-2">
+                        <div className="bg-amber-100 dark:bg-amber-900/40 rounded-md p-2">
+                          <div className="text-xs font-medium text-amber-800 dark:text-amber-300 mb-1">WTON Token</div>
+                          <div className="text-xs text-amber-700 dark:text-amber-400 font-mono break-all">
+                            0x79E0d92670106c85E9067b56B8F674340dCa0Bbd
+                          </div>
+                        </div>
+                        <div className="bg-amber-100 dark:bg-amber-900/40 rounded-md p-2">
+                          <div className="text-xs font-medium text-amber-800 dark:text-amber-300 mb-1">USDT Token</div>
+                          <div className="text-xs text-amber-700 dark:text-amber-400 font-mono break-all">
+                            0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Participants */}
@@ -481,10 +586,18 @@ export default function CreateChannelPage() {
               <div className="pt-6">
                 <button
                   type="submit"
-                  disabled={!isFormValid() || isCreating}
+                  disabled={!isFormValid() || isCreating || isConfirming}
                   className="w-full px-6 py-3 bg-blue-600 dark:bg-blue-700 text-white font-medium rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200"
                 >
-                  {isCreating ? 'Creating Channel...' : isAlreadyLeader ? 'Already Leading a Channel' : 'Create Channel'}
+                  {isCreating 
+                    ? 'Submitting Transaction...' 
+                    : isConfirming
+                    ? 'Waiting for Confirmation...'
+                    : !isAuthorized 
+                    ? 'Not Authorized' 
+                    : isAlreadyLeader 
+                    ? 'Already Leading a Channel' 
+                    : 'Create Channel'}
                 </button>
               </div>
             </form>
@@ -506,6 +619,87 @@ export default function CreateChannelPage() {
         </div>
         </main>
       </div>
+
+      {/* Success Popup */}
+      {showSuccessPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 transition-colors duration-300">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                  <span className="text-2xl">✅</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Channel Created Successfully!</h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">Channel ID: {createdChannelId}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Next Steps</h3>
+              <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
+                <div className="flex items-start gap-3">
+                  <span className="text-blue-500 font-bold">1.</span>
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">Wait for Participants to Deposit</p>
+                    <p>All participants need to deposit their tokens into the channel.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-blue-500 font-bold">2.</span>
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">Initialize Channel State</p>
+                    <p>As the channel leader, you'll need to initialize the channel state once all deposits are complete.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-blue-500 font-bold">3.</span>
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">Proof Operations</p>
+                    <p>Submit aggregated proofs, collect signatures, and manage the channel lifecycle.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-blue-500 font-bold">4.</span>
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">Close & Withdraw</p>
+                    <p>Close the channel when operations are complete and allow participants to withdraw.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
+                <p className="text-sm text-blue-800 dark:text-blue-300">
+                  <span className="font-medium">💡 Tip:</span> You can manage your channel and monitor participant deposits from the dashboard. 
+                  Use the sidebar menu to access channel leader functions.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex gap-3">
+              <button
+                onClick={() => setShowSuccessPopup(false)}
+                className="flex-1 px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  setShowSuccessPopup(false);
+                  router.push('/');
+                }}
+                className="flex-1 px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium"
+              >
+                Go to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
