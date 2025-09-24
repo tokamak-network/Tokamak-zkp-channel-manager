@@ -340,11 +340,7 @@ export default function DepositTokensPage() {
       if (isNonStandardTokenError) {
         // For non-standard tokens, the transaction might still succeed despite the error
         setApprovalError('');
-        
-        // Extended delay for non-standard tokens
-        setTimeout(() => {
-          refetchAllowance();
-        }, 5000);
+        refetchAllowance();
       } else {
         setApprovalError(`Approval failed: ${errorMessage}`);
       }
