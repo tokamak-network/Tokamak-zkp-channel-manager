@@ -22,19 +22,23 @@ export default function SignProofPage() {
       </ClientOnly>
       
       <div className={`flex-1 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} flex flex-col min-h-screen transition-all duration-300`}>
-        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Sign Aggregated Proof</h1>
-              <p className="text-gray-600 dark:text-gray-400">Sign the aggregated proof for your channel</p>
-            </div>
-            <div className="flex items-center gap-4">
-              <ClientOnly>
-                <DarkModeToggle />
-              </ClientOnly>
-              <ClientOnly>
-                <ConnectButton />
-              </ClientOnly>
+        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
+          <div className="px-4 py-4 lg:px-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4 ml-12 lg:ml-0">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-purple-600 to-purple-700 flex items-center justify-center">
+                  <span className="text-white text-sm font-bold">✍️</span>
+                </div>
+                <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Sign Aggregated Proof</h1>
+              </div>
+              <div className="flex items-center gap-3">
+                <ClientOnly>
+                  <DarkModeToggle />
+                </ClientOnly>
+                <ClientOnly>
+                  <ConnectButton />
+                </ClientOnly>
+              </div>
             </div>
           </div>
         </header>
