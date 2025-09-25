@@ -397,7 +397,7 @@ export default function InitializeStatePage() {
               </a>
             </div>
             <div className="text-center text-sm text-gray-500 dark:text-gray-400">
-              <p>&copy; 2024 Tokamak Network. All rights reserved.</p>
+              <p>&copy; 2025 Tokamak Network. All rights reserved.</p>
             </div>
           </div>
         </footer>
