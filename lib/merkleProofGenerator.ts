@@ -136,7 +136,9 @@ export function computeLeaf(prevRoot: string, l2Address: string, balance: string
   const gamma = keccak256(packedData);
   
   // RLC formula: l2Address + gamma * balance
-  const leafValue = (BigInt(l2Address) + BigInt(gamma) * BigInt(balance)) % (2n ** 256n);
+  // Use BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff") + 1n for 2^256
+  const maxUint256 = BigInt("0x10000000000000000000000000000000000000000000000000000000000000000");
+  const leafValue = (BigInt(l2Address) + BigInt(gamma) * BigInt(balance)) % maxUint256;
   return pad(toHex(leafValue), { size: 32 });
 }
 
@@ -289,7 +291,9 @@ export class QuaternaryMerkleTree {
     const gamma = keccak256(packedData);
 
     // RLC formula: l2Address + gamma * balance
-    const leafValue = (BigInt(l2Address) + BigInt(gamma) * BigInt(balance)) % (2n ** 256n);
+    // Use BigInt("0x10000000000000000000000000000000000000000000000000000000000000000") for 2^256
+    const maxUint256 = BigInt("0x10000000000000000000000000000000000000000000000000000000000000000");
+    const leafValue = (BigInt(l2Address) + BigInt(gamma) * BigInt(balance)) % maxUint256;
     return pad(toHex(leafValue), { size: 32 });
   }
 
