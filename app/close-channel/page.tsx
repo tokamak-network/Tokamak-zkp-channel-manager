@@ -1,18 +1,165 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useContractRead, useContractWrite, usePrepareContractWrite, useWaitForTransaction, useAccount } from 'wagmi';
+import { parseEther, formatEther } from 'viem';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { DarkModeToggle } from '@/components/DarkModeToggle';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { MobileMenuButton } from '@/components/MobileMenuButton';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
+import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { ETH_TOKEN_ADDRESS } from '@/lib/contracts';
 
 export default function CloseChannelPage() {
   const { isConnected, hasAccess, isMounted, leaderChannel } = useLeaderAccess();
+  const { address } = useAccount();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Channel information
+  const { data: channelInfo } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelInfo',
+    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
+    enabled: Boolean(leaderChannel?.id !== undefined)
+  });
+  
+  const { data: channelTimeoutInfo } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelTimeoutInfo',
+    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
+    enabled: Boolean(leaderChannel?.id !== undefined)
+  });
+  
+  const { data: channelParticipants } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelParticipants',
+    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
+    enabled: Boolean(leaderChannel?.id !== undefined)
+  });
+  
+  const { data: isChannelReadyToClose } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'isChannelReadyToClose',
+    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
+    enabled: Boolean(leaderChannel?.id !== undefined)
+  });
+  
+  const { data: channelDeposits } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelDeposits',
+    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
+    enabled: Boolean(leaderChannel?.id !== undefined)
+  });
+
+  // Get token information for the channel
+  const tokenAddress = channelInfo?.[0] as `0x${string}` | undefined; // targetContract from getChannelInfo
+  const participantCount = channelInfo?.[2] ? Number(channelInfo[2]) : 0;
+  
+  const { data: tokenInfo } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'debugTokenInfo',
+    args: tokenAddress && address ? [tokenAddress, address] : undefined,
+    enabled: Boolean(tokenAddress && address)
+  });
+  
+  // Extract token metadata
+  const tokenSymbol = tokenInfo?.[5] || 'TOKEN';
+  const tokenDecimals = tokenInfo?.[6] || 18;
+  const isETH = tokenAddress === ETH_TOKEN_ADDRESS;
+  
+  // Helper function to get channel state display name
+  const getChannelStateDisplay = (stateNumber: number) => {
+    const states = {
+      0: 'None',
+      1: 'Initialized', 
+      2: 'Open',
+      3: 'Active',
+      4: 'Closing',
+      5: 'Closed'
+    };
+    return states[stateNumber as keyof typeof states] || 'Unknown';
+  };
+
+  // Get channel state colors
+  const getChannelStateColor = (stateNumber: number) => {
+    const colors = {
+      0: 'text-gray-500 dark:text-gray-400',        // None
+      1: 'text-blue-600 dark:text-blue-400',        // Initialized  
+      2: 'text-green-600 dark:text-green-400',      // Open
+      3: 'text-green-600 dark:text-green-400',      // Active
+      4: 'text-yellow-600 dark:text-yellow-400',    // Closing
+      5: 'text-red-600 dark:text-red-400'           // Closed
+    };
+    return colors[stateNumber as keyof typeof colors] || 'text-gray-500 dark:text-gray-400';
+  };
+  
+  // Prepare the closeChannel transaction
+  const { config, error: prepareError } = usePrepareContractWrite({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'closeChannel',
+    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
+    enabled: Boolean(leaderChannel?.id !== undefined)
+  });
+  
+  const { data, write } = useContractWrite(config);
+  
+  const { isLoading: isTransactionLoading, isSuccess } = useWaitForTransaction({
+    hash: data?.hash,
+  });
+  
+  const handleCloseChannel = async () => {
+    // Debug logging
+    console.log('=== CLOSE CHANNEL DEBUG INFO ===');
+    console.log('Channel ID:', leaderChannel?.id);
+    console.log('Channel Info:', channelInfo);
+    console.log('Channel State:', channelInfo ? Number(channelInfo[1]) : 'undefined');
+    console.log('Channel State Name:', channelInfo ? getChannelStateDisplay(Number(channelInfo[1])) : 'undefined');
+    console.log('Channel Deposits:', channelDeposits);
+    console.log('Token Address:', tokenAddress);
+    console.log('Token Info:', tokenInfo);
+    console.log('Token Symbol:', tokenSymbol);
+    console.log('Token Decimals:', tokenDecimals);
+    console.log('Is Ready To Close:', isChannelReadyToClose);
+    console.log('Is Leader:', hasAccess);
+    console.log('Connected Address:', address);
+    console.log('=================');
+    
+    if (!write) {
+      if (prepareError) {
+        console.log('Prepare Error:', prepareError);
+        alert(`Contract error: ${prepareError.message || 'Transaction preparation failed'}`);
+      } else {
+        alert('Transaction not ready. Please ensure you have the correct wallet permissions and the channel is ready to close.');
+      }
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      write();
+    } catch (error) {
+      console.error('Error closing channel:', error);
+      alert('Error closing channel. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Check if channel is in correct state for closure (Closing=4 and sigVerified=true)
+  const isChannelStateValid = channelInfo && Number(channelInfo[1]) === 4;
+  const canCloseChannel = isConnected && hasAccess && leaderChannel && isChannelStateValid && isChannelReadyToClose && !isLoading && !isTransactionLoading;
 
   if (!isMounted) {
     return <div className="min-h-screen bg-gray-50 dark:bg-gray-900"></div>;
@@ -60,44 +207,213 @@ export default function CloseChannelPage() {
           {!isConnected ? (
             <div className="text-center py-12">
               <div className="h-16 w-16 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">🔗</span>
+                <span className="text-2xl">🔌</span>
               </div>
               <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Connect Your Wallet</h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                Please connect your wallet to close channel
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
+                Please connect your wallet to close channels
               </p>
+              <ConnectButton />
             </div>
           ) : !hasAccess ? (
             <div className="text-center py-12">
-              <div className="h-16 w-16 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="h-16 w-16 bg-orange-100 dark:bg-orange-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl">🚫</span>
               </div>
               <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Access Denied</h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-4">
-                This page is only accessible to channel leaders
-              </p>
-              <p className="text-sm text-gray-500 dark:text-gray-500">
-                You need to be a channel leader to close channels
+              <p className="text-gray-600 dark:text-gray-400">
+                Only channel leaders can close channels
               </p>
             </div>
           ) : (
-            <div className="max-w-4xl mx-auto">
-              <div className="text-center py-12">
-                <div className="h-16 w-16 bg-orange-100 dark:bg-orange-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-2xl">🔐</span>
+            <div className="max-w-6xl mx-auto space-y-6">
+              {/* Channel Overview */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="h-12 w-12 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl flex items-center justify-center">
+                    <span className="text-white text-xl">🔐</span>
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Close Channel</h2>
+                    <p className="text-gray-600 dark:text-gray-400 mt-1">
+                      Finalize and permanently close your channel to enable withdrawals
+                    </p>
+                  </div>
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Close Channel Feature</h3>
-                <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  This feature allows channel leaders to close channels and finalize transactions
-                </p>
-                <p className="text-sm text-gray-500 dark:text-gray-500">
-                  Coming soon - This functionality will be implemented in a future release
-                </p>
+                
                 {leaderChannel && (
-                  <div className="mt-6 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 inline-block">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Your Channel: <span className="font-semibold text-gray-900 dark:text-gray-100">Channel {leaderChannel.id}</span></p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Channel ID</div>
+                      <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">#{leaderChannel.id}</div>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Status</div>
+                      <div className={`text-lg font-semibold ${channelInfo ? getChannelStateColor(Number(channelInfo[1])) : 'text-gray-500 dark:text-gray-400'}`}>
+                        {channelInfo ? getChannelStateDisplay(Number(channelInfo[1])) : 'Loading...'}
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Participants</div>
+                      <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        {channelParticipants ? channelParticipants.length : '...'}
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Total Deposits</div>
+                      <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        {channelDeposits && tokenDecimals ? 
+                          `${(Number(channelDeposits[0] || BigInt(0)) / Math.pow(10, tokenDecimals)).toFixed(4)} ${isETH ? 'ETH' : tokenSymbol}` 
+                          : '...'}
+                      </div>
+                    </div>
                   </div>
                 )}
+              </div>
+              
+              {/* Channel Closure Information */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+                <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                    Channel Closure Process
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Close your channel to finalize all transactions and enable participant withdrawals
+                  </p>
+                </div>
+                
+                <div className="p-6 space-y-6">
+                  {/* Pre-closure Checklist */}
+                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 border border-blue-200 dark:border-blue-700">
+                    <h4 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
+                      <span className="text-xl">📋</span>
+                      Pre-Closure Checklist
+                    </h4>
+                    <div className="space-y-3">
+                      <div className={`flex items-center gap-3 p-3 rounded-lg ${
+                        isChannelStateValid 
+                          ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700' 
+                          : 'bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600'
+                      }`}>
+                        <span className={`text-lg ${
+                          isChannelStateValid ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'
+                        }`}>
+                          {isChannelStateValid ? '✅' : '⏳'}
+                        </span>
+                        <div>
+                          <div className={`font-medium ${
+                            isChannelStateValid ? 'text-green-800 dark:text-green-200' : 'text-gray-700 dark:text-gray-300'
+                          }`}>
+                            Channel in "Closing" State
+                          </div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400">
+                            Current state: {channelInfo ? getChannelStateDisplay(Number(channelInfo[1])) : 'Loading...'}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className={`flex items-center gap-3 p-3 rounded-lg ${
+                        isChannelReadyToClose 
+                          ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700' 
+                          : 'bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600'
+                      }`}>
+                        <span className={`text-lg ${
+                          isChannelReadyToClose ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'
+                        }`}>
+                          {isChannelReadyToClose ? '✅' : '⏳'}
+                        </span>
+                        <div>
+                          <div className={`font-medium ${
+                            isChannelReadyToClose ? 'text-green-800 dark:text-green-200' : 'text-gray-700 dark:text-gray-300'
+                          }`}>
+                            All Signatures Verified
+                          </div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400">
+                            Group threshold signatures must be submitted and verified
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className={`flex items-center gap-3 p-3 rounded-lg ${
+                        leaderChannel 
+                          ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700' 
+                          : 'bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600'
+                      }`}>
+                        <span className={`text-lg ${
+                          leaderChannel ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'
+                        }`}>
+                          {leaderChannel ? '✅' : '❌'}
+                        </span>
+                        <div>
+                          <div className={`font-medium ${
+                            leaderChannel ? 'text-green-800 dark:text-green-200' : 'text-gray-700 dark:text-gray-300'
+                          }`}>
+                            Channel Leadership
+                          </div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400">
+                            You are the channel leader with closure permissions
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Warning Notice */}
+                  <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-6 border border-amber-200 dark:border-amber-700">
+                    <div className="flex items-start gap-3">
+                      <span className="text-amber-600 dark:text-amber-400 text-xl flex-shrink-0">⚠️</span>
+                      <div>
+                        <h4 className="font-semibold text-amber-800 dark:text-amber-200 mb-2">Important Notice</h4>
+                        <ul className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
+                          <li>• Closing a channel is <strong>irreversible</strong></li>
+                          <li>• All participants will be able to withdraw their final balances</li>
+                          <li>• The channel cannot be reopened once closed</li>
+                          <li>• Ensure all off-chain computations are complete</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Close Button */}
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 pt-6 border-t border-gray-200 dark:border-gray-700">
+                    <button
+                      onClick={handleCloseChannel}
+                      disabled={!canCloseChannel}
+                      className={`px-8 py-3 rounded-lg font-semibold transition-all ${
+                        canCloseChannel
+                          ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105'
+                          : 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      {isLoading || isTransactionLoading ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                          <span>Closing Channel...</span>
+                        </div>
+                      ) : (
+                        'Close Channel Permanently'
+                      )}
+                    </button>
+                    
+                    {!canCloseChannel && isChannelStateValid && !isChannelReadyToClose && (
+                      <div className="text-sm text-amber-600 dark:text-amber-400">
+                        ⚠️ Channel not ready to close. All signatures must be verified first.
+                      </div>
+                    )}
+                    
+                    {!canCloseChannel && !isChannelStateValid && channelInfo && (
+                      <div className="text-sm text-red-600 dark:text-red-400">
+                        🚫 Channel must be in "Closing" state to close. Current state: {getChannelStateDisplay(Number(channelInfo[1]))}
+                      </div>
+                    )}
+                    
+                    {isSuccess && (
+                      <div className="text-sm text-green-600 dark:text-green-400">
+                        ✅ Channel closed successfully! Participants can now withdraw.
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -115,11 +431,11 @@ export default function CloseChannelPage() {
               </a>
               <a href="https://www.tokamak.network/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
                 </svg>
-                <span className="font-medium">Website</span>
+                <span className="font-medium">Official Website</span>
               </a>
-              <a href="https://medium.com/tokamak-network" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+              <a href="https://medium.com/@tokamak.network" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M13.54 12a6.8 6.8 0 01-6.77 6.82A6.8 6.8 0 010 12a6.8 6.8 0 016.77-6.82A6.8 6.8 0 0113.54 12zM20.96 12c0 3.54-1.51 6.42-3.38 6.42-1.87 0-3.39-2.88-3.39-6.42s1.52-6.42 3.39-6.42 3.38 2.88 3.38 6.42M24 12c0 3.17-.53 5.75-1.19 5.75-.66 0-1.19-2.58-1.19-5.75s.53-5.75 1.19-5.75C23.47 6.25 24 8.83 24 12z"/>
                 </svg>
