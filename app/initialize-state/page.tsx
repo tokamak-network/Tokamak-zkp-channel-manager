@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useContractRead, useContractWrite, useWaitForTransaction } from 'wagmi';
+import { useContractRead, useContractWrite, useWaitForTransaction, useAccount } from 'wagmi';
 import { formatUnits, isAddress } from 'viem';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Sidebar } from '@/components/Sidebar';
@@ -13,7 +13,8 @@ import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 
 export default function InitializeStatePage() {
-  const { address, isConnected, hasAccess, isMounted, leaderChannel: hookLeaderChannel } = useLeaderAccess();
+  const { isConnected, hasAccess, isMounted, leaderChannel: hookLeaderChannel } = useLeaderAccess();
+  const { address } = useAccount();
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -26,30 +27,7 @@ export default function InitializeStatePage() {
     enabled: isMounted && isConnected,
   });
 
-  // Get channel stats for each channel to find which ones the user leads
-  const { data: channelStats0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(0)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 0,
-  });
-
-  const { data: channelStats1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(1)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 1,
-  });
-
-  const { data: channelStats2 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(2)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 2,
-  });
+  // Note: Channel stats are handled by useLeaderAccess hook
 
 
   // Initialize channel state transaction
@@ -80,20 +58,18 @@ export default function InitializeStatePage() {
     enabled: isMounted && isConnected && !!hookLeaderChannel,
   });
 
-  // Get token info for leader channel
-  const { data: tokenDecimals } = useContractRead({
-    address: hookLeaderChannel?.stats?.[1] as `0x${string}`,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'decimals',
-    enabled: isMounted && isConnected && hookLeaderChannel?.stats?.[1] && isAddress(hookLeaderChannel.stats[1]) && hookLeaderChannel.stats[1] !== '0x0000000000000000000000000000000000000000',
+  // Get token info using debugTokenInfo for consistency with other pages
+  const { data: tokenInfo } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'debugTokenInfo',
+    args: hookLeaderChannel?.stats?.[1] && address ? [hookLeaderChannel.stats[1] as `0x${string}`, address] : undefined,
+    enabled: isMounted && isConnected && hookLeaderChannel?.stats?.[1] && isAddress(hookLeaderChannel.stats[1]) && hookLeaderChannel.stats[1] !== '0x0000000000000000000000000000000000000000' && !!address,
   });
 
-  const { data: tokenSymbol } = useContractRead({
-    address: hookLeaderChannel?.stats?.[1] as `0x${string}`,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'symbol',
-    enabled: isMounted && isConnected && hookLeaderChannel?.stats?.[1] && isAddress(hookLeaderChannel.stats[1]) && hookLeaderChannel.stats[1] !== '0x0000000000000000000000000000000000000000',
-  });
+  // Extract token info with proper fallbacks
+  const tokenDecimals = tokenInfo?.[6] || 18;
+  const tokenSymbol = tokenInfo?.[5] || 'TOKEN';
 
   // Get participant deposits for leader channel
   const { data: participantDeposits } = useContractRead({
@@ -126,7 +102,7 @@ export default function InitializeStatePage() {
   };
 
   const isETH = !hookLeaderChannel?.stats?.[1] || hookLeaderChannel.stats[1] === '0x0000000000000000000000000000000000000000';
-  const displayDecimals = isETH ? 18 : (tokenDecimals || 18);
+  const displayDecimals = isETH ? 18 : tokenDecimals;
   const displaySymbol = isETH ? 'ETH' : (typeof tokenSymbol === 'string' ? tokenSymbol : 'TOKEN');
 
   if (!isMounted) {

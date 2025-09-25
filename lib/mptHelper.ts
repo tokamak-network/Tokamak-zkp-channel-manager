@@ -128,13 +128,48 @@ export function createMPTLeaves(balances: bigint[]): `0x${string}`[] {
  * Helper function to convert token amounts to smallest unit
  * 
  * @param tokenAmount - Amount in token units (e.g., "1.5")
- * @param decimals - Token decimals (e.g., 6 for USDT, 18 for ETH)
+ * @param decimals - Token decimals (e.g., 6 for USDT, 18 for ETH, 27 for WTON)
  * @returns Amount in smallest unit as bigint
  */
 export function tokenToSmallestUnit(tokenAmount: string, decimals: number): bigint {
-  const amount = parseFloat(tokenAmount);
-  const multiplier = Math.pow(10, decimals);
-  return BigInt(Math.floor(amount * multiplier));
+  if (!tokenAmount || tokenAmount === '') {
+    return BigInt(0);
+  }
+  
+  // Validate decimals - ensure it's a reasonable number
+  if (decimals < 0 || decimals > 77) { // 77 is theoretical max for JavaScript numbers
+    throw new Error(`Invalid decimals: ${decimals}. Must be between 0 and 77.`);
+  }
+  
+  // Handle high-precision tokens like WTON (27 decimals) by using string manipulation
+  // to avoid JavaScript floating point precision issues
+  const cleanAmount = tokenAmount.trim();
+  const dotIndex = cleanAmount.indexOf('.');
+  
+  if (dotIndex === -1) {
+    // No decimal point - just multiply by 10^decimals
+    // Use string multiplication for high precision
+    const zeros = '0'.repeat(decimals);
+    return BigInt(cleanAmount + zeros);
+  }
+  
+  // Has decimal point - need to handle precision carefully
+  const integerPart = cleanAmount.substring(0, dotIndex);
+  const fractionalPart = cleanAmount.substring(dotIndex + 1);
+  
+  // Pad or truncate fractional part to match decimals
+  let paddedFractionalPart: string;
+  if (fractionalPart.length > decimals) {
+    // Truncate excess precision
+    paddedFractionalPart = fractionalPart.substring(0, decimals);
+  } else {
+    // Pad with zeros
+    paddedFractionalPart = fractionalPart.padEnd(decimals, '0');
+  }
+  
+  // Combine integer and fractional parts
+  const combinedString = integerPart + paddedFractionalPart;
+  return BigInt(combinedString);
 }
 
 /**
@@ -145,8 +180,36 @@ export function tokenToSmallestUnit(tokenAmount: string, decimals: number): bigi
  * @returns Amount in token units as string
  */
 export function smallestUnitToToken(smallestUnitAmount: bigint, decimals: number): string {
-  const divisor = Math.pow(10, decimals);
-  return (Number(smallestUnitAmount) / divisor).toFixed(Math.min(decimals, 6));
+  if (smallestUnitAmount === BigInt(0)) {
+    return '0';
+  }
+  
+  // Validate decimals
+  if (decimals < 0 || decimals > 77) {
+    throw new Error(`Invalid decimals: ${decimals}. Must be between 0 and 77.`);
+  }
+  
+  // Convert bigint to handle high-precision tokens
+  const divisor = BigInt(10 ** decimals);
+  
+  // Perform division and get remainder for precision
+  const quotient = smallestUnitAmount / divisor;
+  const remainder = smallestUnitAmount % divisor;
+  
+  if (remainder === BigInt(0)) {
+    return quotient.toString();
+  }
+  
+  // Handle fractional part by padding remainder to full decimal places
+  const remainderStr = remainder.toString().padStart(decimals, '0');
+  // Remove trailing zeros from fractional part
+  const trimmedRemainder = remainderStr.replace(/0+$/, '');
+  
+  if (trimmedRemainder === '') {
+    return quotient.toString();
+  }
+  
+  return `${quotient}.${trimmedRemainder}`;
 }
 
 /**
@@ -174,12 +237,30 @@ export function weiToEth(weiAmount: bigint): string {
  * Convenience function for UI usage
  * 
  * @param tokenBalances - Array of balance strings in token units (e.g., ["1.0", "2.0", "3.0"])
- * @param decimals - Token decimals (e.g., 6 for USDT, 18 for ETH)
+ * @param decimals - Token decimals (e.g., 6 for USDT, 18 for ETH, 27 for WTON)
  * @returns Array of RLP-encoded MPT leaves as hex strings
  */
 export function generateMPTLeavesFromToken(tokenBalances: string[], decimals: number): `0x${string}`[] {
-  const smallestUnitBalances = tokenBalances.map(token => tokenToSmallestUnit(token, decimals));
-  return createMPTLeaves(smallestUnitBalances);
+  try {
+    const smallestUnitBalances = tokenBalances.map((token) => {
+      const result = tokenToSmallestUnit(token, decimals);
+      
+      // Additional validation for high-decimal tokens like WTON
+      if (decimals >= 27) {
+        const expectedForInteger = token.includes('.') ? null : BigInt(token + '0'.repeat(decimals));
+        if (expectedForInteger && result !== expectedForInteger) {
+          return expectedForInteger;
+        }
+      }
+      
+      return result;
+    });
+    
+    const leaves = createMPTLeaves(smallestUnitBalances);
+    return leaves;
+  } catch (error) {
+    throw new Error(`Failed to generate MPT leaves: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 /**
