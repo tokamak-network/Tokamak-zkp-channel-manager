@@ -7,6 +7,8 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { DarkModeToggle } from '@/components/DarkModeToggle';
+import { MobileNavigation } from '@/components/MobileNavigation';
+import { MobileMenuButton } from '@/components/MobileMenuButton';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 
@@ -14,6 +16,7 @@ export default function InitializeStatePage() {
   const { address, isConnected, hasAccess, isMounted, leaderChannel: hookLeaderChannel } = useLeaderAccess();
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   // Get total number of channels
   const { data: totalChannels } = useContractRead({
@@ -136,17 +139,21 @@ export default function InitializeStatePage() {
         <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
       </ClientOnly>
       
-      <div className={`flex-1 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} flex flex-col min-h-screen transition-all duration-300`}>
+      <div className={`flex-1 ml-0 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} flex flex-col min-h-screen transition-all duration-300`}>
         <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
           <div className="px-4 py-4 lg:px-6">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4 ml-12 lg:ml-0">
+              <div className="hidden lg:flex items-center gap-4">
                 <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-orange-600 to-orange-700 flex items-center justify-center">
                   <span className="text-white text-sm font-bold">⚡</span>
                 </div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Initialize Channel State</h1>
               </div>
               <div className="flex items-center gap-3">
+                <MobileMenuButton 
+                  showMobileMenu={showMobileMenu} 
+                  setShowMobileMenu={setShowMobileMenu} 
+                />
                 <ClientOnly>
                   <DarkModeToggle />
                 </ClientOnly>
@@ -158,7 +165,13 @@ export default function InitializeStatePage() {
           </div>
         </header>
 
-        <main className="flex-1 p-6">
+        {/* Mobile Navigation Menu */}
+        <MobileNavigation 
+          showMobileMenu={showMobileMenu} 
+          setShowMobileMenu={setShowMobileMenu} 
+        />
+
+        <main className="flex-1 p-4 sm:p-6">
           {!isConnected ? (
             <div className="text-center py-12">
               <div className="h-16 w-16 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -196,46 +209,46 @@ export default function InitializeStatePage() {
               </p>
             </div>
           ) : (
-            <div className="max-w-4xl mx-auto space-y-6">
+            <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
               {/* Channel Info */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
+              <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4 flex items-center gap-2">
                   <span className="text-lg">⚡</span>
                   Channel {hookLeaderChannel.id} - Ready to Initialize
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                    <div className="text-sm text-gray-600 dark:text-gray-400">Channel ID</div>
-                    <div className="text-xl font-bold text-gray-900 dark:text-gray-100">{hookLeaderChannel.id}</div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                  <div className="text-center p-3 sm:p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Channel ID</div>
+                    <div className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100">{hookLeaderChannel.id}</div>
                   </div>
-                  <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                    <div className="text-sm text-gray-600 dark:text-gray-400">Current State</div>
-                    <div className="text-xl font-bold text-indigo-600 dark:text-indigo-400">{getChannelStateName(hookLeaderChannel.stats[2])}</div>
+                  <div className="text-center p-3 sm:p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Current State</div>
+                    <div className="text-lg sm:text-xl font-bold text-indigo-600 dark:text-indigo-400">{getChannelStateName(hookLeaderChannel.stats[2])}</div>
                   </div>
-                  <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                    <div className="text-sm text-gray-600 dark:text-gray-400">Participants</div>
-                    <div className="text-xl font-bold text-green-600 dark:text-green-400">{channelParticipants?.length || '0'}</div>
+                  <div className="text-center p-3 sm:p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Participants</div>
+                    <div className="text-lg sm:text-xl font-bold text-green-600 dark:text-green-400">{channelParticipants?.length || '0'}</div>
                   </div>
                 </div>
               </div>
 
               {/* Participant Deposits Display */}
               {channelParticipants && (
-                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4 flex items-center gap-2">
                     <span className="text-lg">👥</span>
-                    Channel {hookLeaderChannel.id} - Participant Deposits
+                    <span className="hidden sm:inline">Channel {hookLeaderChannel.id} - </span>Participant Deposits
                   </h3>
 
-                  <div className="space-y-3">
+                  <div className="space-y-2 sm:space-y-3">
                     {channelParticipants.map((participant: string, index: number) => {
                       const participantDeposit = participantDeposits?.[index];
                       return (
-                        <div key={participant} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="h-10 w-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                                <span className="text-white font-semibold text-sm">
+                        <div key={participant} className="p-3 sm:p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 sm:gap-3">
+                              <div className="h-8 w-8 sm:h-10 sm:w-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                                <span className="text-white font-semibold text-xs sm:text-sm">
                                   {index + 1}
                                 </span>
                               </div>
@@ -243,16 +256,16 @@ export default function InitializeStatePage() {
                                 <div className="flex items-center gap-2">
                                   <span className="text-sm text-gray-600 dark:text-gray-400">Participant {index + 1}:</span>
                                 </div>
-                                <div className="font-mono text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-3 py-1 rounded border mt-1">
+                                <div className="font-mono text-xs sm:text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 px-2 sm:px-3 py-1 rounded border mt-1 break-all">
                                   {participant}
                                 </div>
                               </div>
                             </div>
-                            <div className="text-right ml-4">
+                            <div className="text-left sm:text-right ml-0 sm:ml-4">
                               <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">
                                 Deposited Balance
                               </div>
-                              <div className="font-bold text-lg text-green-700 dark:text-green-300">
+                              <div className="font-bold text-base sm:text-lg text-green-700 dark:text-green-300">
                                 {participantDeposit && typeof participantDeposit === 'bigint' ? 
                                   `${formatUnits(participantDeposit, displayDecimals)} ${displaySymbol}` : 
                                   '0.00 ' + displaySymbol
@@ -266,16 +279,16 @@ export default function InitializeStatePage() {
                   </div>
 
                   {/* Total Summary */}
-                  <div className="mt-6 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg">
-                    <div className="flex items-center justify-between">
+                  <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
-                        <div className="font-medium text-gray-900 dark:text-gray-100">Total Channel Value</div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">
+                        <div className="font-medium text-gray-900 dark:text-gray-100 text-sm sm:text-base">Total Channel Value</div>
+                        <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                           {channelParticipants.length} participants ready
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-xl font-bold text-indigo-700 dark:text-indigo-300">
+                      <div className="text-left sm:text-right">
+                        <div className="text-lg sm:text-xl font-bold text-indigo-700 dark:text-indigo-300">
                           {participantDeposits ? 
                             `${formatUnits(
                               participantDeposits.reduce((sum: bigint, deposit: any) => 
@@ -286,7 +299,7 @@ export default function InitializeStatePage() {
                             '0.00'
                           }
                         </div>
-                        <div className="text-sm text-indigo-600 dark:text-indigo-400">
+                        <div className="text-xs sm:text-sm text-indigo-600 dark:text-indigo-400">
                           Total Value Locked
                         </div>
                       </div>
@@ -296,17 +309,17 @@ export default function InitializeStatePage() {
               )}
 
               {/* Submit State & Open Channel Button */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+              <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
                   <div className="text-center">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Ready to Initialize</h3>
-                    <p className="text-gray-600 dark:text-gray-400 mb-6">
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Ready to Initialize</h3>
+                    <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mb-4 sm:mb-6">
                       This action will compute the initial state root and open the channel for active operations
                     </p>
                     
                     <button
                       onClick={handleInitializeState}
                       disabled={isInitializingTransaction || hookLeaderChannel.stats[2] !== 1}
-                      className={`px-8 py-4 rounded-lg font-semibold text-white text-lg transition-all transform hover:scale-105 ${
+                      className={`px-6 sm:px-8 py-3 sm:py-4 rounded-lg font-semibold text-white text-base sm:text-lg transition-all transform hover:scale-105 ${
                         isInitializingTransaction || hookLeaderChannel.stats[2] !== 1
                           ? 'bg-gray-400 cursor-not-allowed'
                           : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg hover:shadow-xl'
@@ -333,7 +346,7 @@ export default function InitializeStatePage() {
                       )}
                     </button>
 
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 sm:mt-3">
                       This transaction will transition the channel from "Initialized" to "Open" state
                     </p>
                   </div>

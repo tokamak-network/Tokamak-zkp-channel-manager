@@ -5,11 +5,14 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { DarkModeToggle } from '@/components/DarkModeToggle';
+import { MobileNavigation } from '@/components/MobileNavigation';
+import { MobileMenuButton } from '@/components/MobileMenuButton';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 
 export default function CloseChannelPage() {
   const { isConnected, hasAccess, isMounted, leaderChannel } = useLeaderAccess();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   if (!isMounted) {
     return <div className="min-h-screen bg-gray-50 dark:bg-gray-900"></div>;
@@ -21,17 +24,21 @@ export default function CloseChannelPage() {
         <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
       </ClientOnly>
       
-      <div className={`flex-1 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} flex flex-col min-h-screen transition-all duration-300`}>
+      <div className={`flex-1 ml-0 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} flex flex-col min-h-screen transition-all duration-300`}>
         <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
           <div className="px-4 py-4 lg:px-6">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4 ml-12 lg:ml-0">
+              <div className="hidden lg:flex items-center gap-4">
                 <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-orange-600 to-orange-700 flex items-center justify-center">
                   <span className="text-white text-sm font-bold">🔐</span>
                 </div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Close Channel</h1>
               </div>
               <div className="flex items-center gap-3">
+                <MobileMenuButton 
+                  showMobileMenu={showMobileMenu} 
+                  setShowMobileMenu={setShowMobileMenu} 
+                />
                 <ClientOnly>
                   <DarkModeToggle />
                 </ClientOnly>
@@ -42,6 +49,12 @@ export default function CloseChannelPage() {
             </div>
           </div>
         </header>
+
+        {/* Mobile Navigation Menu */}
+        <MobileNavigation 
+          showMobileMenu={showMobileMenu} 
+          setShowMobileMenu={setShowMobileMenu} 
+        />
 
         <main className="flex-1 p-6">
           {!isConnected ? (
