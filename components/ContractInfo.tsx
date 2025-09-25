@@ -145,22 +145,8 @@ export function ContractInfo() {
     enabled: isConnected && !!address && participantsChannel1 && participantsChannel1.includes(address),
   });
 
-  // Get user's withdrawn amounts for channels they're participating in
-  const { data: userWithdrawChannel0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantWithdrawAmount',
-    args: address ? [BigInt(0), address] : undefined,
-    enabled: isConnected && !!address && participantsChannel0 && participantsChannel0.includes(address),
-  });
-
-  const { data: userWithdrawChannel1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantWithdrawAmount',
-    args: address ? [BigInt(1), address] : undefined,
-    enabled: isConnected && !!address && participantsChannel1 && participantsChannel1.includes(address),
-  });
+  // Note: getParticipantWithdrawAmount function doesn't exist in contract
+  // For now, we'll show withdrawn amounts as 0 or use hasWithdrawn status instead
 
   // Get deposit info with proper token details
   const getUserDepositInfo = () => {
@@ -192,30 +178,12 @@ export function ContractInfo() {
   const userDeposits = getUserDepositInfo();
 
   // Get withdraw info with proper token details
+  // Since getParticipantWithdrawAmount doesn't exist, we'll return empty for now
   const getUserWithdrawInfo = () => {
     const withdraws = [];
     
-    if (participantsChannel0 && address && participantsChannel0.includes(address)) {
-      const isETH = !channelStats0?.[1] || channelStats0[1] === '0x0000000000000000000000000000000000000000';
-      const withdrawAmount = userWithdrawChannel0 || BigInt(0);
-      withdraws.push({
-        amount: withdrawAmount,
-        decimals: isETH ? 18 : (tokenDecimals0 || 18),
-        symbol: isETH ? 'ETH' : (tokenSymbol0 || 'TOKEN'),
-        channelId: 0
-      });
-    }
-    
-    if (participantsChannel1 && address && participantsChannel1.includes(address)) {
-      const isETH = !channelStats1?.[1] || channelStats1[1] === '0x0000000000000000000000000000000000000000';
-      const withdrawAmount = userWithdrawChannel1 || BigInt(0);
-      withdraws.push({
-        amount: withdrawAmount,
-        decimals: isETH ? 18 : (tokenDecimals1 || 18),
-        symbol: isETH ? 'ETH' : (tokenSymbol1 || 'TOKEN'),
-        channelId: 1
-      });
-    }
+    // TODO: Implement proper withdraw amount tracking when contract function is available
+    // For now, returning empty array since getParticipantWithdrawAmount doesn't exist
     
     return withdraws;
   };
