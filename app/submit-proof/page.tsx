@@ -306,6 +306,83 @@ export default function SubmitProofPage() {
     alert(`MPT leaves downloaded as JSON file for ${tokenSymbol} channel with ${participantCount} participants`);
   };
   
+  const handleDownloadProofTemplate = () => {
+    const template = {
+      proofHash: [
+        "0x0000000000000000000000000000000000000000000000000000000000000000"
+      ],
+      finalStateRoot: [
+        "0x0000000000000000000000000000000000000000000000000000000000000000"
+      ],
+      ParticipantRoots: [
+        "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "0x0000000000000000000000000000000000000000000000000000000000000000"
+      ],
+      InitialMPTLeaves: [
+        "0xf884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000001e84800a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+        "0xf884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+        "0xf884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+      ],
+      FinalMPTLeaves: [
+        "0xf884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+        "0xf884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000f42400a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+        "0xf884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000f42400a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+      ],
+      proof_entries_part1: [
+        "0x1236d4364cc024d1bb70d584096fae2c",
+        "0x14caedc95bee5309da79cfe59aa67ba3",
+        "0x0573b8e1fe407ab0e47f7677b3333c8b"
+      ],
+      proof_entries_part2: [
+        "0xd107861dd8cac07bc427c136bc12f424521b3e3aaab440fdcdd66a902e22c0a4",
+        "0x27d4a95a71f8b939514a0e455984f5c90b9fdcf5702a3da9a8d73f7f93292c23",
+        "0x08393216d4961ef999d5938af832fd08b8ff691f4a25cd77786485e9891e2389"
+      ],
+      public_inputs: [
+        "0x00000000000000000000000000000000d9bb52200d942752f44a41d658ee82de",
+        "0x00000000000000000000000000000000000000000000000000000000cfc387b2",
+        "0x0000000000000000000000000000000000000000000000000000000000000000"
+      ],
+      smax: [
+        512
+      ],
+      _template_info: {
+        description: "Template for aggregated proof data submission",
+        notes: [
+          "Replace all placeholder values with your actual proof data",
+          "Ensure array lengths match your channel's participant count",
+          "proofHash and finalStateRoot should be single 32-byte hex values",
+          "ParticipantRoots array length must equal number of participants",
+          "InitialMPTLeaves and FinalMPTLeaves arrays must have same length as participants",
+          "proof_entries_part1 contains uint128 values as hex strings (16 bytes)",
+          "proof_entries_part2 contains uint256 values as hex strings (32 bytes)",
+          "public_inputs contains uint256 values as hex strings (32 bytes)",
+          "smax is typically 512 for standard proofs",
+          "Remove this _template_info object before submission"
+        ],
+        generated_at: new Date().toISOString(),
+        channel_id: leaderChannel?.id || "unknown",
+        participant_count: participantCount || 3
+      }
+    };
+    
+    const blob = new Blob([JSON.stringify(template, null, 2)], { 
+      type: 'application/json' 
+    });
+    
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `AggProofData-template-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    alert('Aggregated proof data template downloaded! Replace placeholder values with your actual proof data.');
+  };
+  
   
   const handleSubmit = async () => {
     if (!proofData.aggregatedProofHash || !proofData.finalStateRoot) {
@@ -489,6 +566,24 @@ export default function SubmitProofPage() {
                 </div>
                 
                 <div className="p-6 space-y-6">
+                  {/* Template Download Section */}
+                  <div className="max-w-2xl mx-auto mb-6">
+                    <div className="text-center">
+                      <button
+                        onClick={handleDownloadProofTemplate}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Download Aggregated Proof Data Template
+                      </button>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                        Get a template JSON file with the correct structure and placeholder values
+                      </p>
+                    </div>
+                  </div>
+
                   {/* Single File Upload Section */}
                   <div className="max-w-2xl mx-auto">
                     <label className="block text-sm font-medium text-gray-900 dark:text-gray-100 mb-4">
