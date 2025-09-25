@@ -257,7 +257,7 @@ export default function SubmitProofPage() {
       }
     } catch (error) {
       console.error('Error generating MPT leaves:', error);
-      alert('Error generating MPT leaves. Please check your balance inputs.');
+      alert(`Error generating MPT leaves: ${error instanceof Error ? error.message : 'Unknown error'}. Please check your balance inputs and token decimals.`);
     }
   };
   
