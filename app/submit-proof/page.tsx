@@ -440,7 +440,11 @@ export default function SubmitProofPage() {
                       proofData.initialMPTLeaves.length > 0 &&
                       proofData.finalMPTLeaves.length > 0 &&
                       proofData.participantRoots.length > 0;
-  const canSubmit = isConnected && hasAccess && leaderChannel && isFormValid && !isLoading && !isTransactionLoading;
+  
+  // Check if channel is in correct state for proof submission (Open=2 or Active=3)
+  const isChannelStateValid = channelInfo && (Number(channelInfo[1]) === 2 || Number(channelInfo[1]) === 3);
+  
+  const canSubmit = isConnected && hasAccess && leaderChannel && isFormValid && isChannelStateValid && !isLoading && !isTransactionLoading;
 
   if (!isMounted) {
     return <div className="min-h-screen bg-gray-50 dark:bg-gray-900"></div>;
@@ -868,6 +872,12 @@ export default function SubmitProofPage() {
                     {!isFormValid && (
                       <div className="text-sm text-amber-600 dark:text-amber-400">
                         ⚠️ Please upload the aggregated proof data JSON file containing all required parameters
+                      </div>
+                    )}
+                    
+                    {isFormValid && !isChannelStateValid && channelInfo && (
+                      <div className="text-sm text-red-600 dark:text-red-400">
+                        🚫 Channel must be in "Open" or "Active" state to submit proofs. Current state: {getChannelStateDisplay(Number(channelInfo[1]))}
                       </div>
                     )}
                     

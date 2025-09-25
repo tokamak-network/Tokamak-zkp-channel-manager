@@ -130,14 +130,14 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
           name: 'Deposit Tokens',
           href: '/deposit-tokens',
           icon: '💰',
-          description: 'Deposit ETH and ERC20 tokens',
+          description: '',
           requiresConnection: true
         },
         {
           name: 'Withdraw Tokens',
           href: '/withdraw-tokens',
           icon: '💳',
-          description: 'Withdraw from closed channel',
+          description: '',
           requiresConnection: true
         }
       );
@@ -152,35 +152,35 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
         name: 'Initialize State',
         href: '/initialize-state',
         icon: '⚡',
-        description: 'Initialize channel state',
+        description: '',
         requiresConnection: true
       },
       {
         name: 'Submit Proof',
         href: '/submit-proof',
         icon: '📋',
-        description: 'Submit aggregated proof',
+        description: '',
         requiresConnection: true
       },
       {
         name: 'Sign Proof',
         href: '/sign-proof',
         icon: '✍️',
-        description: 'Sign aggregated proof',
+        description: '',
         requiresConnection: true
       },
       {
         name: 'Close Channel',
         href: '/close-channel',
         icon: '🔐',
-        description: 'Close the channel',
+        description: '',
         requiresConnection: true
       },
       {
         name: 'Delete Channel',
         href: '/delete-channel',
         icon: '🗑️',
-        description: 'Delete the channel',
+        description: '',
         requiresConnection: true
       }
     );
