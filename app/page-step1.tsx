@@ -7,7 +7,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen p-8">
       <h1 className="text-4xl font-bold text-blue-600 mb-4">
-        Tokamak ZK Rollup Bridge
+        Tokamak ZK Rollup Manager
       </h1>
       <p className="text-lg text-gray-600 mb-8">
         Step 1: Testing Button component

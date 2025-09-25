@@ -40,7 +40,7 @@ const connectors = connectorsForWallets([
         chains 
       }),
       coinbaseWallet({ 
-        appName: 'Tokamak ZK Rollup Bridge', 
+        appName: 'Tokamak ZK Rollup Manager', 
         chains 
       }),
     ],
