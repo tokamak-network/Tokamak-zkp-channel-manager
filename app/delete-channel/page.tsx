@@ -2,17 +2,210 @@
 
 import React, { useState } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useContractRead, useContractWrite, usePrepareContractWrite, useWaitForTransaction, useAccount } from 'wagmi';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { DarkModeToggle } from '@/components/DarkModeToggle';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { MobileMenuButton } from '@/components/MobileMenuButton';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
+import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 
 export default function DeleteChannelPage() {
   const { isConnected, hasOwnerAccess, isMounted, leaderChannel, isOwner } = useLeaderAccess();
+  const { address } = useAccount();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [acknowledgeRisk, setAcknowledgeRisk] = useState(false);
+  const [selectedChannelId, setSelectedChannelId] = useState<number | null>(
+    leaderChannel ? leaderChannel.id : null
+  );
+  
+  // Get total channels to fetch all channels for owner
+  const { data: totalChannels } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getTotalChannels',
+    enabled: isOwner && isConnected
+  });
+  
+  // Get channel info for selected channel
+  const { data: channelInfo } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelInfo',
+    args: selectedChannelId !== null ? [BigInt(selectedChannelId)] : undefined,
+    enabled: selectedChannelId !== null
+  });
+  
+  // Get channel timestamps for selected channel
+  const { data: channelTimestamps } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelTimestamps',
+    args: selectedChannelId !== null ? [BigInt(selectedChannelId)] : undefined,
+    enabled: selectedChannelId !== null
+  });
+  
+  // Helper function to get channel state display name
+  const getChannelStateDisplay = (stateNumber: number) => {
+    const states = {
+      0: 'None',
+      1: 'Initialized', 
+      2: 'Open',
+      3: 'Active',
+      4: 'Closing',
+      5: 'Closed'
+    };
+    return states[stateNumber as keyof typeof states] || 'Unknown';
+  };
+
+  // Get channel state colors
+  const getChannelStateColor = (stateNumber: number) => {
+    const colors = {
+      0: 'text-gray-500 dark:text-gray-400',
+      1: 'text-blue-600 dark:text-blue-400',
+      2: 'text-green-600 dark:text-green-400',
+      3: 'text-green-600 dark:text-green-400',
+      4: 'text-yellow-600 dark:text-yellow-400',
+      5: 'text-red-600 dark:text-red-400'
+    };
+    return colors[stateNumber as keyof typeof colors] || 'text-gray-500 dark:text-gray-400';
+  };
+  
+  // Calculate challenge period info
+  const CHALLENGE_PERIOD = 14 * 24 * 60 * 60; // 14 days in seconds
+  const currentTime = Math.floor(Date.now() / 1000);
+  const closeTimestamp = channelTimestamps && Array.isArray(channelTimestamps) && channelTimestamps.length > 1 ? Number(channelTimestamps[1]) : 0;
+  const challengePeriodEnd = closeTimestamp + CHALLENGE_PERIOD;
+  const timeRemaining = Math.max(0, challengePeriodEnd - currentTime);
+  const canDelete = timeRemaining === 0 && closeTimestamp > 0;
+  
+  // Format time remaining
+  const formatTimeRemaining = (seconds: number) => {
+    if (seconds <= 0) return 'Ready to delete';
+    const days = Math.floor(seconds / (24 * 60 * 60));
+    const hours = Math.floor((seconds % (24 * 60 * 60)) / (60 * 60));
+    const minutes = Math.floor((seconds % (60 * 60)) / 60);
+    
+    if (days > 0) {
+      return `${days}d ${hours}h ${minutes}m remaining`;
+    } else if (hours > 0) {
+      return `${hours}h ${minutes}m remaining`;
+    } else {
+      return `${minutes}m remaining`;
+    }
+  };
+  
+  // Prepare the deleteChannel transaction
+  const { config, error: prepareError } = usePrepareContractWrite({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'deleteChannel',
+    args: selectedChannelId !== null ? [BigInt(selectedChannelId)] : undefined,
+    enabled: Boolean(selectedChannelId !== null && canDelete)
+  });
+  
+  const { data, write } = useContractWrite(config);
+  
+  const { isLoading: isTransactionLoading, isSuccess } = useWaitForTransaction({
+    hash: data?.hash,
+  });
+  
+  const handleDeleteChannel = async () => {
+    console.log('=== DELETE CHANNEL DEBUG INFO ===');
+    console.log('Selected Channel ID:', selectedChannelId);
+    console.log('Channel Info:', channelInfo);
+    console.log('Channel State:', channelInfo ? Number(channelInfo[1]) : 'undefined');
+    console.log('Channel State Name:', channelInfo ? getChannelStateDisplay(Number(channelInfo[1])) : 'undefined');
+    console.log('Channel Timestamps:', channelTimestamps);
+    console.log('Close Timestamp:', closeTimestamp);
+    console.log('Current Time:', currentTime);
+    console.log('Challenge Period End:', challengePeriodEnd);
+    console.log('Time Remaining:', timeRemaining);
+    console.log('Can Delete:', canDelete);
+    console.log('Is Owner:', isOwner);
+    console.log('Connected Address:', address);
+    console.log('=================');
+    
+    if (!write) {
+      if (prepareError) {
+        console.log('Prepare Error:', prepareError);
+        alert(`Contract error: ${prepareError.message || 'Transaction preparation failed'}`);
+      } else {
+        alert('Transaction not ready. Please ensure the channel is closed and the challenge period has ended.');
+      }
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      write();
+    } catch (error) {
+      console.error('Error deleting channel:', error);
+      alert('Error deleting channel. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Check if channel is in correct state for deletion (Closed=5)
+  const isChannelStateValid = channelInfo && Number(channelInfo[1]) === 5;
+  const canDeleteChannel = isConnected && hasOwnerAccess && selectedChannelId !== null && isChannelStateValid && canDelete && !isLoading && !isTransactionLoading;
+  
+  // Component to fetch and display channel info for a given ID
+  const ChannelInfoDisplay = ({ channelId }: { channelId: number }) => {
+    const { data: info } = useContractRead({
+      address: ROLLUP_BRIDGE_ADDRESS,
+      abi: ROLLUP_BRIDGE_ABI,
+      functionName: 'getChannelInfo',
+      args: [BigInt(channelId)],
+      enabled: Boolean(channelId)
+    });
+    
+    const { data: timestamps } = useContractRead({
+      address: ROLLUP_BRIDGE_ADDRESS,
+      abi: ROLLUP_BRIDGE_ABI,
+      functionName: 'getChannelTimestamps',
+      args: [BigInt(channelId)],
+      enabled: Boolean(channelId)
+    });
+    
+    const closeTime = timestamps && Array.isArray(timestamps) && timestamps.length > 1 ? Number(timestamps[1]) : 0;
+    const periodEnd = closeTime + CHALLENGE_PERIOD;
+    const timeLeft = Math.max(0, periodEnd - currentTime);
+    const isDeletable = timeLeft === 0 && closeTime > 0;
+    const state = info && Array.isArray(info) && info.length > 1 ? Number(info[1]) : 0;
+    
+    return (
+      <div className={`p-3 border rounded-lg cursor-pointer transition-all ${
+        selectedChannelId === channelId 
+          ? 'border-red-500 bg-red-50 dark:bg-red-900/20' 
+          : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+      }`}
+      onClick={() => setSelectedChannelId(channelId)}>
+        <div className="flex justify-between items-start mb-2">
+          <div className="font-medium text-gray-900 dark:text-gray-100">Channel #{channelId}</div>
+          <div className={`text-sm px-2 py-1 rounded ${
+            state === 5 ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+          }`}>
+            {getChannelStateDisplay(state)}
+          </div>
+        </div>
+        <div className="text-sm text-gray-600 dark:text-gray-400">
+          {isDeletable ? (
+            <span className="text-green-600 dark:text-green-400">✓ Ready to delete</span>
+          ) : timeLeft > 0 ? (
+            <span className="text-yellow-600 dark:text-yellow-400">⏳ {formatTimeRemaining(timeLeft)}</span>
+          ) : (
+            <span className="text-gray-500 dark:text-gray-400">Not closed</span>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   if (!isMounted) {
     return <div className="min-h-screen bg-gray-50 dark:bg-gray-900"></div>;
@@ -50,22 +243,22 @@ export default function DeleteChannelPage() {
           </div>
         </header>
 
-        {/* Mobile Navigation Menu */}
         <MobileNavigation 
           showMobileMenu={showMobileMenu} 
           setShowMobileMenu={setShowMobileMenu} 
         />
 
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-4 sm:p-6">
           {!isConnected ? (
             <div className="text-center py-12">
               <div className="h-16 w-16 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">🔗</span>
+                <span className="text-2xl">🔌</span>
               </div>
               <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Connect Your Wallet</h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                Please connect your wallet to delete channel
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
+                Please connect your wallet to delete channels
               </p>
+              <ConnectButton />
             </div>
           ) : !hasOwnerAccess ? (
             <div className="text-center py-12">
@@ -73,49 +266,226 @@ export default function DeleteChannelPage() {
                 <span className="text-2xl">🚫</span>
               </div>
               <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Access Denied</h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-4">
-                This page is only accessible to channel leaders and contract owner
-              </p>
-              <p className="text-sm text-gray-500 dark:text-gray-500">
-                You need to be a channel leader or contract owner to delete channels
+              <p className="text-gray-600 dark:text-gray-400">
+                Only channel leaders and contract owners can delete channels
               </p>
             </div>
           ) : (
-            <div className="max-w-4xl mx-auto">
-              <div className="text-center py-12">
-                <div className="h-16 w-16 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-2xl">🗑️</span>
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Delete Channel Feature</h3>
-                <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  This feature allows channel leaders and contract owner to permanently delete channels
-                </p>
-                <p className="text-sm text-gray-500 dark:text-gray-500">
-                  Coming soon - This functionality will be implemented in a future release
-                </p>
-                
-                <div className="mt-6 space-y-3">
-                  {isOwner && (
-                    <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-700 inline-block">
-                      <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                        <span className="font-semibold">Contract Owner Access:</span> You can delete any channel
+            <div className="max-w-6xl mx-auto space-y-6">
+              {/* Channel Selector for Owners */}
+              {isOwner && totalChannels && Number(totalChannels) > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="h-12 w-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
+                      <span className="text-white text-xl">👑</span>
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Owner: Select Channel</h2>
+                      <p className="text-gray-600 dark:text-gray-400 mt-1">
+                        As contract owner, you can delete any closed channel after the challenge period
                       </p>
                     </div>
-                  )}
+                  </div>
                   
-                  {leaderChannel && (
-                    <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 inline-block">
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Your Channel: <span className="font-semibold text-gray-900 dark:text-gray-100">Channel {leaderChannel.id}</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {Array.from({ length: Number(totalChannels) }, (_, i) => (
+                      <ChannelInfoDisplay key={i} channelId={i} />
+                    ))}
+                  </div>
+                  
+                  {selectedChannelId !== null && (
+                    <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
+                      <p className="text-blue-800 dark:text-blue-200 text-sm">
+                        📍 Selected: <strong>Channel #{selectedChannelId}</strong> for deletion
                       </p>
                     </div>
                   )}
                 </div>
-              </div>
+              )}
+              
+              {/* Channel Overview */}
+              {selectedChannelId !== null && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="h-12 w-12 bg-gradient-to-r from-red-500 to-red-600 rounded-xl flex items-center justify-center">
+                      <span className="text-white text-xl">🗑️</span>
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Delete Channel</h2>
+                      <p className="text-gray-600 dark:text-gray-400 mt-1">
+                        Permanently remove channel data after the challenge period
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Channel ID</div>
+                      <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        #{selectedChannelId}
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Status</div>
+                      <div className={`text-lg font-semibold ${channelInfo ? getChannelStateColor(Number(channelInfo[1])) : 'text-gray-500 dark:text-gray-400'}`}>
+                        {channelInfo ? getChannelStateDisplay(Number(channelInfo[1])) : 'Loading...'}
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Challenge Period</div>
+                      <div className={`text-lg font-semibold ${
+                        canDelete ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'
+                      }`}>
+                        {formatTimeRemaining(timeRemaining)}
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Your Access</div>
+                      <div className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                        {isOwner ? '👑 Owner' : '📋 Leader'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Deletion Interface */}
+              {selectedChannelId !== null && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+                  <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+                    <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                      Channel Deletion Process
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-400">
+                      Permanently delete channel data after the 14-day challenge period
+                    </p>
+                  </div>
+                  
+                  <div className="p-6 space-y-6">
+                    {/* Danger Zone */}
+                    <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-6 border border-red-200 dark:border-red-700">
+                      <div className="flex items-start gap-3">
+                        <span className="text-red-600 dark:text-red-400 text-xl flex-shrink-0">⚠️</span>
+                        <div>
+                          <h4 className="font-semibold text-red-800 dark:text-red-200 mb-2">DANGER ZONE</h4>
+                          <p className="text-sm text-red-700 dark:text-red-300 mb-4">
+                            Channel deletion is <strong>permanent and irreversible</strong>. Make sure you understand the consequences before proceeding.
+                          </p>
+                          
+                          {/* Risk acknowledgment checkbox */}
+                          <div className="mb-4">
+                            <label className="flex items-start gap-3 text-sm text-red-700 dark:text-red-300 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={acknowledgeRisk}
+                                onChange={(e) => setAcknowledgeRisk(e.target.checked)}
+                                className="mt-0.5 h-4 w-4 text-red-600 focus:ring-red-500 border-red-300 rounded"
+                              />
+                              <span>
+                                I understand that deleting this channel is <strong>permanent and irreversible</strong>. 
+                                All channel data will be permanently removed from the blockchain and this action cannot be undone.
+                              </span>
+                            </label>
+                          </div>
+                          
+                          {!showConfirmation ? (
+                            <button
+                              onClick={() => setShowConfirmation(true)}
+                              disabled={!canDeleteChannel || !acknowledgeRisk}
+                              className={`px-6 py-2 rounded-lg font-medium transition-all ${
+                                canDeleteChannel && acknowledgeRisk
+                                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                                  : 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                              }`}
+                            >
+                              I Want To Delete This Channel
+                            </button>
+                          ) : (
+                            <div className="space-y-4">
+                              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-red-300 dark:border-red-600">
+                                <p className="text-sm font-medium text-red-800 dark:text-red-200 mb-3">
+                                  Type "DELETE CHANNEL {selectedChannelId}" to confirm:
+                                </p>
+                                <input
+                                  type="text"
+                                  placeholder={`DELETE CHANNEL ${selectedChannelId}`}
+                                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500 dark:focus:ring-red-400"
+                                  onChange={(e) => {
+                                    // Remove the data-confirmed logic since we check directly in onClick
+                                  }}
+                                />
+                              </div>
+                              <div className="flex gap-3">
+                                <button
+                                  disabled={!canDeleteChannel}
+                                  className={`px-8 py-3 rounded-lg font-semibold transition-all ${
+                                    canDeleteChannel
+                                      ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105'
+                                      : 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                                  }`}
+                                  onClick={(e) => {
+                                    const input = e.currentTarget.parentElement?.parentElement?.querySelector('input') as HTMLInputElement;
+                                    const expectedText = `DELETE CHANNEL ${selectedChannelId}`;
+                                    const isConfirmed = input?.value === expectedText;
+                                    if (!isConfirmed) {
+                                      alert('Please type the confirmation text exactly as shown.');
+                                      return;
+                                    }
+                                    handleDeleteChannel();
+                                  }}
+                                >
+                                  {isLoading || isTransactionLoading ? (
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                                      <span>Deleting...</span>
+                                    </div>
+                                  ) : (
+                                    'DELETE CHANNEL PERMANENTLY'
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setShowConfirmation(false);
+                                    setAcknowledgeRisk(false);
+                                  }}
+                                  className="px-6 py-3 rounded-lg font-medium bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Status Messages */}
+                    <div className="space-y-4">
+                      {!canDeleteChannel && !isChannelStateValid && channelInfo && (
+                        <div className="text-sm text-red-600 dark:text-red-400">
+                          🚫 Channel must be in "Closed" state to delete. Current state: {getChannelStateDisplay(Number(channelInfo[1]))}
+                        </div>
+                      )}
+                      
+                      {!canDeleteChannel && isChannelStateValid && !canDelete && (
+                        <div className="text-sm text-amber-600 dark:text-amber-400">
+                          ⏳ Challenge period in progress. {formatTimeRemaining(timeRemaining)}
+                        </div>
+                      )}
+                      
+                      {isSuccess && (
+                        <div className="text-sm text-green-600 dark:text-green-400">
+                          ✅ Channel deleted successfully! You can now create new channels.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </main>
-
+        
         {/* Footer */}
         <footer className="mt-auto bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-6 py-8">
           <div className="max-w-6xl mx-auto">
@@ -128,11 +498,11 @@ export default function DeleteChannelPage() {
               </a>
               <a href="https://www.tokamak.network/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
                 </svg>
-                <span className="font-medium">Website</span>
+                <span className="font-medium">Official Website</span>
               </a>
-              <a href="https://medium.com/tokamak-network" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+              <a href="https://medium.com/@tokamak.network" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M13.54 12a6.8 6.8 0 01-6.77 6.82A6.8 6.8 0 010 12a6.8 6.8 0 016.77-6.82A6.8 6.8 0 0113.54 12zM20.96 12c0 3.54-1.51 6.42-3.38 6.42-1.87 0-3.39-2.88-3.39-6.42s1.52-6.42 3.39-6.42 3.38 2.88 3.38 6.42M24 12c0 3.17-.53 5.75-1.19 5.75-.66 0-1.19-2.58-1.19-5.75s.53-5.75 1.19-5.75C23.47 6.25 24 8.83 24 12z"/>
                 </svg>
@@ -158,7 +528,7 @@ export default function DeleteChannelPage() {
               </a>
             </div>
             <div className="text-center text-sm text-gray-500 dark:text-gray-400">
-              <p>&copy; 2024 Tokamak Network. All rights reserved.</p>
+              <p>&copy; 2025 Tokamak Network. All rights reserved.</p>
             </div>
           </div>
         </footer>

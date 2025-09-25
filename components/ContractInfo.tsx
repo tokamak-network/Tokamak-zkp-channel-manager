@@ -145,6 +145,23 @@ export function ContractInfo() {
     enabled: isConnected && !!address && participantsChannel1 && participantsChannel1.includes(address),
   });
 
+  // Get user's withdrawn amounts for channels they're participating in
+  const { data: userWithdrawChannel0 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getParticipantWithdrawAmount',
+    args: address ? [BigInt(0), address] : undefined,
+    enabled: isConnected && !!address && participantsChannel0 && participantsChannel0.includes(address),
+  });
+
+  const { data: userWithdrawChannel1 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getParticipantWithdrawAmount',
+    args: address ? [BigInt(1), address] : undefined,
+    enabled: isConnected && !!address && participantsChannel1 && participantsChannel1.includes(address),
+  });
+
   // Get deposit info with proper token details
   const getUserDepositInfo = () => {
     const deposits = [];
@@ -173,6 +190,37 @@ export function ContractInfo() {
   };
 
   const userDeposits = getUserDepositInfo();
+
+  // Get withdraw info with proper token details
+  const getUserWithdrawInfo = () => {
+    const withdraws = [];
+    
+    if (participantsChannel0 && address && participantsChannel0.includes(address)) {
+      const isETH = !channelStats0?.[1] || channelStats0[1] === '0x0000000000000000000000000000000000000000';
+      const withdrawAmount = userWithdrawChannel0 || BigInt(0);
+      withdraws.push({
+        amount: withdrawAmount,
+        decimals: isETH ? 18 : (tokenDecimals0 || 18),
+        symbol: isETH ? 'ETH' : (tokenSymbol0 || 'TOKEN'),
+        channelId: 0
+      });
+    }
+    
+    if (participantsChannel1 && address && participantsChannel1.includes(address)) {
+      const isETH = !channelStats1?.[1] || channelStats1[1] === '0x0000000000000000000000000000000000000000';
+      const withdrawAmount = userWithdrawChannel1 || BigInt(0);
+      withdraws.push({
+        amount: withdrawAmount,
+        decimals: isETH ? 18 : (tokenDecimals1 || 18),
+        symbol: isETH ? 'ETH' : (tokenSymbol1 || 'TOKEN'),
+        channelId: 1
+      });
+    }
+    
+    return withdraws;
+  };
+
+  const userWithdraws = getUserWithdrawInfo();
 
   // Get channel states for permission checking - only for channels where user is actually participating
   const participatingChannelStates = [];
@@ -494,8 +542,8 @@ export function ContractInfo() {
             </div>
           </div>
 
-          {/* Personal State Status */}
-          {isParticipant && userDeposits.length > 0 && (
+          {/* Personal State Status - Show for all participants, including owners */}
+          {(isParticipant || isOwner) && (
             <div className="mt-6 p-6 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg">
               <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
                 <svg className="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -512,20 +560,31 @@ export function ContractInfo() {
                     Initial Balances (Deposited)
                   </h5>
                   <div className="space-y-2">
-                    {userDeposits.map((deposit, index) => (
-                      <div key={index} className="flex justify-between items-center text-sm">
-                        <span className="text-gray-600 dark:text-gray-400">Channel {deposit.channelId}:</span>
-                        <span className="font-medium text-green-700 dark:text-green-300">
-                          {formatUnits(deposit.amount, deposit.decimals)} {deposit.symbol}
-                        </span>
+                    {userDeposits.length > 0 ? (
+                      userDeposits.map((deposit, index) => (
+                        <div key={index} className="flex justify-between items-center text-sm">
+                          <span className="text-gray-600 dark:text-gray-400">Channel {deposit.channelId}:</span>
+                          <span className="font-medium text-green-700 dark:text-green-300">
+                            {formatUnits(deposit.amount, deposit.decimals)} {deposit.symbol}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">No deposits yet</span>
+                        <span className="font-medium text-gray-500 dark:text-gray-400">0.00</span>
                       </div>
-                    ))}
+                    )}
                     {/* Total Deposited */}
                     <div className="border-t border-gray-200 dark:border-gray-600 pt-2 mt-2">
                       <div className="flex justify-between items-center font-medium">
                         <span className="text-gray-900 dark:text-gray-100">Total Deposited:</span>
                         <div className="text-green-700 dark:text-green-300">
                           {(() => {
+                            if (userDeposits.length === 0) {
+                              return <span className="text-gray-500 dark:text-gray-400">0.00</span>;
+                            }
+                            
                             // Group deposits by token symbol
                             const totalsByToken = userDeposits.reduce((acc, deposit) => {
                               if (!acc[deposit.symbol]) {
@@ -547,39 +606,34 @@ export function ContractInfo() {
                   </div>
                 </div>
 
-                {/* Final Amount (Available to Withdraw) */}
+                {/* Final Amount (Withdrawn) */}
                 <div className="bg-white dark:bg-gray-800/50 p-4 rounded-lg border border-indigo-100 dark:border-indigo-800">
                   <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
                     <div className="h-2 w-2 bg-purple-500 rounded-full"></div>
-                    Final Amounts (Withdrawable)
+                    Final Amounts (Withdrawn)
                   </h5>
                   <div className="space-y-2">
-                    {withdrawableChannels.length > 0 ? (
+                    {userWithdraws.length > 0 ? (
                       <>
-                        {userDeposits
-                          .filter(deposit => withdrawableChannels.includes(deposit.channelId))
-                          .map((deposit, index) => (
-                            <div key={index} className="flex justify-between items-center text-sm">
-                              <span className="text-gray-600 dark:text-gray-400">Channel {deposit.channelId}:</span>
-                              <span className="font-medium text-purple-700 dark:text-purple-300">
-                                {formatUnits(deposit.amount, deposit.decimals)} {deposit.symbol}
-                              </span>
-                            </div>
-                          ))}
-                        {/* Total Withdrawable */}
+                        {userWithdraws.map((withdraw, index) => (
+                          <div key={index} className="flex justify-between items-center text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">Channel {withdraw.channelId}:</span>
+                            <span className="font-medium text-purple-700 dark:text-purple-300">
+                              {formatUnits(withdraw.amount, withdraw.decimals)} {withdraw.symbol}
+                            </span>
+                          </div>
+                        ))}
+                        {/* Total Withdrawn */}
                         <div className="border-t border-gray-200 dark:border-gray-600 pt-2 mt-2">
                           <div className="flex justify-between items-center font-medium">
-                            <span className="text-gray-900 dark:text-gray-100">Total Withdrawable:</span>
+                            <span className="text-gray-900 dark:text-gray-100">Total Withdrawn:</span>
                             <div className="text-purple-700 dark:text-purple-300">
                               {(() => {
-                                const withdrawableDeposits = userDeposits.filter(deposit => 
-                                  withdrawableChannels.includes(deposit.channelId)
-                                );
-                                const totalsByToken = withdrawableDeposits.reduce((acc, deposit) => {
-                                  if (!acc[deposit.symbol]) {
-                                    acc[deposit.symbol] = { amount: BigInt(0), decimals: deposit.decimals };
+                                const totalsByToken = userWithdraws.reduce((acc, withdraw) => {
+                                  if (!acc[withdraw.symbol]) {
+                                    acc[withdraw.symbol] = { amount: BigInt(0), decimals: withdraw.decimals };
                                   }
-                                  acc[deposit.symbol].amount += deposit.amount;
+                                  acc[withdraw.symbol].amount += withdraw.amount;
                                   return acc;
                                 }, {} as Record<string, { amount: bigint; decimals: number }>);
 
@@ -600,10 +654,10 @@ export function ContractInfo() {
                     ) : (
                       <div className="text-center py-4">
                         <p className="text-gray-500 dark:text-gray-400 text-sm">
-                          No withdrawable amounts yet
+                          No withdrawn amounts yet
                         </p>
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                          Funds become withdrawable when channels are closed
+                          Amounts appear here after withdrawal from closed channels
                         </p>
                       </div>
                     )}
