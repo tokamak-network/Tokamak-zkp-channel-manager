@@ -89,6 +89,26 @@ export const ROLLUP_BRIDGE_ABI = [
     type: 'function'
   },
 
+  // Debug Token Info
+  {
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: 'user', type: 'address' }
+    ],
+    name: 'debugTokenInfo',
+    outputs: [
+      { name: 'userBalance', type: 'uint256' },
+      { name: 'userAllowance', type: 'uint256' },
+      { name: 'contractBalance', type: 'uint256' },
+      { name: 'isContract', type: 'bool' },
+      { name: 'name', type: 'string' },
+      { name: 'symbol', type: 'string' },
+      { name: 'decimals', type: 'uint8' }
+    ],
+    stateMutability: 'view',
+    type: 'function'
+  },
+
   // Signature Verification
   {
     inputs: [
