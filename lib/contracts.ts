@@ -255,6 +255,25 @@ export const ROLLUP_BRIDGE_ABI = [
     type: 'function'
   },
 
+  // Additional view functions
+  {
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelTimestamps',
+    outputs: [
+      { name: 'openTimestamp', type: 'uint256' },
+      { name: 'closeTimestamp', type: 'uint256' }
+    ],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'deleteChannel',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'nonpayable',
+    type: 'function'
+  },
+
   // Constants
   {
     inputs: [],
@@ -362,6 +381,16 @@ export const ROLLUP_BRIDGE_ABI = [
     ],
     name: 'hasWithdrawn',
     outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [
+      { name: 'channelId', type: 'uint256' },
+      { name: 'participant', type: 'address' }
+    ],
+    name: 'getParticipantWithdrawAmount',
+    outputs: [{ name: 'amount', type: 'uint256' }],
     stateMutability: 'view',
     type: 'function'
   }
