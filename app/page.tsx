@@ -10,6 +10,8 @@ import { Sidebar } from '@/components/Sidebar';
 import { ContractInfo } from '@/components/ContractInfo';
 import { ChannelCreatedBanner } from '@/components/ChannelCreatedBanner';
 import { DarkModeToggle } from '@/components/DarkModeToggle';
+import { MobileNavigation } from '@/components/MobileNavigation';
+import { MobileMenuButton } from '@/components/MobileMenuButton';
 
 export default function HomePage() {
   const router = useRouter();
@@ -17,6 +19,7 @@ export default function HomePage() {
   const [creatorAddress, setCreatorAddress] = useState('');
   const [showUnauthorizedModal, setShowUnauthorizedModal] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   // Check if the current user is the owner
   const { data: owner } = useContractRead({
@@ -135,38 +138,32 @@ export default function HomePage() {
 
   const handleWithdrawTokens = () => {
     if (!isConnected) return;
-    // TODO: Implement withdraw tokens functionality
-    console.log('Withdraw tokens clicked');
+    router.push('/withdraw-tokens');
   };
 
   const handleInitializeState = () => {
     if (!isConnected) return;
-    // TODO: Implement initialize state functionality
-    console.log('Initialize state clicked');
+    router.push('/initialize-state');
   };
 
   const handleSubmitProof = () => {
     if (!isConnected) return;
-    // TODO: Implement submit aggregated proof functionality
-    console.log('Submit aggregated proof clicked');
+    router.push('/submit-proof');
   };
 
   const handleSignProof = () => {
     if (!isConnected) return;
-    // TODO: Implement sign aggregated proof functionality
-    console.log('Sign aggregated proof clicked');
+    router.push('/sign-proof');
   };
 
   const handleCloseChannel = () => {
     if (!isConnected) return;
-    // TODO: Implement close channel functionality
-    console.log('Close channel clicked');
+    router.push('/close-channel');
   };
 
   const handleDeleteChannel = () => {
     if (!isConnected) return;
-    // TODO: Implement delete channel functionality
-    console.log('Delete channel clicked');
+    router.push('/delete-channel');
   };
 
   return (
@@ -182,12 +179,12 @@ export default function HomePage() {
       </ClientOnly>
 
       {/* Main Content Area */}
-      <div className={`${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
+      <div className={`ml-0 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
         {/* Header with Connect Button */}
         <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
           <div className="px-4 py-4 lg:px-6">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 ml-12 lg:ml-0">
+              <div className="hidden lg:flex items-center gap-3">
                 <div className="h-10 w-10 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-center">
                   <span className="text-white font-bold text-lg">ZK</span>
                 </div>
@@ -198,6 +195,12 @@ export default function HomePage() {
               </div>
               
               <div className="flex items-center gap-3">
+                {/* Mobile Navigation Menu Button */}
+                <MobileMenuButton 
+                  showMobileMenu={showMobileMenu} 
+                  setShowMobileMenu={setShowMobileMenu} 
+                />
+
                 {/* Dark Mode Toggle */}
                 <ClientOnly>
                   <DarkModeToggle />
@@ -211,6 +214,12 @@ export default function HomePage() {
             </div>
           </div>
         </header>
+
+        {/* Mobile Navigation Menu */}
+        <MobileNavigation 
+          showMobileMenu={showMobileMenu} 
+          setShowMobileMenu={setShowMobileMenu} 
+        />
 
         {/* Main Content */}
         <main className="px-4 py-8 lg:px-6">
@@ -296,7 +305,7 @@ export default function HomePage() {
 
             {/* Action Cards */}
             <ClientOnly>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 max-w-6xl mx-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 max-w-6xl mx-auto px-4">
               {/* Create Channel - Only for authorized users who are not just participants */}
               {isConnected && isAuthorized && !isParticipant && (
                 <div 

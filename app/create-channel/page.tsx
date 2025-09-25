@@ -8,6 +8,8 @@ import { ROLLUP_BRIDGE_ABI, ROLLUP_BRIDGE_ADDRESS } from '@/lib/contracts';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { DarkModeToggle } from '@/components/DarkModeToggle';
+import { MobileNavigation } from '@/components/MobileNavigation';
+import { MobileMenuButton } from '@/components/MobileMenuButton';
 
 interface Participant {
   address: string;
@@ -18,6 +20,7 @@ export default function CreateChannelPage() {
   const router = useRouter();
   const { address, isConnected } = useAccount();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   
   // Check if user is already leading a channel
   const { data: totalChannels } = useContractRead({
@@ -256,13 +259,13 @@ export default function CreateChannelPage() {
       </ClientOnly>
 
       {/* Main Content Area */}
-      <div className={`${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
+      <div className={`ml-0 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
         {/* Header */}
         <ClientOnly>
           <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
             <div className="px-4 py-4 lg:px-6">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4 ml-12 lg:ml-0">
+                <div className="hidden lg:flex items-center gap-4">
                   <button
                     onClick={() => router.push('/')}
                     className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
@@ -272,6 +275,10 @@ export default function CreateChannelPage() {
                   <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Create Channel</h1>
                 </div>
                 <div className="flex items-center gap-3">
+                  <MobileMenuButton 
+                    showMobileMenu={showMobileMenu} 
+                    setShowMobileMenu={setShowMobileMenu} 
+                  />
                   <ClientOnly>
                     <DarkModeToggle />
                   </ClientOnly>
@@ -281,6 +288,12 @@ export default function CreateChannelPage() {
             </div>
           </header>
         </ClientOnly>
+
+        {/* Mobile Navigation Menu */}
+        <MobileNavigation 
+          showMobileMenu={showMobileMenu} 
+          setShowMobileMenu={setShowMobileMenu} 
+        />
 
         {/* Main Content */}
         <main className="px-4 py-8 lg:px-6">

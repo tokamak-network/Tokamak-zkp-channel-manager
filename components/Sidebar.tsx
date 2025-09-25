@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useDisconnect, useAccount, useContractRead } from 'wagmi';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
@@ -15,7 +15,25 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
   const pathname = usePathname();
   const { disconnect } = useDisconnect();
   const { address } = useAccount();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false); // Will be set based on screen size
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Set initial collapsed state based on screen size
+  useEffect(() => {
+    const handleResize = () => {
+      const isMobile = window.innerWidth < 1024; // lg breakpoint
+      setIsCollapsed(isMobile);
+      onCollapse?.(isMobile);
+    };
+
+    // Set initial state
+    handleResize();
+    setIsMounted(true);
+
+    // Listen for resize events
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [onCollapse]);
 
   // Check if user is authorized to create channels
   const { data: isAuthorized } = useContractRead({
@@ -204,8 +222,8 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
 
       {/* Sidebar */}
       <div className={`fixed top-0 left-0 h-full bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 z-50 ${
-        isCollapsed ? 'w-16' : 'w-64'
-      }`}>
+        isCollapsed ? 'w-16 -translate-x-full lg:translate-x-0' : 'w-64 translate-x-0'
+      } lg:translate-x-0`}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
           {!isCollapsed && (
@@ -332,9 +350,13 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
           setIsCollapsed(newCollapsed);
           onCollapse?.(newCollapsed);
         }}
-        className="fixed top-4 left-4 z-60 lg:hidden bg-white border border-gray-200 rounded-lg p-2 shadow-sm"
+        className="fixed top-4 left-4 z-60 lg:hidden bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 shadow-lg hover:shadow-xl transition-all duration-200"
       >
-        <span className="text-gray-600">☰</span>
+        <div className="flex flex-col gap-1">
+          <span className={`block w-5 h-0.5 bg-gray-600 dark:bg-gray-300 transition-all duration-300 ${isCollapsed ? '' : 'rotate-45 translate-y-1.5'}`}></span>
+          <span className={`block w-5 h-0.5 bg-gray-600 dark:bg-gray-300 transition-all duration-300 ${isCollapsed ? '' : 'opacity-0'}`}></span>
+          <span className={`block w-5 h-0.5 bg-gray-600 dark:bg-gray-300 transition-all duration-300 ${isCollapsed ? '' : '-rotate-45 -translate-y-1.5'}`}></span>
+        </div>
       </button>
     </>
   );

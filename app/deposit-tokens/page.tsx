@@ -7,6 +7,8 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { DarkModeToggle } from '@/components/DarkModeToggle';
+import { MobileNavigation } from '@/components/MobileNavigation';
+import { MobileMenuButton } from '@/components/MobileMenuButton';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 
 export default function DepositTokensPage() {
@@ -36,6 +38,7 @@ export default function DepositTokensPage() {
     amount: string;
     txHash: string;
   } | null>(null);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   // Get total number of channels
   const { data: totalChannels } = useContractRead({
@@ -500,18 +503,22 @@ export default function DepositTokensPage() {
       </ClientOnly>
 
       {/* Main Content Area */}
-      <div className={`${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
+      <div className={`ml-0 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
         {/* Header */}
         <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
           <div className="px-4 py-4 lg:px-6">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4 ml-12 lg:ml-0">
+              <div className="hidden lg:flex items-center gap-4">
                 <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-center">
                   <span className="text-white text-sm font-bold">💰</span>
                 </div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Deposit Tokens</h1>
               </div>
               <div className="flex items-center gap-3">
+                <MobileMenuButton 
+                  showMobileMenu={showMobileMenu} 
+                  setShowMobileMenu={setShowMobileMenu} 
+                />
                 <ClientOnly>
                   <DarkModeToggle />
                 </ClientOnly>
@@ -522,6 +529,12 @@ export default function DepositTokensPage() {
             </div>
           </div>
         </header>
+
+        {/* Mobile Navigation Menu */}
+        <MobileNavigation 
+          showMobileMenu={showMobileMenu} 
+          setShowMobileMenu={setShowMobileMenu} 
+        />
 
         {/* Main Content */}
         <main className="px-4 py-8 lg:px-6">
@@ -582,7 +595,7 @@ export default function DepositTokensPage() {
                           </p>
                         </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm mb-4">
                         <div>
                           <span className="text-gray-600 dark:text-gray-400">Target Contract:</span>
                           <p className="font-mono text-xs break-all text-gray-900 dark:text-gray-100">
