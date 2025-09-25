@@ -447,7 +447,7 @@ export default function SubmitProofPage() {
       // Prepare participants data
       const participants = participantAddresses.map((address, index) => ({
         l2Address: address.trim(),
-        balance: balancesInSmallestUnit[index]
+        balance: balancesInSmallestUnit[index].toString()
       }));
       
       // Compute final state root

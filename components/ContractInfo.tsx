@@ -179,8 +179,18 @@ export function ContractInfo() {
 
   // Get withdraw info with proper token details
   // Since getParticipantWithdrawAmount doesn't exist, we'll return empty for now
-  const getUserWithdrawInfo = () => {
-    const withdraws = [];
+  const getUserWithdrawInfo = (): Array<{
+    amount: bigint;
+    decimals: number;
+    symbol: string;
+    channelId: number;
+  }> => {
+    const withdraws: Array<{
+      amount: bigint;
+      decimals: number;
+      symbol: string;
+      channelId: number;
+    }> = [];
     
     // TODO: Implement proper withdraw amount tracking when contract function is available
     // For now, returning empty array since getParticipantWithdrawAmount doesn't exist

@@ -246,7 +246,8 @@ export default function WithdrawTokensPage() {
         // This is a simple approach - in production you'd want a more sophisticated mapping
         const addressNum = BigInt(address);
         const channelOffset = BigInt(selectedChannel.channelId.toString()) + BigInt(1000000);
-        const derivedL2 = (addressNum + channelOffset) % (BigInt(2) ** BigInt(160));
+        const maxAddress = BigInt("0xffffffffffffffffffffffffffffffffffffffff"); // 2^160 - 1
+        const derivedL2 = (addressNum + channelOffset) % (maxAddress + BigInt(1));
         l2Address = `0x${derivedL2.toString(16).padStart(40, '0')}`;
         
         console.log(`No L2 public key found, using derived L2 address: ${l2Address} for L1: ${address} in channel ${selectedChannel.channelId}`);
