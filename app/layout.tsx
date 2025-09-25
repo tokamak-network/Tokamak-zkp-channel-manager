@@ -8,8 +8,8 @@ import { SpeedInsights } from '@vercel/speed-insights/next';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Tokamak ZK Rollup Bridge',
-  description: 'User-friendly interface for Tokamak ZK Rollup Bridge operations',
+  title: 'Tokamak ZK Rollup Manager',
+  description: 'User-friendly interface for Tokamak ZK Rollup Manager operations',
   keywords: ['Tokamak', 'ZK Rollup', 'Bridge', 'Ethereum', 'DeFi'],
   authors: [{ name: 'Tokamak Network' }],
   metadataBase: new URL('http://localhost:3000'),
@@ -22,14 +22,14 @@ export const metadata: Metadata = {
     'Content-Language': 'en-US',
   },
   openGraph: {
-    title: 'Tokamak ZK Rollup Bridge',
+    title: 'Tokamak ZK Rollup Manager',
     description: 'Secure and efficient bridging solution with zero-knowledge proofs',
     type: 'website',
     locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Tokamak ZK Rollup Bridge',
+    title: 'Tokamak ZK Rollup Manager',
     description: 'Secure and efficient bridging solution with zero-knowledge proofs',
   },
 };

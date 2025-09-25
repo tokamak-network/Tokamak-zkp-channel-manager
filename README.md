@@ -1,6 +1,6 @@
-# Tokamak ZK Rollup Bridge UI
+# Tokamak ZK Rollup Manager UI
 
-A user-friendly and attractive interface for interacting with the Tokamak ZK Rollup Bridge smart contracts. This Next.js application provides a seamless experience for creating channels, making deposits, submitting proofs, and withdrawing funds using zero-knowledge cryptography and threshold signatures.
+A user-friendly and attractive interface for interacting with the Tokamak ZK Rollup Manager smart contracts. This Next.js application provides a seamless experience for creating channels, making deposits, submitting proofs, and withdrawing funds using zero-knowledge cryptography and threshold signatures.
 
 ![Tokamak ZK Bridge](https://img.shields.io/badge/Tokamak-ZK%20Bridge-blue)
 ![Next.js](https://img.shields.io/badge/Next.js-14.0-black)
