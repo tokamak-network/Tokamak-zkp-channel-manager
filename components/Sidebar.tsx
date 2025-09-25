@@ -265,7 +265,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
                     : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'
                 }`}
               >
-                
+                <span className="text-lg">{item.icon}</span>
                 {!isCollapsed && (
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm truncate">{item.name}</div>
