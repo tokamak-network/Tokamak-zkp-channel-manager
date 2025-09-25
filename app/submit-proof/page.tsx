@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useContractRead, useContractWrite, usePrepareContractWrite, useWaitForTransaction, useAccount } from 'wagmi';
-import { parseEther, formatEther } from 'viem';
+import { parseEther, formatEther, toHex } from 'viem';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { DarkModeToggle } from '@/components/DarkModeToggle';
@@ -12,6 +12,7 @@ import { MobileMenuButton } from '@/components/MobileMenuButton';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 import { generateMPTLeavesFromToken, generateMPTLeavesFromETH, smallestUnitToToken, tokenToSmallestUnit, validateBalanceConservation, STANDARD_TEST_INITIAL_BALANCES, STANDARD_TEST_FINAL_BALANCES, createMPTLeaves } from '@/lib/mptHelper';
+import { computeFinalStateRoot } from '@/lib/merkleProofGenerator';
 import { ETH_TOKEN_ADDRESS } from '@/lib/contracts';
 
 export default function SubmitProofPage() {
@@ -42,6 +43,13 @@ export default function SubmitProofPage() {
   const [finalBalances, setFinalBalances] = useState<string[]>([]);
   const [generatedInitialMPTLeaves, setGeneratedInitialMPTLeaves] = useState<`0x${string}`[]>([]);
   const [generatedFinalMPTLeaves, setGeneratedFinalMPTLeaves] = useState<`0x${string}`[]>([]);
+  
+  // Final state root computation state
+  const [showFinalStateComputation, setShowFinalStateComputation] = useState(false);
+  const [participantAddresses, setParticipantAddresses] = useState<string[]>([]);
+  const [participantBalances, setParticipantBalances] = useState<string[]>([]);
+  const [computedFinalStateRoot, setComputedFinalStateRoot] = useState<string>('');
+  const [participantLeavesData, setParticipantLeavesData] = useState<string[]>([]);
   
   // Channel information
   const { data: channelInfo } = useContractRead({
@@ -136,6 +144,13 @@ export default function SubmitProofPage() {
       
       setInitialBalances(defaultInitialBalances);
       setFinalBalances(defaultFinalBalances);
+      
+      // Initialize final state computation arrays
+      const defaultAddresses = Array(participantCount).fill('');
+      const defaultBalancesFS = Array(participantCount).fill('0.0');
+      
+      setParticipantAddresses(defaultAddresses);
+      setParticipantBalances(defaultBalancesFS);
     }
   }, [participantCount, initialBalances.length]);
   
@@ -382,6 +397,71 @@ export default function SubmitProofPage() {
     
     alert('Aggregated proof data template downloaded! Replace placeholder values with your actual proof data.');
   };
+  
+  const handleComputeFinalStateRoot = () => {
+    try {
+      // Check multiple sources for channel ID
+      let channelId = leaderChannel?.id;
+      
+      // Debug logging
+      console.log('=== CHANNEL DEBUG INFO ===');
+      console.log('leaderChannel:', leaderChannel);
+      console.log('leaderChannel?.id:', leaderChannel?.id);
+      console.log('typeof leaderChannel?.id:', typeof leaderChannel?.id);
+      console.log('channelInfo:', channelInfo);
+      console.log('========================');
+      
+      // If leaderChannel.id is not available, we should use the channel ID from the URL parameters
+      // or contract context, but for now let's just use leaderChannel.id
+      if (channelId === undefined || channelId === null) {
+        alert('Channel ID not available. Please ensure you are connected and have a valid channel.');
+        return;
+      }
+      
+      // Validate addresses and balances
+      const emptyAddresses = participantAddresses.filter(addr => !addr.trim());
+      const emptyBalances = participantBalances.filter(bal => !bal.trim() || parseFloat(bal) < 0);
+      
+      if (emptyAddresses.length > 0) {
+        alert('Please fill in all participant addresses');
+        return;
+      }
+      
+      if (emptyBalances.length > 0) {
+        alert('Please fill in all participant balances with valid positive numbers');
+        return;
+      }
+      
+      // Validate address format
+      const invalidAddresses = participantAddresses.filter(addr => !/^0x[0-9a-fA-F]{40}$/.test(addr.trim()));
+      if (invalidAddresses.length > 0) {
+        alert('Please ensure all addresses are valid Ethereum addresses (0x followed by 40 hex characters)');
+        return;
+      }
+      
+      // Convert balances to smallest unit
+      const balancesInSmallestUnit = participantBalances.map(balance => 
+        tokenToSmallestUnit(balance, tokenDecimals)
+      );
+      
+      // Prepare participants data
+      const participants = participantAddresses.map((address, index) => ({
+        l2Address: address.trim(),
+        balance: balancesInSmallestUnit[index]
+      }));
+      
+      // Compute final state root
+      const result = computeFinalStateRoot(Number(channelId), participants);
+      
+      setComputedFinalStateRoot(result.finalStateRoot);
+      setParticipantLeavesData(result.participantLeaves);
+      
+    } catch (error) {
+      console.error('Error computing final state root:', error);
+      alert(`Error computing final state root: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+  
   
   
   const handleSubmit = async () => {
@@ -683,6 +763,153 @@ export default function SubmitProofPage() {
                     {fileError && (
                       <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
                         <p className="text-red-600 dark:text-red-400 text-sm">{fileError}</p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Final State Root Computation */}
+                  <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        Final State Root Computation
+                      </h4>
+                      <button
+                        onClick={() => setShowFinalStateComputation(!showFinalStateComputation)}
+                        className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                      >
+                        {showFinalStateComputation ? 'Hide' : 'Show'} Computation
+                      </button>
+                    </div>
+                    
+                    {showFinalStateComputation && (
+                      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-6">
+                        <div className="mb-4">
+                          <div className="bg-blue-100 dark:bg-blue-800 p-3 rounded-lg mb-4">
+                            <div className="text-sm text-blue-900 dark:text-blue-100">
+                              <strong>Channel Info:</strong> Channel #{leaderChannel?.id ?? 'N/A'} • {tokenSymbol} ({tokenDecimals} decimals) • {participantCount} participants
+                              {tokenAddress && (
+                                <div className="text-xs text-blue-700 dark:text-blue-300 mt-1 break-all">
+                                  Token: {tokenAddress}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <p className="text-sm text-blue-800 dark:text-blue-200 mb-4">
+                            Compute the final state root exactly as the contract does in initializeChannelState. 
+                            This uses quaternary Merkle tree logic with participant L2 addresses and their final balances.
+                          </p>
+                          
+                          <div className="flex flex-wrap gap-2 mb-4">
+                            <button
+                              onClick={handleComputeFinalStateRoot}
+                              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              disabled={participantAddresses.length === 0}
+                            >
+                              Compute Final State Root
+                            </button>
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                          {/* Participant Addresses */}
+                          <div>
+                            <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">
+                              Participant L2 Addresses
+                            </h5>
+                            <div className="space-y-2">
+                              {participantAddresses.map((address, index) => (
+                                <div key={index} className="flex items-center gap-2">
+                                  <span className="text-xs text-blue-700 dark:text-blue-300 w-20">
+                                    Participant {index + 1}:
+                                  </span>
+                                  <input
+                                    type="text"
+                                    placeholder="0x..."
+                                    value={address}
+                                    onChange={(e) => {
+                                      const newAddresses = [...participantAddresses];
+                                      newAddresses[index] = e.target.value;
+                                      setParticipantAddresses(newAddresses);
+                                    }}
+                                    className="flex-1 px-3 py-1 border border-blue-300 dark:border-blue-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          
+                          {/* Participant Balances */}
+                          <div>
+                            <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">
+                              Final Balances ({tokenSymbol})
+                            </h5>
+                            <div className="space-y-2">
+                              {participantBalances.map((balance, index) => (
+                                <div key={index} className="flex items-center gap-2">
+                                  <span className="text-xs text-blue-700 dark:text-blue-300 w-20">
+                                    Participant {index + 1}:
+                                  </span>
+                                  <input
+                                    type="number"
+                                    step={tokenDecimals === 6 ? "0.000001" : "0.000000000000000001"}
+                                    value={balance}
+                                    onChange={(e) => {
+                                      const newBalances = [...participantBalances];
+                                      newBalances[index] = e.target.value;
+                                      setParticipantBalances(newBalances);
+                                    }}
+                                    className="flex-1 px-3 py-1 border border-blue-300 dark:border-blue-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                                  />
+                                  <span className="text-xs text-blue-700 dark:text-blue-300">{tokenSymbol}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Balance Summary */}
+                        {participantBalances.length > 0 && (
+                          <div className="mt-4 p-3 bg-blue-100 dark:bg-blue-800 rounded-lg">
+                            <div className="text-xs text-blue-700 dark:text-blue-300">
+                              <strong>Balance Total:</strong> {participantBalances.reduce((sum, bal) => sum + parseFloat(bal || '0'), 0).toFixed(6)} {tokenSymbol}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Computed Final State Root */}
+                        {computedFinalStateRoot && (
+                          <div className="mt-6 pt-4 border-t border-blue-200 dark:border-blue-700">
+                            <div className="flex items-center justify-between mb-3">
+                              <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200">
+                                Computed Final State Root
+                              </h5>
+                              <span className="text-xs text-blue-600 dark:text-blue-400">
+                                ✅ Computation complete
+                              </span>
+                            </div>
+                            <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border">
+                              <div className="text-sm font-mono text-gray-900 dark:text-gray-100 break-all">
+                                {computedFinalStateRoot}
+                              </div>
+                            </div>
+                            
+                            {participantLeavesData.length > 0 && (
+                              <div className="mt-4">
+                                <h6 className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-2">
+                                  Participant Leaves (Preview)
+                                </h6>
+                                <div className="bg-white dark:bg-gray-800 p-2 rounded border max-h-32 overflow-y-auto">
+                                  {participantLeavesData.map((leaf, index) => (
+                                    <div key={index} className="mb-1 text-xs break-all text-gray-700 dark:text-gray-300">
+                                      {index + 1}: {leaf.slice(0, 20)}...{leaf.slice(-10)}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

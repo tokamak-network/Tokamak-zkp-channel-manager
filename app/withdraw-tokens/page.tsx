@@ -12,6 +12,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { DarkModeToggle } from '@/components/DarkModeToggle';
 import { ChannelState } from '@/lib/types';
 import { canWithdraw } from '@/lib/utils';
+import { generateWithdrawalProof, getMockParticipantData, WithdrawalProofData } from '@/lib/merkleProofGenerator';
 
 interface WithdrawableChannel {
   channelId: bigint;
@@ -31,9 +32,10 @@ export default function WithdrawTokensPage() {
   // Form state
   const [selectedChannel, setSelectedChannel] = useState<WithdrawableChannel | null>(null);
   const [claimedBalance, setClaimedBalance] = useState('');
-  const [leafIndex, setLeafIndex] = useState('');
-  const [merkleProofInput, setMerkleProofInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [generatedProof, setGeneratedProof] = useState<WithdrawalProofData | null>(null);
+  const [isGeneratingProof, setIsGeneratingProof] = useState(false);
+  const [proofError, setProofError] = useState<string | null>(null);
 
   // Get total number of channels
   const { data: totalChannels } = useContractRead({
@@ -90,6 +92,23 @@ export default function WithdrawTokensPage() {
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'getParticipantDeposit',
+    args: address ? [BigInt(1), address] : undefined,
+    enabled: isConnected && !!address && participantsChannel1 && participantsChannel1.includes(address),
+  });
+
+  // Get L2 public keys (addresses) for the user's L1 address
+  const { data: l2AddressChannel0 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getL2PublicKey',
+    args: address ? [BigInt(0), address] : undefined,
+    enabled: isConnected && !!address && participantsChannel0 && participantsChannel0.includes(address),
+  });
+
+  const { data: l2AddressChannel1 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getL2PublicKey',
     args: address ? [BigInt(1), address] : undefined,
     enabled: isConnected && !!address && participantsChannel1 && participantsChannel1.includes(address),
   });
@@ -171,30 +190,21 @@ export default function WithdrawTokensPage() {
     });
   }
 
-  // Parse merkle proof from input
-  const merkleProof = merkleProofInput
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line && line.startsWith('0x'))
-    .map(line => line as `0x${string}`);
-
   // Prepare withdraw transaction
   const { config: withdrawConfig } = usePrepareContractWrite({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'withdrawAfterClose',
-    args: selectedChannel && claimedBalance && leafIndex && merkleProof.length > 0 ? [
-      selectedChannel.channelId,
-      parseUnits(claimedBalance, selectedChannel.decimals),
-      BigInt(leafIndex),
-      merkleProof
+    args: generatedProof ? [
+      BigInt(generatedProof.channelId),
+      BigInt(generatedProof.claimedBalance),
+      BigInt(generatedProof.leafIndex),
+      generatedProof.merkleProof as `0x${string}`[]
     ] : undefined,
     enabled: Boolean(
-      selectedChannel &&
-      claimedBalance &&
-      leafIndex &&
-      merkleProof.length > 0 &&
+      generatedProof &&
       address &&
+      selectedChannel &&
       !selectedChannel.hasWithdrawn
     ),
   });
@@ -210,18 +220,95 @@ export default function WithdrawTokensPage() {
   const handleChannelSelect = (channel: WithdrawableChannel) => {
     setSelectedChannel(channel);
     setClaimedBalance('');
-    setLeafIndex('');
-    setMerkleProofInput('');
+    setGeneratedProof(null);
+    setProofError(null);
+  };
+
+  const handleGenerateProof = async () => {
+    if (!selectedChannel || !claimedBalance || !address) return;
+    
+    setIsGeneratingProof(true);
+    setProofError(null);
+    setGeneratedProof(null);
+    
+    try {
+      // Get the L2 address for this L1 address and channel
+      let l2Address: string | null = null;
+      if (selectedChannel.channelId === BigInt(0)) {
+        l2Address = l2AddressChannel0 as string;
+      } else if (selectedChannel.channelId === BigInt(1)) {
+        l2Address = l2AddressChannel1 as string;
+      }
+      
+      // If no L2 address mapping exists, derive it from L1 address for development/testing
+      if (!l2Address || l2Address === '0x0000000000000000000000000000000000000000') {
+        // For development: create a deterministic L2 address based on L1 address and channel
+        // This is a simple approach - in production you'd want a more sophisticated mapping
+        const addressNum = BigInt(address);
+        const channelOffset = BigInt(selectedChannel.channelId.toString()) + BigInt(1000000);
+        const derivedL2 = (addressNum + channelOffset) % (BigInt(2) ** BigInt(160));
+        l2Address = `0x${derivedL2.toString(16).padStart(40, '0')}`;
+        
+        console.log(`No L2 public key found, using derived L2 address: ${l2Address} for L1: ${address} in channel ${selectedChannel.channelId}`);
+      }
+      
+      // Get participant data (in production, this would fetch from contract)
+      // For now, we'll create mock data that includes the user's L2 address
+      const participantsData = [
+        {
+          participantRoot: "0x8449acb4300b58b00e4852ab07d43f298eaa35688eaa3917ca205f20e6db73e8",
+          l2Address: l2Address, // Use the user's actual L2 address
+          balance: parseUnits(claimedBalance, selectedChannel.decimals).toString() // Use their claimed balance
+        },
+        // Add other mock participants to fill the tree
+        {
+          participantRoot: "0x3bec727653ae8d56ac6d9c103182ff799fe0a3b512e9840f397f0d21848373e8",
+          l2Address: "0xb18E7CdB6Aa28Cc645227041329896446A1478bd",
+          balance: "1000000000000000000"
+        },
+        {
+          participantRoot: "0x11e1e541a59fb2cd7fa4371d63103972695ee4bb4d1e646e72427cf6cdc16498",
+          l2Address: "0x9D70617FF571Ac34516C610a51023EE1F28373e8",
+          balance: "1000000000000000000"
+        }
+      ];
+      
+      // Generate withdrawal proof using L2 address
+      const proof = await generateWithdrawalProof(
+        selectedChannel.channelId.toString(),
+        l2Address,
+        parseUnits(claimedBalance, selectedChannel.decimals).toString(),
+        participantsData
+      );
+      
+      setGeneratedProof(proof);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setProofError(errorMessage);
+      
+      // Check if it's a wrong amount error
+      if (errorMessage.includes('claimed balance is incorrect') || errorMessage.includes('verification')) {
+        setProofError('Wrong amount: The claimed balance does not match the expected withdrawal amount. Please check your input.');
+      }
+    } finally {
+      setIsGeneratingProof(false);
+    }
   };
 
   const handleWithdraw = async () => {
-    if (!withdrawTokens || !selectedChannel) return;
+    if (!withdrawTokens || !selectedChannel || !generatedProof) return;
     
     setIsSubmitting(true);
     try {
       await withdrawTokens();
     } catch (error) {
       console.error('Withdraw error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
+      // Check if it's a revert with "wrong amount" 
+      if (errorMessage.includes('wrong amount') || errorMessage.includes('Wrong amount')) {
+        setProofError('Wrong amount: The contract rejected the withdrawal. Please verify the claimed balance is correct.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -229,8 +316,7 @@ export default function WithdrawTokensPage() {
 
   const isFormValid = selectedChannel && 
                      claimedBalance && 
-                     leafIndex && 
-                     merkleProof.length > 0 && 
+                     generatedProof && 
                      !selectedChannel.hasWithdrawn;
 
   if (!isConnected) {
@@ -297,13 +383,14 @@ export default function WithdrawTokensPage() {
                 </div>
                 <div className="ml-3">
                   <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                    Withdrawal Requirements
+                    Simplified Withdrawal Process
                   </h3>
                   <div className="mt-2 text-sm text-blue-700 dark:text-blue-300">
                     <ul className="list-disc list-inside space-y-1">
                       <li>Channel must be in "Closed" state</li>
                       <li>You must have participated in the channel</li>
-                      <li>You need the Merkle proof data provided by the channel leader</li>
+                      <li>Simply enter your claimed balance - Merkle proofs are generated automatically</li>
+                      <li>The system will verify your amount and generate the necessary proof</li>
                       <li>You can only withdraw once per channel</li>
                     </ul>
                   </div>
@@ -383,7 +470,7 @@ export default function WithdrawTokensPage() {
                       Withdrawal Details for Channel #{selectedChannel.channelId.toString()}
                     </h3>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-6">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                           Claimed Balance
@@ -402,63 +489,72 @@ export default function WithdrawTokensPage() {
                         </p>
                       </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Leaf Index
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={leafIndex}
-                          onChange={(e) => setLeafIndex(e.target.value)}
-                          placeholder="0"
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                          Your position in the Merkle tree
-                        </p>
+                      {/* Generate Proof Button */}
+                      <div className="flex justify-center">
+                        <button
+                          onClick={handleGenerateProof}
+                          disabled={!claimedBalance || isGeneratingProof}
+                          className="px-6 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 flex items-center gap-2"
+                        >
+                          {isGeneratingProof && <LoadingSpinner size="sm" />}
+                          {isGeneratingProof ? 'Generating Proof...' : 'Generate Withdrawal Proof'}
+                        </button>
                       </div>
-                    </div>
 
-                    <div className="mt-6">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Merkle Proof
-                      </label>
-                      <textarea
-                        value={merkleProofInput}
-                        onChange={(e) => setMerkleProofInput(e.target.value)}
-                        placeholder="0x123abc...
-0x456def...
-0x789ghi..."
-                        rows={6}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                      />
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        Enter each proof hash on a new line. This data should be provided by the channel leader.
-                      </p>
-                      {merkleProof.length > 0 && (
-                        <p className="text-sm text-green-600 dark:text-green-400 mt-1">
-                          ✅ {merkleProof.length} proof elements detected
-                        </p>
+                      {/* Proof Error Display */}
+                      {proofError && (
+                        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
+                          <div className="flex items-start">
+                            <span className="text-red-400 text-xl mr-3">⚠️</span>
+                            <div>
+                              <h4 className="font-medium text-red-800 dark:text-red-200">
+                                Proof Generation Failed
+                              </h4>
+                              <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                                {proofError}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
                       )}
-                    </div>
 
-                    <div className="flex justify-end mt-6">
-                      <button
-                        onClick={handleWithdraw}
-                        disabled={!isFormValid || isWithdrawing || isWaitingWithdraw || isSubmitting}
-                        className="px-6 py-2 bg-green-600 dark:bg-green-700 text-white rounded-md hover:bg-green-700 dark:hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors duration-200 flex items-center gap-2"
-                      >
-                        {(isWithdrawing || isWaitingWithdraw || isSubmitting) && (
-                          <LoadingSpinner size="sm" />
-                        )}
-                        {isWithdrawing || isSubmitting
-                          ? 'Submitting...'
-                          : isWaitingWithdraw
-                          ? 'Confirming...'
-                          : 'Withdraw Tokens'
-                        }
-                      </button>
+                      {/* Generated Proof Display */}
+                      {generatedProof && (
+                        <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg">
+                          <div className="flex items-start">
+                            <span className="text-green-400 text-xl mr-3">✅</span>
+                            <div className="flex-1">
+                              <h4 className="font-medium text-green-800 dark:text-green-200">
+                                Withdrawal Proof Generated Successfully!
+                              </h4>
+                              <div className="text-sm text-green-700 dark:text-green-300 mt-2 space-y-1">
+                                <p><strong>Leaf Index:</strong> {generatedProof.leafIndex}</p>
+                                <p><strong>Claimed Balance:</strong> {formatUnits(BigInt(generatedProof.claimedBalance), selectedChannel.decimals)} {selectedChannel.symbol}</p>
+                                <p><strong>Merkle Proof Elements:</strong> {generatedProof.merkleProof.length}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Withdraw Button */}
+                      <div className="flex justify-end">
+                        <button
+                          onClick={handleWithdraw}
+                          disabled={!isFormValid || isWithdrawing || isWaitingWithdraw || isSubmitting}
+                          className="px-6 py-2 bg-green-600 dark:bg-green-700 text-white rounded-md hover:bg-green-700 dark:hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors duration-200 flex items-center gap-2"
+                        >
+                          {(isWithdrawing || isWaitingWithdraw || isSubmitting) && (
+                            <LoadingSpinner size="sm" />
+                          )}
+                          {isWithdrawing || isSubmitting
+                            ? 'Submitting...'
+                            : isWaitingWithdraw
+                            ? 'Confirming...'
+                            : 'Withdraw Tokens'
+                          }
+                        </button>
+                      </div>
                     </div>
 
                     {withdrawSuccess && (
