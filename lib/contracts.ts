@@ -1,7 +1,7 @@
 import { Address } from 'wagmi';
 
 // Contract addresses - update these with actual deployed contract addresses
-export const ROLLUP_BRIDGE_ADDRESS: Address = '0x057E8ee2F7a9f3Ad658fd10C23D59fE1F58011BC' as Address; // Updated with new deployment
+export const ROLLUP_BRIDGE_ADDRESS: Address = '0xF680590dB955F7975AA6BA02250d11a5a2feC526' as Address; // Updated with new deployment
 export const VERIFIER_ADDRESS: Address = '0x708fbfE3acC1F65948304015f1789a05383a674b' as Address; // Replace with actual address
 export const ZECFROST_ADDRESS: Address = '0x242E4891d939ec102cA5bBC597ea6490DA0902CD' as Address; // Replace with actual address
 
