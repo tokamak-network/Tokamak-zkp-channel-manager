@@ -12,12 +12,77 @@ import { MobileMenuButton } from '@/components/MobileMenuButton';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 
+// Custom animations
+const animations = `
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(30px) scale(0.95);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes bounceIn {
+    0% {
+      transform: scale(0.3);
+      opacity: 0;
+    }
+    50% {
+      transform: scale(1.1);
+      opacity: 0.8;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.02);
+    }
+  }
+
+  .animate-fadeIn {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  .animate-slideUp {
+    animation: slideUp 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .animate-bounceIn {
+    animation: bounceIn 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  }
+
+  .animate-cardPulse {
+    animation: pulse 2s infinite;
+  }
+`;
+
 export default function InitializeStatePage() {
   const { isConnected, hasAccess, isMounted, leaderChannel: hookLeaderChannel } = useLeaderAccess();
   const { address } = useAccount();
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [animateCards, setAnimateCards] = useState(false);
+  const [buttonClicked, setButtonClicked] = useState(false);
 
   // Get total number of channels
   const { data: totalChannels } = useContractRead({
@@ -47,6 +112,16 @@ export default function InitializeStatePage() {
       setShowSuccessPopup(true);
     }
   }, [isInitializeSuccess]);
+
+  // Animate cards on mount
+  useEffect(() => {
+    if (isMounted && hookLeaderChannel) {
+      const timer = setTimeout(() => {
+        setAnimateCards(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isMounted, hookLeaderChannel]);
 
 
   // Get participants for leader channel
@@ -95,9 +170,15 @@ export default function InitializeStatePage() {
 
   const handleInitializeState = () => {
     if (hookLeaderChannel) {
+      setButtonClicked(true);
       initializeChannelState({
         args: [BigInt(hookLeaderChannel.id)]
       });
+      
+      // Reset button animation after a short delay
+      setTimeout(() => {
+        setButtonClicked(false);
+      }, 300);
     }
   };
 
@@ -111,6 +192,9 @@ export default function InitializeStatePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
+      {/* Inject custom animations */}
+      <style dangerouslySetInnerHTML={{ __html: animations }} />
+      
       <ClientOnly>
         <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
       </ClientOnly>
@@ -187,7 +271,9 @@ export default function InitializeStatePage() {
           ) : (
             <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
               {/* Channel Info */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+              <div className={`bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-6 transform transition-all duration-700 ${
+                animateCards ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
+              }`}>
                 <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4 flex items-center gap-2">
                   <span className="text-lg">⚡</span>
                   Channel {hookLeaderChannel.id} - Ready to Initialize
@@ -210,7 +296,9 @@ export default function InitializeStatePage() {
 
               {/* Participant Deposits Display */}
               {channelParticipants && (
-                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+                <div className={`bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-6 transform transition-all duration-700 delay-150 ${
+                  animateCards ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
+                }`}>
                   <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4 flex items-center gap-2">
                     <span className="text-lg">👥</span>
                     <span className="hidden sm:inline">Channel {hookLeaderChannel.id} - </span>Participant Deposits
@@ -220,7 +308,13 @@ export default function InitializeStatePage() {
                     {channelParticipants.map((participant: string, index: number) => {
                       const participantDeposit = participantDeposits?.[index];
                       return (
-                        <div key={participant} className="p-3 sm:p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+                        <div 
+                          key={participant} 
+                          className={`p-3 sm:p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 transform transition-all duration-500 hover:scale-105 hover:shadow-md cursor-pointer ${
+                            animateCards ? 'translate-x-0 opacity-100' : 'translate-x-4 opacity-0'
+                          }`}
+                          style={{ transitionDelay: `${300 + (index * 100)}ms` }}
+                        >
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div className="flex items-center gap-2 sm:gap-3">
                               <div className="h-8 w-8 sm:h-10 sm:w-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
@@ -285,7 +379,9 @@ export default function InitializeStatePage() {
               )}
 
               {/* Submit State & Open Channel Button */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+              <div className={`bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-6 transform transition-all duration-700 delay-300 ${
+                animateCards ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-8 opacity-0 scale-95'
+              }`}>
                   <div className="text-center">
                     <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Ready to Initialize</h3>
                     <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mb-4 sm:mb-6">
@@ -295,11 +391,13 @@ export default function InitializeStatePage() {
                     <button
                       onClick={handleInitializeState}
                       disabled={isInitializingTransaction || hookLeaderChannel.stats[2] !== 1}
-                      className={`px-6 sm:px-8 py-3 sm:py-4 rounded-lg font-semibold text-white text-base sm:text-lg transition-all transform hover:scale-105 ${
+                      className={`px-6 sm:px-8 py-3 sm:py-4 rounded-lg font-semibold text-white text-base sm:text-lg transition-all duration-300 transform ${
+                        buttonClicked ? 'scale-95' : 'hover:scale-105'
+                      } ${
                         isInitializingTransaction || hookLeaderChannel.stats[2] !== 1
                           ? 'bg-gray-400 cursor-not-allowed'
-                          : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg hover:shadow-xl'
-                      }`}
+                          : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg hover:shadow-xl active:shadow-md'
+                      } ${isInitializingTransaction ? 'animate-pulse' : ''}`}
                     >
                       {isInitializingTransaction ? (
                         <div className="flex items-center gap-3">
@@ -381,10 +479,10 @@ export default function InitializeStatePage() {
 
       {/* Success Popup */}
       {showSuccessPopup && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 max-w-md w-full mx-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 max-w-md w-full mx-4 transform transition-all duration-500 animate-slideUp">
             <div className="text-center">
-              <div className="h-16 w-16 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="h-16 w-16 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounceIn">
                 <span className="text-3xl">✅</span>
               </div>
               <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">

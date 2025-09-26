@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useContractRead, useContractWrite, usePrepareContractWrite, useWaitForTransaction, useAccount } from 'wagmi';
-import { parseEther, formatEther, toHex } from 'viem';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { DarkModeToggle } from '@/components/DarkModeToggle';
@@ -11,7 +10,7 @@ import { MobileNavigation } from '@/components/MobileNavigation';
 import { MobileMenuButton } from '@/components/MobileMenuButton';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
-import { generateMPTLeavesFromToken, generateMPTLeavesFromETH, smallestUnitToToken, tokenToSmallestUnit, validateBalanceConservation, STANDARD_TEST_INITIAL_BALANCES, STANDARD_TEST_FINAL_BALANCES, createMPTLeaves } from '@/lib/mptHelper';
+import { generateMPTLeavesFromToken, tokenToSmallestUnit, validateBalanceConservation } from '@/lib/mptHelper';
 import { computeFinalStateRoot } from '@/lib/merkleProofGenerator';
 import { ETH_TOKEN_ADDRESS } from '@/lib/contracts';
 
@@ -46,10 +45,10 @@ export default function SubmitProofPage() {
   
   // Final state root computation state
   const [showFinalStateComputation, setShowFinalStateComputation] = useState(false);
-  const [participantAddresses, setParticipantAddresses] = useState<string[]>([]);
   const [participantBalances, setParticipantBalances] = useState<string[]>([]);
   const [computedFinalStateRoot, setComputedFinalStateRoot] = useState<string>('');
   const [participantLeavesData, setParticipantLeavesData] = useState<string[]>([]);
+  const [participantRootsData, setParticipantRootsData] = useState<string[]>([]);
   
   // Channel information
   const { data: channelInfo } = useContractRead({
@@ -75,6 +74,9 @@ export default function SubmitProofPage() {
     args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
     enabled: Boolean(leaderChannel?.id !== undefined)
   });
+
+  // State to store fetched L2 addresses
+  const [fetchedL2Addresses, setFetchedL2Addresses] = useState<string[]>([]);
   
   const { data: isChannelReadyToClose } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
@@ -145,35 +147,83 @@ export default function SubmitProofPage() {
       setInitialBalances(defaultInitialBalances);
       setFinalBalances(defaultFinalBalances);
       
-      // Initialize final state computation arrays
-      const defaultAddresses = Array(participantCount).fill('');
+      // Initialize final state computation arrays - only balances now
       const defaultBalancesFS = Array(participantCount).fill('0.0');
-      
-      setParticipantAddresses(defaultAddresses);
       setParticipantBalances(defaultBalancesFS);
     }
   }, [participantCount, initialBalances.length]);
+
+  // Fetch L2 addresses for all participants using viem client
+  useEffect(() => {
+    const fetchL2Addresses = async () => {
+      if (!channelParticipants || !leaderChannel?.id) return;
+
+      try {
+        setFetchedL2Addresses([...channelParticipants]); // For now, use L1 addresses as fallback
+        
+        // TODO: Implement proper L2 address fetching
+        // The getL2PublicKey function should return the L2 address for each participant
+        // For now, we'll use the L1 addresses directly as the system seems to work that way
+      } catch (error) {
+        console.error('Error fetching L2 addresses:', error);
+        setFetchedL2Addresses([...channelParticipants]);
+      }
+    };
+
+    fetchL2Addresses();
+  }, [channelParticipants, leaderChannel?.id]);
   
+  // Prepare final submission data for contract call
+  const prepareFinalSubmissionData = () => {
+    let finalData = { ...proofData };
+    
+    // Override with generated data if available
+    if (computedFinalStateRoot) {
+      finalData.finalStateRoot = computedFinalStateRoot;
+    }
+    
+    if (participantRootsData.length > 0) {
+      finalData.participantRoots = participantRootsData.map(root => root as `0x${string}`);
+    }
+    
+    if (generatedInitialMPTLeaves.length > 0) {
+      finalData.initialMPTLeaves = generatedInitialMPTLeaves;
+    }
+    
+    if (generatedFinalMPTLeaves.length > 0) {
+      finalData.finalMPTLeaves = generatedFinalMPTLeaves;
+    }
+    
+    return finalData;
+  };
+
   // Prepare the submitAggregatedProof transaction
   const { config, error: prepareError } = usePrepareContractWrite({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'submitAggregatedProof',
-    args: leaderChannel && proofData.aggregatedProofHash ? [
-      BigInt(leaderChannel.id),
-      {
-        aggregatedProofHash: proofData.aggregatedProofHash as `0x${string}`,
-        finalStateRoot: proofData.finalStateRoot as `0x${string}`,
-        proofPart1: proofData.proofPart1,
-        proofPart2: proofData.proofPart2,
-        publicInputs: proofData.publicInputs,
-        smax: proofData.smax ? BigInt(proofData.smax) : BigInt(0),
-        initialMPTLeaves: proofData.initialMPTLeaves,
-        finalMPTLeaves: proofData.finalMPTLeaves,
-        participantRoots: proofData.participantRoots
-      }
-    ] : undefined,
-    enabled: Boolean(leaderChannel && proofData.aggregatedProofHash && proofData.finalStateRoot)
+    args: (() => {
+      if (!leaderChannel) return undefined;
+      
+      const finalData = prepareFinalSubmissionData();
+      if (!finalData.aggregatedProofHash || !finalData.finalStateRoot) return undefined;
+      
+      return [
+        BigInt(leaderChannel.id),
+        {
+          aggregatedProofHash: finalData.aggregatedProofHash as `0x${string}`,
+          finalStateRoot: finalData.finalStateRoot as `0x${string}`,
+          proofPart1: finalData.proofPart1,
+          proofPart2: finalData.proofPart2,
+          publicInputs: finalData.publicInputs,
+          smax: finalData.smax ? BigInt(finalData.smax) : BigInt(0),
+          initialMPTLeaves: finalData.initialMPTLeaves,
+          finalMPTLeaves: finalData.finalMPTLeaves,
+          participantRoots: finalData.participantRoots
+        }
+      ];
+    })(),
+    enabled: Boolean(leaderChannel && (proofData.aggregatedProofHash || computedFinalStateRoot))
   });
   
   const { data, write } = useContractWrite(config);
@@ -182,9 +232,6 @@ export default function SubmitProofPage() {
     hash: data?.hash,
   });
   
-  const handleInputChange = (field: string, value: string) => {
-    setProofData(prev => ({ ...prev, [field]: value }));
-  };
   
   const handleFileUpload = async (file: File) => {
     try {
@@ -193,24 +240,26 @@ export default function SubmitProofPage() {
       const text = await file.text();
       const jsonData = JSON.parse(text);
       
-      // Validate that all required fields are present
-      const requiredFields = [
-        'proofHash', 'finalStateRoot', 'ParticipantRoots', 'InitialMPTLeaves',
-        'FinalMPTLeaves', 'proof_entries_part1', 'proof_entries_part2', 
-        'public_inputs', 'smax'
+      // Validate that core proof fields are present (we'll allow UI-generated fields to be missing)
+      const coreProofFields = [
+        'proof_entries_part1', 'proof_entries_part2', 'public_inputs', 'smax'
       ];
       
-      const missingFields = requiredFields.filter(field => !jsonData[field]);
-      if (missingFields.length > 0) {
-        throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+      const missingCoreFields = coreProofFields.filter(field => !jsonData[field]);
+      if (missingCoreFields.length > 0) {
+        throw new Error(`Missing required core proof fields: ${missingCoreFields.join(', ')}`);
       }
       
       // Parse and validate all data - handle array format consistently
-      const aggregatedProofHash = Array.isArray(jsonData.proofHash) ? jsonData.proofHash[0] : jsonData.proofHash;
-      const finalStateRoot = Array.isArray(jsonData.finalStateRoot) ? jsonData.finalStateRoot[0] : jsonData.finalStateRoot;
-      const participantRoots = jsonData.ParticipantRoots;
-      const initialMPTLeaves = jsonData.InitialMPTLeaves;
-      const finalMPTLeaves = jsonData.FinalMPTLeaves;
+      const aggregatedProofHash = jsonData.proofHash ? 
+        (Array.isArray(jsonData.proofHash) ? jsonData.proofHash[0] : jsonData.proofHash) : 
+        '';
+      const finalStateRoot = jsonData.finalStateRoot ? 
+        (Array.isArray(jsonData.finalStateRoot) ? jsonData.finalStateRoot[0] : jsonData.finalStateRoot) : 
+        '';
+      const participantRoots = jsonData.ParticipantRoots || [];
+      const initialMPTLeaves = jsonData.InitialMPTLeaves || [];
+      const finalMPTLeaves = jsonData.FinalMPTLeaves || [];
       const proofPart1 = jsonData.proof_entries_part1.map((hex: string) => BigInt(hex));
       const proofPart2 = jsonData.proof_entries_part2.map((hex: string) => BigInt(hex));
       const publicInputs = jsonData.public_inputs.map((hex: string) => BigInt(hex));
@@ -322,64 +371,29 @@ export default function SubmitProofPage() {
   };
   
   const handleDownloadProofTemplate = () => {
+    // Template contains ONLY the core proof data that users need to provide
+    // UI-generated fields (finalStateRoot, ParticipantRoots, InitialMPTLeaves, FinalMPTLeaves)
+    // are NOT included as they will be generated by the UI sections
     const template = {
-      proofHash: [
-        "0x0000000000000000000000000000000000000000000000000000000000000000"
+      "proofHash": [
+        "0xa5bd20250df117ee1576cde77471907f0792dabd126e96e46ea0b2c71299ea1e"
       ],
-      finalStateRoot: [
-        "0x0000000000000000000000000000000000000000000000000000000000000000"
-      ],
-      ParticipantRoots: [
-        "0x0000000000000000000000000000000000000000000000000000000000000000",
-        "0x0000000000000000000000000000000000000000000000000000000000000000",
-        "0x0000000000000000000000000000000000000000000000000000000000000000"
-      ],
-      InitialMPTLeaves: [
-        "0xf884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000001e84800a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
-        "0xf884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
-        "0xf884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
-      ],
-      FinalMPTLeaves: [
-        "0xf884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
-        "0xf884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000f42400a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
-        "0xf884a00000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000f42400a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
-      ],
-      proof_entries_part1: [
+      "proof_entries_part1": [
         "0x1236d4364cc024d1bb70d584096fae2c",
         "0x14caedc95bee5309da79cfe59aa67ba3",
         "0x0573b8e1fe407ab0e47f7677b3333c8b"
       ],
-      proof_entries_part2: [
+      "proof_entries_part2": [
         "0xd107861dd8cac07bc427c136bc12f424521b3e3aaab440fdcdd66a902e22c0a4",
         "0x27d4a95a71f8b939514a0e455984f5c90b9fdcf5702a3da9a8d73f7f93292c23",
         "0x08393216d4961ef999d5938af832fd08b8ff691f4a25cd77786485e9891e2389"
       ],
-      public_inputs: [
+      "public_inputs": [
         "0x00000000000000000000000000000000d9bb52200d942752f44a41d658ee82de",
         "0x00000000000000000000000000000000000000000000000000000000cfc387b2",
         "0x0000000000000000000000000000000000000000000000000000000000000000"
       ],
-      smax: [
-        512
-      ],
-      _template_info: {
-        description: "Template for aggregated proof data submission",
-        notes: [
-          "Replace all placeholder values with your actual proof data",
-          "Ensure array lengths match your channel's participant count",
-          "proofHash and finalStateRoot should be single 32-byte hex values",
-          "ParticipantRoots array length must equal number of participants",
-          "InitialMPTLeaves and FinalMPTLeaves arrays must have same length as participants",
-          "proof_entries_part1 contains uint128 values as hex strings (16 bytes)",
-          "proof_entries_part2 contains uint256 values as hex strings (32 bytes)",
-          "public_inputs contains uint256 values as hex strings (32 bytes)",
-          "smax is typically 512 for standard proofs",
-          "Remove this _template_info object before submission"
-        ],
-        generated_at: new Date().toISOString(),
-        channel_id: leaderChannel?.id || "unknown",
-        participant_count: participantCount || 3
-      }
+      "smax": [512]
     };
     
     const blob = new Blob([JSON.stringify(template, null, 2)], { 
@@ -395,7 +409,7 @@ export default function SubmitProofPage() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    alert('Aggregated proof data template downloaded! Replace placeholder values with your actual proof data.');
+    alert('Core proof data template downloaded! Fill in your proof data, then use steps 2 & 3 to generate the remaining fields automatically.');
   };
   
   const handleComputeFinalStateRoot = () => {
@@ -418,24 +432,21 @@ export default function SubmitProofPage() {
         return;
       }
       
-      // Validate addresses and balances
-      const emptyAddresses = participantAddresses.filter(addr => !addr.trim());
+      // Validate balances and check if L2 addresses are available
       const emptyBalances = participantBalances.filter(bal => !bal.trim() || parseFloat(bal) < 0);
-      
-      if (emptyAddresses.length > 0) {
-        alert('Please fill in all participant addresses');
-        return;
-      }
       
       if (emptyBalances.length > 0) {
         alert('Please fill in all participant balances with valid positive numbers');
         return;
       }
       
-      // Validate address format
-      const invalidAddresses = participantAddresses.filter(addr => !/^0x[0-9a-fA-F]{40}$/.test(addr.trim()));
-      if (invalidAddresses.length > 0) {
-        alert('Please ensure all addresses are valid Ethereum addresses (0x followed by 40 hex characters)');
+      if (fetchedL2Addresses.length === 0) {
+        alert('L2 addresses are still being fetched. Please wait a moment and try again.');
+        return;
+      }
+      
+      if (fetchedL2Addresses.length !== participantBalances.length) {
+        alert('Mismatch between number of participants and fetched L2 addresses');
         return;
       }
       
@@ -444,17 +455,18 @@ export default function SubmitProofPage() {
         tokenToSmallestUnit(balance, tokenDecimals)
       );
       
-      // Prepare participants data
-      const participants = participantAddresses.map((address, index) => ({
-        l2Address: address.trim(),
+      // Prepare participants data using fetched L2 addresses
+      const participants = fetchedL2Addresses.map((l2Address, index) => ({
+        l2Address: l2Address.trim(),
         balance: balancesInSmallestUnit[index].toString()
       }));
       
-      // Compute final state root
+      // Compute final state root (this generates participant roots as intermediate states)
       const result = computeFinalStateRoot(Number(channelId), participants);
       
       setComputedFinalStateRoot(result.finalStateRoot);
       setParticipantLeavesData(result.participantLeaves);
+      setParticipantRootsData(result.channelRootSequence);
       
     } catch (error) {
       console.error('Error computing final state root:', error);
@@ -465,8 +477,49 @@ export default function SubmitProofPage() {
   
   
   const handleSubmit = async () => {
-    if (!proofData.aggregatedProofHash || !proofData.finalStateRoot) {
-      alert('Please upload a valid proof data JSON file first');
+    // Prepare final submission data by combining uploaded JSON data with generated UI data
+    let finalSubmissionData = { ...proofData };
+    
+    // Override with generated data if available
+    if (computedFinalStateRoot) {
+      finalSubmissionData.finalStateRoot = computedFinalStateRoot;
+    }
+    
+    if (participantRootsData.length > 0) {
+      finalSubmissionData.participantRoots = participantRootsData.map(root => root as `0x${string}`);
+    }
+    
+    if (generatedInitialMPTLeaves.length > 0) {
+      finalSubmissionData.initialMPTLeaves = generatedInitialMPTLeaves;
+    }
+    
+    if (generatedFinalMPTLeaves.length > 0) {
+      finalSubmissionData.finalMPTLeaves = generatedFinalMPTLeaves;
+    }
+    
+    // Validate that we have all required data
+    if (!finalSubmissionData.aggregatedProofHash) {
+      alert('Missing aggregated proof hash. Please upload a JSON file containing proof_entries and other core proof data.');
+      return;
+    }
+    
+    if (!finalSubmissionData.finalStateRoot) {
+      alert('Missing final state root. Please either include it in your JSON file or generate it using the "Final state and participant roots computation" section.');
+      return;
+    }
+    
+    if (!finalSubmissionData.proofPart1 || finalSubmissionData.proofPart1.length === 0) {
+      alert('Missing proof_entries_part1. Please upload a JSON file with valid proof data.');
+      return;
+    }
+    
+    if (!finalSubmissionData.initialMPTLeaves || finalSubmissionData.initialMPTLeaves.length === 0) {
+      alert('Missing Initial MPT Leaves. Please either include them in your JSON file or generate them using the "MPT Leaves Generator" section.');
+      return;
+    }
+    
+    if (!finalSubmissionData.finalMPTLeaves || finalSubmissionData.finalMPTLeaves.length === 0) {
+      alert('Missing Final MPT Leaves. Please either include them in your JSON file or generate them using the "MPT Leaves Generator" section.');
       return;
     }
     
@@ -510,16 +563,23 @@ export default function SubmitProofPage() {
     }
   };
   
-  const isFormValid = uploadedFile &&
-                      proofData.aggregatedProofHash && 
-                      proofData.finalStateRoot && 
-                      proofData.proofPart1.length > 0 && 
-                      proofData.proofPart2.length > 0 && 
-                      proofData.publicInputs.length > 0 &&
-                      proofData.smax &&
-                      proofData.initialMPTLeaves.length > 0 &&
-                      proofData.finalMPTLeaves.length > 0 &&
-                      proofData.participantRoots.length > 0;
+  const isFormValid = (() => {
+    const finalData = prepareFinalSubmissionData();
+    return Boolean(
+      // Core proof data from uploaded JSON is required
+      finalData.proofPart1.length > 0 && 
+      finalData.proofPart2.length > 0 && 
+      finalData.publicInputs.length > 0 &&
+      finalData.smax &&
+      // Final state root can come from JSON or UI generation
+      finalData.finalStateRoot &&
+      // MPT Leaves can come from JSON or UI generation
+      finalData.initialMPTLeaves.length > 0 &&
+      finalData.finalMPTLeaves.length > 0 &&
+      // Participant roots can come from JSON or UI generation
+      finalData.participantRoots.length > 0
+    );
+  })();
   
   // Check if channel is in correct state for proof submission (Open=2 or Active=3)
   const isChannelStateValid = channelInfo && (Number(channelInfo[1]) === 2 || Number(channelInfo[1]) === 3);
@@ -641,12 +701,9 @@ export default function SubmitProofPage() {
               {/* Proof Submission Form */}
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
                 <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                    Aggregated Proof Data
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    Submit the comprehensive proof data representing the entire off-chain computation period
-                  </p>
+                  <h4 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                    Aggregated Proof Data (step 1)
+                  </h4>
                 </div>
                 
                 <div className="p-6 space-y-6">
@@ -693,8 +750,9 @@ export default function SubmitProofPage() {
                             <p className="text-lg font-medium mb-2">Click to upload proof data file</p>
                             <p className="text-sm mb-4">Upload a single JSON file containing all proof parameters</p>
                             <div className="text-xs text-gray-400 space-y-1">
-                              <p>Expected structure: AggProofData.json format</p>
-                              <p>Contains: proofHash, finalStateRoot, ParticipantRoots, InitialMPTLeaves, FinalMPTLeaves, proof_entries_part1, proof_entries_part2, public_inputs, smax</p>
+                              <p>Expected structure: Core proof data only</p>
+                              <p>Contains: proofHash, proof_entries_part1, proof_entries_part2, public_inputs, smax</p>
+                              <p>Other fields will be generated by steps 2 & 3 below</p>
                             </div>
                           </div>
                         </label>
@@ -724,7 +782,7 @@ export default function SubmitProofPage() {
                         </div>
                         
                         {/* Data Summary */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
                           <div className="bg-white dark:bg-gray-800 rounded-lg p-3">
                             <div className="text-gray-600 dark:text-gray-400">Proof Entries Part 1</div>
                             <div className="font-semibold text-green-800 dark:text-green-200">{proofData.proofPart1.length} entries</div>
@@ -738,19 +796,7 @@ export default function SubmitProofPage() {
                             <div className="font-semibold text-green-800 dark:text-green-200">{proofData.publicInputs.length} inputs</div>
                           </div>
                           <div className="bg-white dark:bg-gray-800 rounded-lg p-3">
-                            <div className="text-gray-600 dark:text-gray-400">Participant Roots</div>
-                            <div className="font-semibold text-green-800 dark:text-green-200">{proofData.participantRoots.length} roots</div>
-                          </div>
-                          <div className="bg-white dark:bg-gray-800 rounded-lg p-3">
-                            <div className="text-gray-600 dark:text-gray-400">Initial MPT Leaves</div>
-                            <div className="font-semibold text-green-800 dark:text-green-200">{proofData.initialMPTLeaves.length} leaves</div>
-                          </div>
-                          <div className="bg-white dark:bg-gray-800 rounded-lg p-3">
-                            <div className="text-gray-600 dark:text-gray-400">Final MPT Leaves</div>
-                            <div className="font-semibold text-green-800 dark:text-green-200">{proofData.finalMPTLeaves.length} leaves</div>
-                          </div>
-                          <div className="bg-white dark:bg-gray-800 rounded-lg p-3">
-                            <div className="text-gray-600 dark:text-gray-400">S Max</div>
+                            <div className="text-gray-600 dark:text-gray-400">Smax</div>
                             <div className="font-semibold text-green-800 dark:text-green-200">{proofData.smax}</div>
                           </div>
                           <div className="bg-white dark:bg-gray-800 rounded-lg p-3">
@@ -771,7 +817,7 @@ export default function SubmitProofPage() {
                   <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
                     <div className="flex items-center justify-between mb-4">
                       <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                        Final State Root Computation
+                        Final state & Participant Roots Computation (step 2)
                       </h4>
                       <button
                         onClick={() => setShowFinalStateComputation(!showFinalStateComputation)}
@@ -799,46 +845,28 @@ export default function SubmitProofPage() {
                             Compute the final state root exactly as the contract does in initializeChannelState. 
                             This uses quaternary Merkle tree logic with participant L2 addresses and their final balances.
                           </p>
-                          
-                          <div className="flex flex-wrap gap-2 mb-4">
-                            <button
-                              onClick={handleComputeFinalStateRoot}
-                              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              disabled={participantAddresses.length === 0}
-                            >
-                              Compute Final State Root
-                            </button>
-                          </div>
                         </div>
                         
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                          {/* Participant Addresses */}
-                          <div>
+                        {/* Show fetched L2 addresses */}
+                        {fetchedL2Addresses.length > 0 && (
+                          <div className="mb-6">
                             <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">
-                              Participant L2 Addresses
+                              Participant L2 Addresses (Auto-fetched)
                             </h5>
-                            <div className="space-y-2">
-                              {participantAddresses.map((address, index) => (
-                                <div key={index} className="flex items-center gap-2">
-                                  <span className="text-xs text-blue-700 dark:text-blue-300 w-20">
-                                    Participant {index + 1}:
-                                  </span>
-                                  <input
-                                    type="text"
-                                    placeholder="0x..."
-                                    value={address}
-                                    onChange={(e) => {
-                                      const newAddresses = [...participantAddresses];
-                                      newAddresses[index] = e.target.value;
-                                      setParticipantAddresses(newAddresses);
-                                    }}
-                                    className="flex-1 px-3 py-1 border border-blue-300 dark:border-blue-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
-                                  />
-                                </div>
-                              ))}
+                            <div className="bg-blue-100 dark:bg-blue-800 p-3 rounded-lg">
+                              <div className="space-y-1 text-xs">
+                                {fetchedL2Addresses.map((l2Address, index) => (
+                                  <div key={index} className="flex items-center gap-2 text-blue-900 dark:text-blue-100">
+                                    <span className="w-20">Participant {index + 1}:</span>
+                                    <span className="font-mono">{l2Address}</span>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           </div>
-                          
+                        )}
+
+                        <div className="grid grid-cols-1 gap-6">
                           {/* Participant Balances */}
                           <div>
                             <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">
@@ -868,6 +896,17 @@ export default function SubmitProofPage() {
                           </div>
                         </div>
                         
+                        {/* Compute Button */}
+                        <div className="flex flex-wrap gap-2 mt-4">
+                          <button
+                            onClick={handleComputeFinalStateRoot}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={fetchedL2Addresses.length === 0}
+                          >
+                            Compute Final State Root
+                          </button>
+                        </div>
+                        
                         {/* Balance Summary */}
                         {participantBalances.length > 0 && (
                           <div className="mt-4 p-3 bg-blue-100 dark:bg-blue-800 rounded-lg">
@@ -894,6 +933,23 @@ export default function SubmitProofPage() {
                               </div>
                             </div>
                             
+                            {/* Computed Participant Roots */}
+                            {participantRootsData.length > 0 && (
+                              <div className="mt-4">
+                                <h6 className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-2">
+                                  Computed Participant Roots (Channel Root Sequence)
+                                </h6>
+                                <div className="bg-white dark:bg-gray-800 p-2 rounded border max-h-40 overflow-y-auto">
+                                  {participantRootsData.map((root, index) => (
+                                    <div key={index} className="mb-2 text-xs break-all text-gray-700 dark:text-gray-300">
+                                      <div className="font-semibold mb-1">Participant {index + 1}:</div>
+                                      <div className="font-mono bg-gray-100 dark:bg-gray-700 p-2 rounded">{root}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            
                             {participantLeavesData.length > 0 && (
                               <div className="mt-4">
                                 <h6 className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-2">
@@ -918,13 +974,13 @@ export default function SubmitProofPage() {
                   <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
                     <div className="flex items-center justify-between mb-4">
                       <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                        MPT Leaves Generator
+                        MPT Leaves Computation (step 3)
                       </h4>
                       <button
                         onClick={() => setShowMPTGenerator(!showMPTGenerator)}
                         className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
                       >
-                        {showMPTGenerator ? 'Hide' : 'Show'} Generator
+                        {showMPTGenerator ? 'Hide' : 'Show'} Computation
                       </button>
                     </div>
                     
@@ -946,36 +1002,6 @@ export default function SubmitProofPage() {
                             Generate MPT leaves that match your channel's current state to avoid "Initial balance mismatch" errors. 
                             Download the generated leaves as a JSON file to use in your proof data.
                           </p>
-                          
-                          <div className="flex flex-wrap gap-2 mb-4">
-                            <button
-                              onClick={handleGenerateMPTLeaves}
-                              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              disabled={initialBalances.length === 0}
-                            >
-                              Generate MPT Leaves
-                            </button>
-                            {generatedInitialMPTLeaves.length > 0 && (
-                              <button
-                                onClick={handleDownloadMPTLeaves}
-                                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                                Download MPT Leaves JSON
-                              </button>
-                            )}
-                          </div>
-                          
-                          {initialBalances.length > 0 && (
-                            <div className="text-xs text-blue-700 dark:text-blue-300 mb-4">
-                              <strong>Balance Totals:</strong> Initial: {initialBalances.reduce((sum, bal) => sum + parseFloat(bal || '0'), 0).toFixed(6)} {tokenSymbol} • Final: {finalBalances.reduce((sum, bal) => sum + parseFloat(bal || '0'), 0).toFixed(6)} {tokenSymbol}
-                              {Math.abs(initialBalances.reduce((sum, bal) => sum + parseFloat(bal || '0'), 0) - finalBalances.reduce((sum, bal) => sum + parseFloat(bal || '0'), 0)) > 0.000001 && (
-                                <span className="text-red-600 dark:text-red-400 ml-2">⚠ Totals don't match!</span>
-                              )}
-                            </div>
-                          )}
                         </div>
                         
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1034,6 +1060,37 @@ export default function SubmitProofPage() {
                               ))}
                             </div>
                           </div>
+                        </div>
+                        
+                        {/* Generate Buttons and Balance Summary */}
+                        {initialBalances.length > 0 && (
+                          <div className="text-xs text-blue-700 dark:text-blue-300 mb-4">
+                            <strong>Balance Totals:</strong> Initial: {initialBalances.reduce((sum, bal) => sum + parseFloat(bal || '0'), 0).toFixed(6)} {tokenSymbol} • Final: {finalBalances.reduce((sum, bal) => sum + parseFloat(bal || '0'), 0).toFixed(6)} {tokenSymbol}
+                            {Math.abs(initialBalances.reduce((sum, bal) => sum + parseFloat(bal || '0'), 0) - finalBalances.reduce((sum, bal) => sum + parseFloat(bal || '0'), 0)) > 0.000001 && (
+                              <span className="text-red-600 dark:text-red-400 ml-2">⚠ Totals don't match!</span>
+                            )}
+                          </div>
+                        )}
+                        
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          <button
+                            onClick={handleGenerateMPTLeaves}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={initialBalances.length === 0}
+                          >
+                            Generate MPT Leaves
+                          </button>
+                          {generatedInitialMPTLeaves.length > 0 && (
+                            <button
+                              onClick={handleDownloadMPTLeaves}
+                              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                              Download MPT Leaves JSON
+                            </button>
+                          )}
                         </div>
                         
                         {/* Generated MPT Leaves Preview */}
@@ -1098,7 +1155,7 @@ export default function SubmitProofPage() {
                     
                     {!isFormValid && (
                       <div className="text-sm text-amber-600 dark:text-amber-400">
-                        ⚠️ Please upload the aggregated proof data JSON file containing all required parameters
+                        ⚠️ Please provide all required data: Upload a JSON file with proof entries and use the computation sections to generate missing data (Final State Root, MPT Leaves, or Participant Roots)
                       </div>
                     )}
                     

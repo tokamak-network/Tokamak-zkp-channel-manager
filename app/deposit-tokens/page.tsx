@@ -65,6 +65,70 @@ export default function DepositTokensPage() {
     enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 1,
   });
 
+  const { data: participantsChannel2 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelParticipants',
+    args: [BigInt(2)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 2,
+  });
+
+  const { data: participantsChannel3 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelParticipants',
+    args: [BigInt(3)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 3,
+  });
+
+  const { data: participantsChannel4 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelParticipants',
+    args: [BigInt(4)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 4,
+  });
+
+  const { data: participantsChannel5 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelParticipants',
+    args: [BigInt(5)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 5,
+  });
+
+  const { data: participantsChannel6 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelParticipants',
+    args: [BigInt(6)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 6,
+  });
+
+  const { data: participantsChannel7 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelParticipants',
+    args: [BigInt(7)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 7,
+  });
+
+  const { data: participantsChannel8 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelParticipants',
+    args: [BigInt(8)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 8,
+  });
+
+  const { data: participantsChannel9 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelParticipants',
+    args: [BigInt(9)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 9,
+  });
+
   // Get channel stats to check states and target contracts
   const { data: channelStats0 } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
@@ -80,6 +144,70 @@ export default function DepositTokensPage() {
     functionName: 'getChannelStats',
     args: [BigInt(1)],
     enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 1,
+  });
+
+  const { data: channelStats2 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelStats',
+    args: [BigInt(2)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 2,
+  });
+
+  const { data: channelStats3 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelStats',
+    args: [BigInt(3)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 3,
+  });
+
+  const { data: channelStats4 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelStats',
+    args: [BigInt(4)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 4,
+  });
+
+  const { data: channelStats5 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelStats',
+    args: [BigInt(5)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 5,
+  });
+
+  const { data: channelStats6 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelStats',
+    args: [BigInt(6)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 6,
+  });
+
+  const { data: channelStats7 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelStats',
+    args: [BigInt(7)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 7,
+  });
+
+  const { data: channelStats8 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelStats',
+    args: [BigInt(8)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 8,
+  });
+
+  const { data: channelStats9 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelStats',
+    args: [BigInt(9)],
+    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 9,
   });
 
   // Get token info for each channel's target contract
@@ -111,6 +239,118 @@ export default function DepositTokensPage() {
     enabled: isMounted && isConnected && channelStats1?.[1] && isAddress(channelStats1[1]) && channelStats1[1] !== '0x0000000000000000000000000000000000000000',
   });
 
+  const { data: tokenDecimals2 } = useContractRead({
+    address: channelStats2?.[1] as `0x${string}`,
+    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'decimals',
+    enabled: isMounted && isConnected && channelStats2?.[1] && isAddress(channelStats2[1]) && channelStats2[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
+  const { data: tokenSymbol2 } = useContractRead({
+    address: channelStats2?.[1] as `0x${string}`,
+    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'symbol',
+    enabled: isMounted && isConnected && channelStats2?.[1] && isAddress(channelStats2[1]) && channelStats2[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
+  const { data: tokenDecimals3 } = useContractRead({
+    address: channelStats3?.[1] as `0x${string}`,
+    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'decimals',
+    enabled: isMounted && isConnected && channelStats3?.[1] && isAddress(channelStats3[1]) && channelStats3[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
+  const { data: tokenSymbol3 } = useContractRead({
+    address: channelStats3?.[1] as `0x${string}`,
+    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'symbol',
+    enabled: isMounted && isConnected && channelStats3?.[1] && isAddress(channelStats3[1]) && channelStats3[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
+  const { data: tokenDecimals4 } = useContractRead({
+    address: channelStats4?.[1] as `0x${string}`,
+    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'decimals',
+    enabled: isMounted && isConnected && channelStats4?.[1] && isAddress(channelStats4[1]) && channelStats4[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
+  const { data: tokenSymbol4 } = useContractRead({
+    address: channelStats4?.[1] as `0x${string}`,
+    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'symbol',
+    enabled: isMounted && isConnected && channelStats4?.[1] && isAddress(channelStats4[1]) && channelStats4[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
+  const { data: tokenDecimals5 } = useContractRead({
+    address: channelStats5?.[1] as `0x${string}`,
+    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'decimals',
+    enabled: isMounted && isConnected && channelStats5?.[1] && isAddress(channelStats5[1]) && channelStats5[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
+  const { data: tokenSymbol5 } = useContractRead({
+    address: channelStats5?.[1] as `0x${string}`,
+    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'symbol',
+    enabled: isMounted && isConnected && channelStats5?.[1] && isAddress(channelStats5[1]) && channelStats5[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
+  const { data: tokenDecimals6 } = useContractRead({
+    address: channelStats6?.[1] as `0x${string}`,
+    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'decimals',
+    enabled: isMounted && isConnected && channelStats6?.[1] && isAddress(channelStats6[1]) && channelStats6[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
+  const { data: tokenSymbol6 } = useContractRead({
+    address: channelStats6?.[1] as `0x${string}`,
+    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'symbol',
+    enabled: isMounted && isConnected && channelStats6?.[1] && isAddress(channelStats6[1]) && channelStats6[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
+  const { data: tokenDecimals7 } = useContractRead({
+    address: channelStats7?.[1] as `0x${string}`,
+    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'decimals',
+    enabled: isMounted && isConnected && channelStats7?.[1] && isAddress(channelStats7[1]) && channelStats7[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
+  const { data: tokenSymbol7 } = useContractRead({
+    address: channelStats7?.[1] as `0x${string}`,
+    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'symbol',
+    enabled: isMounted && isConnected && channelStats7?.[1] && isAddress(channelStats7[1]) && channelStats7[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
+  const { data: tokenDecimals8 } = useContractRead({
+    address: channelStats8?.[1] as `0x${string}`,
+    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'decimals',
+    enabled: isMounted && isConnected && channelStats8?.[1] && isAddress(channelStats8[1]) && channelStats8[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
+  const { data: tokenSymbol8 } = useContractRead({
+    address: channelStats8?.[1] as `0x${string}`,
+    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'symbol',
+    enabled: isMounted && isConnected && channelStats8?.[1] && isAddress(channelStats8[1]) && channelStats8[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
+  const { data: tokenDecimals9 } = useContractRead({
+    address: channelStats9?.[1] as `0x${string}`,
+    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'decimals',
+    enabled: isMounted && isConnected && channelStats9?.[1] && isAddress(channelStats9[1]) && channelStats9[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
+  const { data: tokenSymbol9 } = useContractRead({
+    address: channelStats9?.[1] as `0x${string}`,
+    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'symbol',
+    enabled: isMounted && isConnected && channelStats9?.[1] && isAddress(channelStats9[1]) && channelStats9[1] !== '0x0000000000000000000000000000000000000000',
+  });
+
   // Get user's deposits for each channel
   const { data: userDepositChannel0 } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
@@ -126,6 +366,70 @@ export default function DepositTokensPage() {
     functionName: 'getParticipantDeposit',
     args: address ? [BigInt(1), address] : undefined,
     enabled: isMounted && isConnected && !!address && participantsChannel1 && participantsChannel1.includes(address),
+  });
+
+  const { data: userDepositChannel2 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getParticipantDeposit',
+    args: address ? [BigInt(2), address] : undefined,
+    enabled: isMounted && isConnected && !!address && participantsChannel2 && participantsChannel2.includes(address),
+  });
+
+  const { data: userDepositChannel3 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getParticipantDeposit',
+    args: address ? [BigInt(3), address] : undefined,
+    enabled: isMounted && isConnected && !!address && participantsChannel3 && participantsChannel3.includes(address),
+  });
+
+  const { data: userDepositChannel4 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getParticipantDeposit',
+    args: address ? [BigInt(4), address] : undefined,
+    enabled: isMounted && isConnected && !!address && participantsChannel4 && participantsChannel4.includes(address),
+  });
+
+  const { data: userDepositChannel5 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getParticipantDeposit',
+    args: address ? [BigInt(5), address] : undefined,
+    enabled: isMounted && isConnected && !!address && participantsChannel5 && participantsChannel5.includes(address),
+  });
+
+  const { data: userDepositChannel6 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getParticipantDeposit',
+    args: address ? [BigInt(6), address] : undefined,
+    enabled: isMounted && isConnected && !!address && participantsChannel6 && participantsChannel6.includes(address),
+  });
+
+  const { data: userDepositChannel7 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getParticipantDeposit',
+    args: address ? [BigInt(7), address] : undefined,
+    enabled: isMounted && isConnected && !!address && participantsChannel7 && participantsChannel7.includes(address),
+  });
+
+  const { data: userDepositChannel8 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getParticipantDeposit',
+    args: address ? [BigInt(8), address] : undefined,
+    enabled: isMounted && isConnected && !!address && participantsChannel8 && participantsChannel8.includes(address),
+  });
+
+  const { data: userDepositChannel9 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getParticipantDeposit',
+    args: address ? [BigInt(9), address] : undefined,
+    enabled: isMounted && isConnected && !!address && participantsChannel9 && participantsChannel9.includes(address),
   });
 
   // Find channels user can deposit to (participating and in Initialized state - state 1)
@@ -155,6 +459,118 @@ export default function DepositTokensPage() {
       userDeposit: userDepositChannel1 || BigInt(0),
       decimals: isETH ? 18 : tokenDecimals1,
       symbol: isETH ? 'ETH' : (typeof tokenSymbol1 === 'string' ? tokenSymbol1 : 'TOKEN'),
+      isETH
+    });
+  }
+
+  if (isMounted && participantsChannel2 && address && participantsChannel2.includes(address) && channelStats2?.[2] === 1) {
+    const isETH = !channelStats2[1] || channelStats2[1] === '0x0000000000000000000000000000000000000000';
+    availableChannels.push({
+      channelId: BigInt(2),
+      targetContract: channelStats2[1],
+      state: channelStats2[2],
+      totalDeposits: channelStats2[4],
+      userDeposit: userDepositChannel2 || BigInt(0),
+      decimals: isETH ? 18 : tokenDecimals2,
+      symbol: isETH ? 'ETH' : (typeof tokenSymbol2 === 'string' ? tokenSymbol2 : 'TOKEN'),
+      isETH
+    });
+  }
+
+  if (isMounted && participantsChannel3 && address && participantsChannel3.includes(address) && channelStats3?.[2] === 1) {
+    const isETH = !channelStats3[1] || channelStats3[1] === '0x0000000000000000000000000000000000000000';
+    availableChannels.push({
+      channelId: BigInt(3),
+      targetContract: channelStats3[1],
+      state: channelStats3[2],
+      totalDeposits: channelStats3[4],
+      userDeposit: userDepositChannel3 || BigInt(0),
+      decimals: isETH ? 18 : tokenDecimals3,
+      symbol: isETH ? 'ETH' : (typeof tokenSymbol3 === 'string' ? tokenSymbol3 : 'TOKEN'),
+      isETH
+    });
+  }
+
+  if (isMounted && participantsChannel4 && address && participantsChannel4.includes(address) && channelStats4?.[2] === 1) {
+    const isETH = !channelStats4[1] || channelStats4[1] === '0x0000000000000000000000000000000000000000';
+    availableChannels.push({
+      channelId: BigInt(4),
+      targetContract: channelStats4[1],
+      state: channelStats4[2],
+      totalDeposits: channelStats4[4],
+      userDeposit: userDepositChannel4 || BigInt(0),
+      decimals: isETH ? 18 : tokenDecimals4,
+      symbol: isETH ? 'ETH' : (typeof tokenSymbol4 === 'string' ? tokenSymbol4 : 'TOKEN'),
+      isETH
+    });
+  }
+
+  if (isMounted && participantsChannel5 && address && participantsChannel5.includes(address) && channelStats5?.[2] === 1) {
+    const isETH = !channelStats5[1] || channelStats5[1] === '0x0000000000000000000000000000000000000000';
+    availableChannels.push({
+      channelId: BigInt(5),
+      targetContract: channelStats5[1],
+      state: channelStats5[2],
+      totalDeposits: channelStats5[4],
+      userDeposit: userDepositChannel5 || BigInt(0),
+      decimals: isETH ? 18 : tokenDecimals5,
+      symbol: isETH ? 'ETH' : (typeof tokenSymbol5 === 'string' ? tokenSymbol5 : 'TOKEN'),
+      isETH
+    });
+  }
+
+  if (isMounted && participantsChannel6 && address && participantsChannel6.includes(address) && channelStats6?.[2] === 1) {
+    const isETH = !channelStats6[1] || channelStats6[1] === '0x0000000000000000000000000000000000000000';
+    availableChannels.push({
+      channelId: BigInt(6),
+      targetContract: channelStats6[1],
+      state: channelStats6[2],
+      totalDeposits: channelStats6[4],
+      userDeposit: userDepositChannel6 || BigInt(0),
+      decimals: isETH ? 18 : tokenDecimals6,
+      symbol: isETH ? 'ETH' : (typeof tokenSymbol6 === 'string' ? tokenSymbol6 : 'TOKEN'),
+      isETH
+    });
+  }
+
+  if (isMounted && participantsChannel7 && address && participantsChannel7.includes(address) && channelStats7?.[2] === 1) {
+    const isETH = !channelStats7[1] || channelStats7[1] === '0x0000000000000000000000000000000000000000';
+    availableChannels.push({
+      channelId: BigInt(7),
+      targetContract: channelStats7[1],
+      state: channelStats7[2],
+      totalDeposits: channelStats7[4],
+      userDeposit: userDepositChannel7 || BigInt(0),
+      decimals: isETH ? 18 : tokenDecimals7,
+      symbol: isETH ? 'ETH' : (typeof tokenSymbol7 === 'string' ? tokenSymbol7 : 'TOKEN'),
+      isETH
+    });
+  }
+
+  if (isMounted && participantsChannel8 && address && participantsChannel8.includes(address) && channelStats8?.[2] === 1) {
+    const isETH = !channelStats8[1] || channelStats8[1] === '0x0000000000000000000000000000000000000000';
+    availableChannels.push({
+      channelId: BigInt(8),
+      targetContract: channelStats8[1],
+      state: channelStats8[2],
+      totalDeposits: channelStats8[4],
+      userDeposit: userDepositChannel8 || BigInt(0),
+      decimals: isETH ? 18 : tokenDecimals8,
+      symbol: isETH ? 'ETH' : (typeof tokenSymbol8 === 'string' ? tokenSymbol8 : 'TOKEN'),
+      isETH
+    });
+  }
+
+  if (isMounted && participantsChannel9 && address && participantsChannel9.includes(address) && channelStats9?.[2] === 1) {
+    const isETH = !channelStats9[1] || channelStats9[1] === '0x0000000000000000000000000000000000000000';
+    availableChannels.push({
+      channelId: BigInt(9),
+      targetContract: channelStats9[1],
+      state: channelStats9[2],
+      totalDeposits: channelStats9[4],
+      userDeposit: userDepositChannel9 || BigInt(0),
+      decimals: isETH ? 18 : tokenDecimals9,
+      symbol: isETH ? 'ETH' : (typeof tokenSymbol9 === 'string' ? tokenSymbol9 : 'TOKEN'),
       isETH
     });
   }
@@ -209,6 +625,30 @@ export default function DepositTokensPage() {
   }
   if (channel.channelId === BigInt(1)) {
   return tokenDecimals1 || 18;
+  }
+  if (channel.channelId === BigInt(2)) {
+  return tokenDecimals2 || 18;
+  }
+  if (channel.channelId === BigInt(3)) {
+  return tokenDecimals3 || 18;
+  }
+  if (channel.channelId === BigInt(4)) {
+  return tokenDecimals4 || 18;
+  }
+  if (channel.channelId === BigInt(5)) {
+  return tokenDecimals5 || 18;
+  }
+  if (channel.channelId === BigInt(6)) {
+  return tokenDecimals6 || 18;
+  }
+  if (channel.channelId === BigInt(7)) {
+  return tokenDecimals7 || 18;
+  }
+  if (channel.channelId === BigInt(8)) {
+  return tokenDecimals8 || 18;
+  }
+  if (channel.channelId === BigInt(9)) {
+  return tokenDecimals9 || 18;
   }
   return channel.decimals || 18;
   };

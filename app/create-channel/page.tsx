@@ -266,12 +266,9 @@ export default function CreateChannelPage() {
             <div className="px-4 py-4 lg:px-6">
               <div className="flex items-center justify-between">
                 <div className="hidden lg:flex items-center gap-4">
-                  <button
-                    onClick={() => router.push('/')}
-                    className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
-                  >
-                    ← Back to Home
-                  </button>
+                  <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-center">
+                    <span className="text-white text-sm font-bold">⚒</span>
+                  </div>
                   <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Create Channel</h1>
                 </div>
                 <div className="flex items-center gap-3">
