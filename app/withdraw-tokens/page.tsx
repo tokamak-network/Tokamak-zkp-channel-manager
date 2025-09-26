@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAccount, useContractRead, useContractWrite, usePrepareContractWrite, useWaitForTransaction } from 'wagmi';
+import { useAccount, useContractRead, useContractWrite, usePrepareContractWrite, useWaitForTransaction, useContractReads } from 'wagmi';
 import { formatUnits, parseUnits } from 'viem';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
@@ -12,7 +12,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { DarkModeToggle } from '@/components/DarkModeToggle';
 import { ChannelState } from '@/lib/types';
 import { canWithdraw } from '@/lib/utils';
-import { generateWithdrawalProof, getMockParticipantData, WithdrawalProofData } from '@/lib/merkleProofGenerator';
+import { generateWithdrawalProof, WithdrawalProofData } from '@/lib/merkleProofGenerator';
 
 interface WithdrawableChannel {
   channelId: bigint;
@@ -36,6 +36,7 @@ export default function WithdrawTokensPage() {
   const [generatedProof, setGeneratedProof] = useState<WithdrawalProofData | null>(null);
   const [isGeneratingProof, setIsGeneratingProof] = useState(false);
   const [proofError, setProofError] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Get total number of channels
   const { data: totalChannels } = useContractRead({
@@ -45,150 +46,258 @@ export default function WithdrawTokensPage() {
     enabled: isConnected,
   });
 
-  // Get channel data for channels 0 and 1 (expand as needed)
-  const { data: channelStats0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(0)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 0,
+  const channelCount = totalChannels ? Number(totalChannels) : 0;
+  const maxChannelsToCheck = Math.min(channelCount, 20); // Reasonable limit
+
+  // We need to get channel stats first to know which contracts are ERC20 tokens
+  const { data: channelStatsData } = useContractReads({
+    contracts: Array.from({ length: maxChannelsToCheck }, (_, i) => ({
+      address: ROLLUP_BRIDGE_ADDRESS,
+      abi: ROLLUP_BRIDGE_ABI,
+      functionName: 'getChannelStats',
+      args: [BigInt(i)],
+    })),
+    enabled: isConnected && channelCount > 0,
   });
 
-  const { data: channelStats1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(1)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 1,
-  });
-
-  // Get participants for channels
-  const { data: participantsChannel0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(0)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 0,
-  });
-
-  const { data: participantsChannel1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(1)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 1,
-  });
-
-  // Get user deposits for channels they participated in
-  const { data: userDepositChannel0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address ? [BigInt(0), address] : undefined,
-    enabled: isConnected && !!address && participantsChannel0 && participantsChannel0.includes(address),
-  });
-
-  const { data: userDepositChannel1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address ? [BigInt(1), address] : undefined,
-    enabled: isConnected && !!address && participantsChannel1 && participantsChannel1.includes(address),
-  });
-
-  // Get L2 public keys (addresses) for the user's L1 address
-  const { data: l2AddressChannel0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getL2PublicKey',
-    args: address ? [BigInt(0), address] : undefined,
-    enabled: isConnected && !!address && participantsChannel0 && participantsChannel0.includes(address),
-  });
-
-  const { data: l2AddressChannel1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getL2PublicKey',
-    args: address ? [BigInt(1), address] : undefined,
-    enabled: isConnected && !!address && participantsChannel1 && participantsChannel1.includes(address),
-  });
-
-  // Check if user has already withdrawn from channels
-  const { data: hasWithdrawnChannel0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'hasWithdrawn',
-    args: address ? [BigInt(0), address] : undefined,
-    enabled: isConnected && !!address && participantsChannel0 && participantsChannel0.includes(address),
-  });
-
-  const { data: hasWithdrawnChannel1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'hasWithdrawn',
-    args: address ? [BigInt(1), address] : undefined,
-    enabled: isConnected && !!address && participantsChannel1 && participantsChannel1.includes(address),
-  });
-
-  // Get token symbols and decimals for ERC20 tokens
-  const { data: tokenSymbol0 } = useContractRead({
-    address: channelStats0?.[1] !== '0x0000000000000000000000000000000000000000' ? channelStats0?.[1] as `0x${string}` : undefined,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'symbol',
-    enabled: !!channelStats0?.[1] && channelStats0[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenDecimals0 } = useContractRead({
-    address: channelStats0?.[1] !== '0x0000000000000000000000000000000000000000' ? channelStats0?.[1] as `0x${string}` : undefined,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'decimals',
-    enabled: !!channelStats0?.[1] && channelStats0[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenSymbol1 } = useContractRead({
-    address: channelStats1?.[1] !== '0x0000000000000000000000000000000000000000' ? channelStats1?.[1] as `0x${string}` : undefined,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'symbol',
-    enabled: !!channelStats1?.[1] && channelStats1[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenDecimals1 } = useContractRead({
-    address: channelStats1?.[1] !== '0x0000000000000000000000000000000000000000' ? channelStats1?.[1] as `0x${string}` : undefined,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'decimals',
-    enabled: !!channelStats1?.[1] && channelStats1[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  // Build withdrawable channels list
-  const withdrawableChannels: WithdrawableChannel[] = [];
-
-  if (channelStats0 && participantsChannel0 && address && participantsChannel0.includes(address) && channelStats0[2] === 5) { // Closed state
-    const isETH = !channelStats0[1] || channelStats0[1] === '0x0000000000000000000000000000000000000000';
-    withdrawableChannels.push({
-      channelId: BigInt(0),
-      targetContract: channelStats0[1],
-      state: channelStats0[2] as ChannelState,
-      isETH,
-      symbol: isETH ? 'ETH' : (tokenSymbol0 || 'TOKEN'),
-      decimals: isETH ? 18 : (tokenDecimals0 || 18),
-      userDeposit: userDepositChannel0 || BigInt(0),
-      hasWithdrawn: hasWithdrawnChannel0 || false,
+  // Create contract calls and mapping
+  const channelContracts: any[] = [];
+  const contractCallMapping: Array<{ channelId: number; type: string }> = []; // Track what each contract call represents
+  
+  // For each channel, build contracts and track their mapping
+  for (let i = 0; i < maxChannelsToCheck; i++) {
+    const channelId = BigInt(i);
+    const channelStats = channelStatsData?.[i]?.result as readonly [bigint, `0x${string}`, number, bigint, bigint, `0x${string}`] | undefined;
+    const targetContract = channelStats?.[1];
+    const isETH = !targetContract || targetContract === '0x0000000000000000000000000000000000000000';
+    
+    // Channel stats
+    channelContracts.push({
+      address: ROLLUP_BRIDGE_ADDRESS,
+      abi: ROLLUP_BRIDGE_ABI,
+      functionName: 'getChannelStats',
+      args: [channelId],
     });
+    contractCallMapping.push({ channelId: i, type: 'stats' });
+    
+    // Channel roots
+    channelContracts.push({
+      address: ROLLUP_BRIDGE_ADDRESS,
+      abi: ROLLUP_BRIDGE_ABI,
+      functionName: 'getChannelRoots',
+      args: [channelId],
+    });
+    contractCallMapping.push({ channelId: i, type: 'roots' });
+    
+    // Channel participants
+    channelContracts.push({
+      address: ROLLUP_BRIDGE_ADDRESS,
+      abi: ROLLUP_BRIDGE_ABI,
+      functionName: 'getChannelParticipants',
+      args: [channelId],
+    });
+    contractCallMapping.push({ channelId: i, type: 'participants' });
+    
+    // Token info (for ERC20 tokens only)
+    if (!isETH && targetContract) {
+      // Token decimals
+      channelContracts.push({
+        address: targetContract as `0x${string}`,
+        abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view' as const, type: 'function' as const, inputs: [] }],
+        functionName: 'decimals',
+      });
+      contractCallMapping.push({ channelId: i, type: 'decimals' });
+      
+      // Token symbol
+      channelContracts.push({
+        address: targetContract as `0x${string}`,
+        abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view' as const, type: 'function' as const, inputs: [] }],
+        functionName: 'symbol',
+      });
+      contractCallMapping.push({ channelId: i, type: 'symbol' });
+    }
+    
+    // User-specific data (if address exists)
+    if (address) {
+      // User deposit
+      channelContracts.push({
+        address: ROLLUP_BRIDGE_ADDRESS,
+        abi: ROLLUP_BRIDGE_ABI,
+        functionName: 'getParticipantDeposit',
+        args: [channelId, address],
+      });
+      contractCallMapping.push({ channelId: i, type: 'userDeposit' });
+      
+      // L2 address
+      channelContracts.push({
+        address: ROLLUP_BRIDGE_ADDRESS,
+        abi: ROLLUP_BRIDGE_ABI,
+        functionName: 'getL2PublicKey',
+        args: [channelId, address],
+      });
+      contractCallMapping.push({ channelId: i, type: 'l2Address' });
+      
+      // Withdrawal status
+      channelContracts.push({
+        address: ROLLUP_BRIDGE_ADDRESS,
+        abi: ROLLUP_BRIDGE_ABI,
+        functionName: 'hasWithdrawn',
+        args: [channelId, address],
+      });
+      contractCallMapping.push({ channelId: i, type: 'hasWithdrawn' });
+    }
+    
+    // Participant roots
+    channelContracts.push({
+      address: ROLLUP_BRIDGE_ADDRESS,
+      abi: ROLLUP_BRIDGE_ABI,
+      functionName: 'getChannelParticipantRoots',
+      args: [channelId],
+    });
+    contractCallMapping.push({ channelId: i, type: 'participantRoots' });
   }
 
-  if (channelStats1 && participantsChannel1 && address && participantsChannel1.includes(address) && channelStats1[2] === 5) { // Closed state
-    const isETH = !channelStats1[1] || channelStats1[1] === '0x0000000000000000000000000000000000000000';
-    withdrawableChannels.push({
-      channelId: BigInt(1),
-      targetContract: channelStats1[1],
-      state: channelStats1[2] as ChannelState,
-      isETH,
-      symbol: isETH ? 'ETH' : (tokenSymbol1 || 'TOKEN'),
-      decimals: isETH ? 18 : (tokenDecimals1 || 18),
-      userDeposit: userDepositChannel1 || BigInt(0),
-      hasWithdrawn: hasWithdrawnChannel1 || false,
-    });
-  }
+  const { data: channelData, isLoading: channelDataLoading } = useContractReads({
+    contracts: channelContracts,
+    enabled: isConnected && channelCount > 0,
+  });
+
+  // Parse channel data into structured format
+  const [withdrawableChannels, setWithdrawableChannels] = useState<WithdrawableChannel[]>([]);
+  const [channelTokenData, setChannelTokenData] = useState<Map<number, { symbol: string; decimals: number }>>(new Map());
+  
+  useEffect(() => {
+    const parseChannelData = async () => {
+      if (!channelData || !address) {
+        setWithdrawableChannels([]);
+        return;
+      }
+
+      const newWithdrawableChannels: WithdrawableChannel[] = [];
+      const newTokenData = new Map<number, { symbol: string; decimals: number }>();
+
+      // Build channel data map from contract results using mapping
+      const channelDataMap = new Map<number, {
+        stats?: readonly [bigint, `0x${string}`, number, bigint, bigint, `0x${string}`];
+        roots?: readonly [string, string];
+        participants?: readonly string[];
+        decimals?: number;
+        symbol?: string;
+        userDeposit?: bigint;
+        l2Address?: string;
+        hasWithdrawn?: boolean;
+        participantRoots?: readonly string[];
+      }>();
+
+      // Parse contract results using the mapping
+      contractCallMapping.forEach((mapping, index) => {
+        const { channelId, type } = mapping;
+        const result = channelData[index]?.result;
+        
+        if (!channelDataMap.has(channelId)) {
+          channelDataMap.set(channelId, {});
+        }
+        
+        const channelInfo = channelDataMap.get(channelId)!;
+        
+        switch (type) {
+          case 'stats':
+            channelInfo.stats = result as readonly [bigint, `0x${string}`, number, bigint, bigint, `0x${string}`];
+            break;
+          case 'roots':
+            channelInfo.roots = result as readonly [string, string];
+            break;
+          case 'participants':
+            channelInfo.participants = result as readonly string[];
+            break;
+          case 'decimals':
+            channelInfo.decimals = result as number;
+            break;
+          case 'symbol':
+            channelInfo.symbol = result as string;
+            break;
+          case 'userDeposit':
+            channelInfo.userDeposit = result as bigint;
+            break;
+          case 'l2Address':
+            channelInfo.l2Address = result as string;
+            break;
+          case 'hasWithdrawn':
+            channelInfo.hasWithdrawn = result as boolean;
+            break;
+          case 'participantRoots':
+            channelInfo.participantRoots = result as readonly string[];
+            break;
+        }
+      });
+
+      // Process each channel
+      for (let i = 0; i < maxChannelsToCheck; i++) {
+        const channelInfo = channelDataMap.get(i);
+        if (!channelInfo) continue;
+        
+        const { stats: channelStats, participants, decimals: tokenDecimals, symbol: tokenSymbol, userDeposit, hasWithdrawn } = channelInfo;
+        
+        // Check if this channel is withdrawable (closed state = 5, user is participant, hasn't withdrawn)
+        if (
+          channelStats &&
+          channelStats[2] === 5 && // Closed state
+          participants &&
+          participants.includes(address) &&
+          !hasWithdrawn
+        ) {
+          const isETH = !channelStats[1] || channelStats[1] === '0x0000000000000000000000000000000000000000';
+          
+          // Get token info
+          let symbol: string;
+          let decimals: number;
+          
+          if (isETH) {
+            symbol = 'ETH';
+            decimals = 18;
+          } else {
+            // Use the fetched token data
+            symbol = typeof tokenSymbol === 'string' ? tokenSymbol : 'TOKEN';
+            decimals = typeof tokenDecimals === 'number' ? tokenDecimals : 18;
+          }
+          
+          newWithdrawableChannels.push({
+            channelId: BigInt(i),
+            targetContract: channelStats[1],
+            state: channelStats[2] as ChannelState,
+            isETH,
+            symbol,
+            decimals,
+            userDeposit: userDeposit || BigInt(0),
+            hasWithdrawn: hasWithdrawn || false,
+          });
+        }
+      }
+      
+      setWithdrawableChannels(newWithdrawableChannels);
+    };
+
+    parseChannelData();
+  }, [channelData, address, maxChannelsToCheck, channelTokenData]);
+
+  // Helper function to get channel data by ID
+  const getChannelDataById = (channelId: bigint) => {
+    if (!channelData || !address) return null;
+    
+    const itemsPerChannel = 7;
+    const channelIndex = Number(channelId);
+    const baseIndex = channelIndex * itemsPerChannel;
+    
+    return {
+      stats: channelData[baseIndex]?.result as readonly [bigint, `0x${string}`, number, bigint, bigint, `0x${string}`] | undefined,
+      roots: channelData[baseIndex + 1]?.result as readonly [string, string] | undefined,
+      participants: channelData[baseIndex + 2]?.result as readonly string[] | undefined,
+      userDeposit: channelData[baseIndex + 3]?.result as bigint | undefined,
+      l2Address: channelData[baseIndex + 4]?.result as string | undefined,
+      hasWithdrawn: channelData[baseIndex + 5]?.result as boolean | undefined,
+      participantRoots: channelData[baseIndex + 6]?.result as readonly string[] | undefined,
+    };
+  };
 
   // Prepare withdraw transaction
   const { config: withdrawConfig } = usePrepareContractWrite({
@@ -232,54 +341,107 @@ export default function WithdrawTokensPage() {
     setGeneratedProof(null);
     
     try {
-      // Get the L2 address for this L1 address and channel
-      let l2Address: string | null = null;
-      if (selectedChannel.channelId === BigInt(0)) {
-        l2Address = l2AddressChannel0 as string;
-      } else if (selectedChannel.channelId === BigInt(1)) {
-        l2Address = l2AddressChannel1 as string;
+      // Debug: Check what the actual channel state is
+      console.log('=== DEBUG: Channel State ===');
+      console.log('Channel ID:', selectedChannel.channelId.toString());
+      
+      // Get channel data dynamically
+      const channelInfo = getChannelDataById(selectedChannel.channelId);
+      if (!channelInfo) {
+        throw new Error('Failed to fetch channel data. Please try again.');
       }
       
+      const { roots: channelRoots, participants, l2Address, participantRoots } = channelInfo;
+      
+      if (channelRoots) {
+        console.log('Channel roots:', channelRoots);
+        console.log('Initial Root:', channelRoots[0]);
+        console.log('Final State Root:', channelRoots[1]);
+      }
+      
+      console.log('DEBUG: Channel roots for channel', selectedChannel.channelId.toString(), ':', channelRoots);
+      console.log('DEBUG: Initial root:', channelRoots?.[0]);
+      console.log('DEBUG: Final root:', channelRoots?.[1]);
+      
+      if (!channelRoots) {
+        throw new Error('Failed to fetch channel roots from contract. Please try again.');
+      }
+      
+      const zeroHash = '0x0000000000000000000000000000000000000000000000000000000000000000';
+      const finalStateRoot = channelRoots[1];
+      
+      if (!finalStateRoot || finalStateRoot === zeroHash || finalStateRoot === '0x' || finalStateRoot.length < 66) {
+        console.log('DEBUG: Final state root is invalid:', finalStateRoot);
+        throw new Error('Channel has not gone through submitAggregatedProof yet. Final state root is not set. Please complete the proof submission workflow first.');
+      }
+      
+      console.log('Channel has valid final state root, proceeding with withdrawal proof generation...');
+      // Get the L2 address for this L1 address and channel from dynamic data
+      let userL2Address = l2Address;
+      
       // If no L2 address mapping exists, derive it from L1 address for development/testing
-      if (!l2Address || l2Address === '0x0000000000000000000000000000000000000000') {
+      if (!userL2Address || userL2Address === '0x0000000000000000000000000000000000000000') {
         // For development: create a deterministic L2 address based on L1 address and channel
         // This is a simple approach - in production you'd want a more sophisticated mapping
         const addressNum = BigInt(address);
         const channelOffset = BigInt(selectedChannel.channelId.toString()) + BigInt(1000000);
         const maxAddress = BigInt("0xffffffffffffffffffffffffffffffffffffffff"); // 2^160 - 1
         const derivedL2 = (addressNum + channelOffset) % (maxAddress + BigInt(1));
-        l2Address = `0x${derivedL2.toString(16).padStart(40, '0')}`;
+        userL2Address = `0x${derivedL2.toString(16).padStart(40, '0')}`;
         
-        console.log(`No L2 public key found, using derived L2 address: ${l2Address} for L1: ${address} in channel ${selectedChannel.channelId}`);
+        console.log(`No L2 public key found, using derived L2 address: ${userL2Address} for L1: ${address} in channel ${selectedChannel.channelId}`);
       }
       
-      // Get participant data (in production, this would fetch from contract)
-      // For now, we'll create mock data that includes the user's L2 address
-      const participantsData = [
-        {
-          participantRoot: "0x8449acb4300b58b00e4852ab07d43f298eaa35688eaa3917ca205f20e6db73e8",
-          l2Address: l2Address, // Use the user's actual L2 address
-          balance: parseUnits(claimedBalance, selectedChannel.decimals).toString() // Use their claimed balance
-        },
-        // Add other mock participants to fill the tree
-        {
-          participantRoot: "0x3bec727653ae8d56ac6d9c103182ff799fe0a3b512e9840f397f0d21848373e8",
-          l2Address: "0xb18E7CdB6Aa28Cc645227041329896446A1478bd",
-          balance: "1000000000000000000"
-        },
-        {
-          participantRoot: "0x11e1e541a59fb2cd7fa4371d63103972695ee4bb4d1e646e72427cf6cdc16498",
-          l2Address: "0x9D70617FF571Ac34516C610a51023EE1F28373e8",
-          balance: "1000000000000000000"
-        }
-      ];
+      // Get real participant data from dynamic channel data
+      if (!participants || participants.length === 0) {
+        throw new Error('No participants found for this channel');
+      }
       
-      // Generate withdrawal proof using L2 address
+      // Build participant data with actual L2 addresses and deposit balances
+      const participantsData: Array<{ l2Address: string; balance: string }> = [];
+      
+      for (const participant of participants) {
+        // Get L2 address for each participant
+        let participantL2Address = userL2Address; // Default to user's if this is the user
+        if (participant.toLowerCase() !== address.toLowerCase()) {
+          // For other participants, we don't have individual L2 address data, so fallback to L1
+          participantL2Address = participant;
+        }
+        
+        // Get deposit balance for each participant
+        let participantBalance = '0';
+        if (participant.toLowerCase() === address.toLowerCase()) {
+          participantBalance = (channelInfo.userDeposit || BigInt(0)).toString();
+        } else {
+          // For other participants, use a default balance
+          // Use a reasonable default (1 token with proper decimals)
+          const defaultDecimals = selectedChannel.decimals > 18 ? 18 : selectedChannel.decimals;
+          participantBalance = parseUnits('1.0', defaultDecimals).toString();
+        }
+        
+        participantsData.push({
+          l2Address: participantL2Address,
+          balance: participantBalance
+        });
+      }
+      
+      // Get participant roots for the selected channel from dynamic data
+      const participantRootsForChannel = participantRoots ? participantRoots.map(root => root as string) : [];
+      
+      if (participantRootsForChannel.length === 0) {
+        throw new Error('Participant roots not available for this channel. Make sure aggregated proof has been submitted.');
+      }
+      
+      console.log('Using participant roots:', participantRootsForChannel);
+
+      // Generate withdrawal proof using L2 address and final state root
       const proof = await generateWithdrawalProof(
         selectedChannel.channelId.toString(),
-        l2Address,
+        userL2Address,
         parseUnits(claimedBalance, selectedChannel.decimals).toString(),
-        participantsData
+        participantsData,
+        channelRoots[1], // final state root from the contract
+        participantRootsForChannel // participant roots from the contract
       );
       
       setGeneratedProof(proof);
@@ -324,9 +486,9 @@ export default function WithdrawTokensPage() {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <ClientOnly>
-          <Sidebar isConnected={isConnected} />
+          <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
         </ClientOnly>
-        <div className="lg:ml-64 transition-all duration-300">
+        <div className={`${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
           <div className="flex items-center justify-center min-h-screen">
             <div className="text-center">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Connect Your Wallet</h1>
@@ -345,11 +507,11 @@ export default function WithdrawTokensPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Sidebar */}
       <ClientOnly>
-        <Sidebar isConnected={isConnected} />
+        <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
       </ClientOnly>
 
       {/* Main Content Area */}
-      <div className="lg:ml-64 transition-all duration-300">
+      <div className={`ml-0 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
         {/* Header */}
         <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
           <div className="px-4 py-4 lg:px-6">

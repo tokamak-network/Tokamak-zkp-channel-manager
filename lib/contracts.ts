@@ -393,6 +393,23 @@ export const ROLLUP_BRIDGE_ABI = [
     outputs: [{ name: 'l2PublicKey', type: 'address' }],
     stateMutability: 'view',
     type: 'function'
+  },
+  {
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelParticipantRoots',
+    outputs: [{ name: 'participantRoots', type: 'bytes32[]' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelRoots',
+    outputs: [
+      { name: 'initialRoot', type: 'bytes32' },
+      { name: 'finalRoot', type: 'bytes32' }
+    ],
+    stateMutability: 'view',
+    type: 'function'
   }
 ] as const;
 

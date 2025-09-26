@@ -15,13 +15,22 @@ export class SimpleQuaternaryTree {
   constructor(depth = 3) {
     this.depth = depth;
     this.maxLeaves = 4 ** depth;
-    this.leaves = new Array(this.maxLeaves).fill('0x0000000000000000000000000000000000000000000000000000000000000000');
+    this.leaves = new Array(this.maxLeaves).fill(this.zeros(0));
     this.tree = {};
     
     // Initialize tree structure
     for (let level = 0; level <= depth; level++) {
       this.tree[level] = {};
     }
+  }
+
+  // Match contract's _zeros function exactly
+  private zeros(level: number): string {
+    let zero = '0x0000000000000000000000000000000000000000000000000000000000000000';
+    for (let j = 0; j < level; j++) {
+      zero = this.hashFour(zero, zero, zero, zero);
+    }
+    return zero;
   }
 
   insert(index: number, leaf: string): void {
@@ -53,10 +62,10 @@ export class SimpleQuaternaryTree {
         const childBaseIndex = nodeIndex * 4;
         const prevLevel = level - 1;
         
-        const child0 = this.tree[prevLevel][childBaseIndex] || '0x0000000000000000000000000000000000000000000000000000000000000000';
-        const child1 = this.tree[prevLevel][childBaseIndex + 1] || '0x0000000000000000000000000000000000000000000000000000000000000000';
-        const child2 = this.tree[prevLevel][childBaseIndex + 2] || '0x0000000000000000000000000000000000000000000000000000000000000000';
-        const child3 = this.tree[prevLevel][childBaseIndex + 3] || '0x0000000000000000000000000000000000000000000000000000000000000000';
+        const child0 = this.tree[prevLevel][childBaseIndex] || this.zeros(prevLevel);
+        const child1 = this.tree[prevLevel][childBaseIndex + 1] || this.zeros(prevLevel);
+        const child2 = this.tree[prevLevel][childBaseIndex + 2] || this.zeros(prevLevel);
+        const child3 = this.tree[prevLevel][childBaseIndex + 3] || this.zeros(prevLevel);
         
         this.tree[level][nodeIndex] = this.hashFour(child0, child1, child2, child3);
       }
@@ -69,7 +78,7 @@ export class SimpleQuaternaryTree {
   }
 
   root(): string {
-    return this.tree[this.depth][0] || '0x0000000000000000000000000000000000000000000000000000000000000000';
+    return this.tree[this.depth][0] || this.zeros(this.depth);
   }
 
   proof(leafIndex: number): { pathElements: string[]; leafIndex: number; leaf: string } {
@@ -85,7 +94,7 @@ export class SimpleQuaternaryTree {
       // Add the 3 siblings (in order, excluding the child)
       for (let i = 0; i < 4; i++) {
         if (i !== childIndex) {
-          const sibling = this.tree[level][siblingBaseIndex + i] || '0x0000000000000000000000000000000000000000000000000000000000000000';
+          const sibling = this.tree[level][siblingBaseIndex + i] || this.zeros(level);
           pathElements.push(sibling);
         }
       }
@@ -96,11 +105,11 @@ export class SimpleQuaternaryTree {
     return {
       pathElements,
       leafIndex,
-      leaf: this.tree[0][leafIndex] || '0x0000000000000000000000000000000000000000000000000000000000000000'
+      leaf: this.tree[0][leafIndex] || this.zeros(0)
     };
   }
 
-  // Verify proof manually (for testing)
+  // Verify proof manually (for testing) - match contract _verifyProof exactly
   verifyProof(leafIndex: number, leaf: string, proof: string[]): boolean {
     let computedHash = leaf;
     let index = leafIndex;
@@ -110,16 +119,35 @@ export class SimpleQuaternaryTree {
       const childIndex = index % 4;
 
       if (childIndex === 0) {
-        computedHash = this.hashFour(computedHash, proof[proofIndex], proof[proofIndex + 1], proof[proofIndex + 2]);
+        if (proofIndex < proof.length) {
+          computedHash = this.hashFour(computedHash, proof[proofIndex], proof[proofIndex + 1], proof[proofIndex + 2]);
+          proofIndex += 3;
+        } else {
+          computedHash = this.hashFour(computedHash, this.zeros(level), this.zeros(level), this.zeros(level));
+        }
       } else if (childIndex === 1) {
-        computedHash = this.hashFour(proof[proofIndex], computedHash, proof[proofIndex + 1], proof[proofIndex + 2]);
+        if (proofIndex < proof.length) {
+          computedHash = this.hashFour(proof[proofIndex], computedHash, proof[proofIndex + 1], proof[proofIndex + 2]);
+          proofIndex += 3;
+        } else {
+          computedHash = this.hashFour(this.zeros(level), computedHash, this.zeros(level), this.zeros(level));
+        }
       } else if (childIndex === 2) {
-        computedHash = this.hashFour(proof[proofIndex], proof[proofIndex + 1], computedHash, proof[proofIndex + 2]);
+        if (proofIndex < proof.length) {
+          computedHash = this.hashFour(proof[proofIndex], proof[proofIndex + 1], computedHash, proof[proofIndex + 2]);
+          proofIndex += 3;
+        } else {
+          computedHash = this.hashFour(this.zeros(level), this.zeros(level), computedHash, this.zeros(level));
+        }
       } else {
-        computedHash = this.hashFour(proof[proofIndex], proof[proofIndex + 1], proof[proofIndex + 2], computedHash);
+        if (proofIndex < proof.length) {
+          computedHash = this.hashFour(proof[proofIndex], proof[proofIndex + 1], proof[proofIndex + 2], computedHash);
+          proofIndex += 3;
+        } else {
+          computedHash = this.hashFour(this.zeros(level), this.zeros(level), this.zeros(level), computedHash);
+        }
       }
 
-      proofIndex += 3;
       index = Math.floor(index / 4);
     }
 
@@ -154,31 +182,30 @@ export interface WithdrawalProofData {
 }
 
 export interface ParticipantData {
-  participantRoot: string;
   l2Address: string;
   balance: string;
 }
 
 /**
  * Generate withdrawal proof for a user given their claimed balance
- * This function needs to fetch participant data from the contract or use provided data
+ * This uses the participant roots that were set during submitAggregatedProof
  */
 export async function generateWithdrawalProof(
   channelId: string,
   userAddress: string,
   claimedBalance: string,
-  participantsData: ParticipantData[]
+  participantsData: ParticipantData[],
+  finalStateRoot: string,
+  participantRoots: string[]
 ): Promise<WithdrawalProofData> {
   try {
     // Find user's index in participants data
     let userLeafIndex = -1;
-    let userParticipantRoot = '';
     
     for (let i = 0; i < participantsData.length; i++) {
       const participant = participantsData[i];
       if (participant.l2Address.toLowerCase() === userAddress.toLowerCase()) {
         userLeafIndex = i;
-        userParticipantRoot = participant.participantRoot;
         break;
       }
     }
@@ -187,29 +214,159 @@ export async function generateWithdrawalProof(
       throw new Error(`User address ${userAddress} not found in participants data`);
     }
 
-    // Build the final state tree with individual participant roots
-    const tree = new SimpleQuaternaryTree(3);
-    const leaves: string[] = [];
-    
-    for (const { participantRoot, l2Address, balance } of participantsData) {
-      const leaf = computeLeaf(participantRoot, l2Address, balance);
-      leaves.push(leaf);
+    if (userLeafIndex >= participantRoots.length) {
+      throw new Error(`User index ${userLeafIndex} exceeds available participant roots (${participantRoots.length})`);
     }
     
-    tree.insertAll(leaves);
-    const computedTreeRoot = tree.root();
+    // Get the participant root for this user
+    const userParticipantRoot = participantRoots[userLeafIndex];
     
-    // Compute user's leaf with their claimed balance (this is what they're claiming)
+    console.log('=== DEBUG: Withdrawal Proof Generation ===');
+    console.log('User index:', userLeafIndex);
+    console.log('User participant root:', userParticipantRoot);
+    console.log('User L2 address:', userAddress);
+    console.log('Claimed balance:', claimedBalance);
+    console.log('Expected final state root:', finalStateRoot);
+    
+    // Build the final state tree exactly like the contract's initializeChannelState
+    // and the submit-proof page's computeFinalStateRoot function
+    const tree = new QuaternaryMerkleTree(3); // TREE_DEPTH = 3 in contract
+    let nonce = 0;
+    
+    console.log('=== BUILDING FINAL STATE TREE ===');
+    console.log('Channel ID:', channelId);
+    console.log('Participants count:', participantsData.length);
+    
+    // Process each participant exactly like initializeChannelState
+    for (let i = 0; i < participantsData.length; i++) {
+      const participant = participantsData[i];
+      const balance = i === userLeafIndex ? claimedBalance : participant.balance;
+      
+      console.log(`Participant ${i}:`);
+      console.log(`  L2 Address: ${participant.l2Address}`);
+      console.log(`  Balance: ${balance}`);
+      console.log(`  Nonce: ${nonce}`);
+      
+      // Compute and insert leaf exactly like the contract
+      const leaf = tree.computeLeaf(parseInt(channelId), participant.l2Address, balance, nonce);
+      tree.insertLeaf(leaf);
+      
+      console.log(`  Computed leaf: ${leaf}`);
+      nonce++;
+    }
+    
+    const computedTreeRoot = tree.getCurrentRoot();
+    const channelRootSequence = tree.getChannelRootSequence();
+    
+    console.log('=== TREE COMPUTATION RESULTS ===');
+    console.log('Computed final state root:', computedTreeRoot);
+    console.log('Expected final state root:', finalStateRoot);
+    console.log('Channel root sequence length:', channelRootSequence.length);
+    console.log('Channel root sequence:', channelRootSequence);
+    console.log('Participant roots from contract:', participantRoots);
+    console.log('Roots match:', computedTreeRoot.toLowerCase() === finalStateRoot.toLowerCase());
+    
+    // Skip the complex validation - just use the contract's participant roots directly
+    console.log('Using contract participant roots directly for proof generation...');
+    
+    // Now compute the user's leaf using their specific participant root FROM THE CONTRACT
     const userLeafValue = computeLeaf(userParticipantRoot, userAddress, claimedBalance);
     
-    // Generate merkle proof for the user's specific leaf
-    const proofData = tree.proof(userLeafIndex);
+    console.log('=== USER LEAF COMPUTATION ===');
+    console.log('User participant root (from contract):', userParticipantRoot);
+    console.log('User leaf value:', userLeafValue);
     
-    // Verify our proof locally
-    const isValid = tree.verifyProof(userLeafIndex, userLeafValue, proofData.pathElements);
+    // Build the final tree using the SAME QuaternaryMerkleTree structure as the contract
+    // This will match exactly how the contract computed the final state root
+    const finalTree = new QuaternaryMerkleTree(3);
+    
+    console.log('=== BUILDING FINAL TREE WITH CONTRACT PARTICIPANT ROOTS ===');
+    
+    // Process each participant using the contract's participant roots
+    // The participant roots are the intermediate tree states, and we need to build
+    // the final tree using these roots to compute final leaves
+    for (let i = 0; i < participantsData.length; i++) {
+      const participant = participantsData[i];
+      const balance = i === userLeafIndex ? claimedBalance : participant.balance;
+      const participantRoot = participantRoots[i]; // Use contract's participant root
+      
+      // Compute the final leaf using the participant root
+      const leaf = computeLeaf(participantRoot, participant.l2Address, balance);
+      
+      // Insert leaf using the same sparse tree logic as the contract
+      finalTree.insertLeaf(leaf);
+      
+      console.log(`Inserted final leaf ${i}:`);
+      console.log(`  Using participant root: ${participantRoot}`);
+      console.log(`  L2 Address: ${participant.l2Address}`);
+      console.log(`  Balance: ${balance}`);
+      console.log(`  Computed leaf: ${leaf}`);
+    }
+    
+    const finalTreeRoot = finalTree.getCurrentRoot();
+    console.log('=== FINAL TREE RESULTS ===');
+    console.log('Computed final tree root:', finalTreeRoot);
+    console.log('Expected final state root:', finalStateRoot);
+    console.log('Final roots match:', finalTreeRoot.toLowerCase() === finalStateRoot.toLowerCase());
+    
+    if (finalTreeRoot.toLowerCase() !== finalStateRoot.toLowerCase()) {
+      throw new Error(`Final tree root mismatch! Computed: ${finalTreeRoot}, Expected: ${finalStateRoot}`);
+    }
+    
+    // Now build a simple tree for proof generation using the computed leaves
+    const proofTree = new SimpleQuaternaryTree(3);
+    const finalLeaves: string[] = [];
+    
+    // Rebuild the leaves to match what we inserted into the final tree
+    for (let i = 0; i < participantsData.length; i++) {
+      const participant = participantsData[i];
+      const balance = i === userLeafIndex ? claimedBalance : participant.balance;
+      const participantRoot = participantRoots[i];
+      const leaf = computeLeaf(participantRoot, participant.l2Address, balance);
+      finalLeaves.push(leaf);
+    }
+    
+    proofTree.insertAll(finalLeaves);
+    const proofTreeRoot = proofTree.root();
+    
+    console.log('=== PROOF TREE ===');
+    console.log('Proof tree root:', proofTreeRoot);
+    console.log('Expected final state root:', finalStateRoot);
+    console.log('Matches expected:', proofTreeRoot.toLowerCase() === finalStateRoot.toLowerCase());
+    
+    // CRITICAL INSIGHT: The contract verifies against finalStateRoot, so we need to 
+    // generate a proof that works with that root, not our computed tree root
+    
+    // Generate proof for the user's leaf
+    const proofData = proofTree.proof(userLeafIndex);
+    
+    console.log('=== GENERATED PROOF ===');
+    console.log('  User leaf value:', userLeafValue);
+    console.log('  Leaf index:', userLeafIndex);
+    console.log('  Proof elements:', proofData.pathElements.length);
+    console.log('  Proof elements:', proofData.pathElements);
+    console.log('  Expected proof length for depth 3:', 3 * 3, 'elements');
+    
+    // Check for duplicate proof elements (shouldn't happen in valid proofs)
+    const uniqueElements = new Set(proofData.pathElements);
+    if (uniqueElements.size !== proofData.pathElements.length) {
+      console.warn('WARNING: Duplicate proof elements detected!');
+      console.warn('Unique elements:', uniqueElements.size, 'vs Total:', proofData.pathElements.length);
+    }
+    
+    // Verify our proof locally using the same logic as the contract
+    const isValid = proofTree.verifyProof(userLeafIndex, userLeafValue, proofData.pathElements);
+    console.log('Local verification result:', isValid);
+    
+    // Additional verification: manually verify against the final state root
+    console.log('=== MANUAL VERIFICATION ===');
+    console.log('Final state root from contract:', finalStateRoot);
+    console.log('Proof tree root:', proofTreeRoot);
+    console.log('User leaf for verification:', userLeafValue);
+    console.log('Leaf index for verification:', userLeafIndex);
     
     if (!isValid) {
-      throw new Error('Generated proof failed local verification - this likely means the claimed balance is incorrect');
+      throw new Error('Generated proof failed local verification');
     }
 
     return {
@@ -219,7 +376,7 @@ export async function generateWithdrawalProof(
       merkleProof: proofData.pathElements,
       leafValue: userLeafValue,
       userL2Address: userAddress,
-      computedTreeRoot,
+      computedTreeRoot: proofTreeRoot,
       isValid
     };
 
@@ -312,19 +469,26 @@ export class QuaternaryMerkleTree {
     let currentHash = leafHash;
     let currentIndex = leafIndex;
 
+    console.log(`Inserting leaf ${leafIndex}: ${leafHash}`);
+
     for (let level = 0; level < this.depth; level++) {
+      console.log(`Level ${level}: currentIndex=${currentIndex}, currentIndex%4=${currentIndex % 4}`);
+      
       if (currentIndex % 4 === 0) {
-        // This is a leftmost node, cache it
+        // This is a leftmost node, cache it and break (matching contract exactly)
         this.cachedSubtrees[level] = currentHash;
+        console.log(`  Caching leftmost node at level ${level}: ${currentHash}`);
         break;
       } else {
-        // Compute parent hash using 4 children (matching contract)
+        // Compute parent hash using 4 children (matching contract exactly)
         const left = this.cachedSubtrees[level] || '0x0000000000000000000000000000000000000000000000000000000000000000';
         const child2 = currentIndex % 4 >= 2 ? currentHash : '0x0000000000000000000000000000000000000000000000000000000000000000';
         const child3 = currentIndex % 4 === 3 ? currentHash : '0x0000000000000000000000000000000000000000000000000000000000000000';
         const child4 = '0x0000000000000000000000000000000000000000000000000000000000000000';
 
+        console.log(`  Computing parent: left=${left}, child2=${child2}, child3=${child3}, child4=${child4}`);
         currentHash = this.hashFour(left, child2, child3, child4);
+        console.log(`  New hash: ${currentHash}`);
         currentIndex = Math.floor(currentIndex / 4);
       }
     }
@@ -337,6 +501,8 @@ export class QuaternaryMerkleTree {
     this.currentRootIndex = newRootIndex;
     this.roots[newRootIndex] = currentHash;
     this.channelRootSequence.push(currentHash);
+    
+    console.log(`New root ${newRootIndex}: ${currentHash}`);
   }
 
   getCurrentRoot(): string {
@@ -369,41 +535,69 @@ export function computeFinalStateRoot(channelId: number, participants: Array<{ l
   const participantLeaves: string[] = [];
   let nonce = 0;
 
+  console.log('=== COMPUTING FINAL STATE ROOT (Submit-Proof Page) ===');
+  console.log('Channel ID:', channelId);
+  console.log('Participants:', participants.length);
+
   // Process each participant like the contract does in initializeChannelState
   for (const participant of participants) {
     const { l2Address, balance } = participant;
+
+    console.log(`Processing participant ${nonce}:`);
+    console.log(`  L2 Address: ${l2Address}`);
+    console.log(`  Balance: ${balance}`);
 
     // Compute and insert leaf (matching contract logic exactly)
     const leaf = tree.computeLeaf(channelId, l2Address, balance, nonce);
     tree.insertLeaf(leaf);
     participantLeaves.push(leaf);
 
+    console.log(`  Computed leaf: ${leaf}`);
+    console.log(`  Current root: ${tree.getCurrentRoot()}`);
+
     nonce++;
   }
 
-  return {
+  const finalResult = {
     finalStateRoot: tree.getCurrentRoot(),
     channelRootSequence: tree.getChannelRootSequence(),
     participantLeaves
   };
+
+  console.log('=== FINAL STATE ROOT COMPUTATION COMPLETE ===');
+  console.log('Final state root:', finalResult.finalStateRoot);
+  console.log('Channel root sequence:', finalResult.channelRootSequence);
+  console.log('Participant leaves:', finalResult.participantLeaves);
+
+  return finalResult;
 }
 
-export function getMockParticipantData(): ParticipantData[] {
-  return [
-    {
-      participantRoot: "0x8449acb4300b58b00e4852ab07d43f298eaa35688eaa3917ca205f20e6db73e8",
-      l2Address: "0xd69B7AaaE8C1c9F0546AfA4Fd8eD39741cE3f59F", // participant1
-      balance: "1000000000000000000" // 1 ETH in wei
-    },
-    {
-      participantRoot: "0x3bec727653ae8d56ac6d9c103182ff799fe0a3b512e9840f397f0d21848373e8", 
-      l2Address: "0xb18E7CdB6Aa28Cc645227041329896446A1478bd", // participant2
-      balance: "1000000000000000000" // 1 ETH in wei
-    },
-    {
-      participantRoot: "0x11e1e541a59fb2cd7fa4371d63103972695ee4bb4d1e646e72427cf6cdc16498",
-      l2Address: "0x9D70617FF571Ac34516C610a51023EE1F28373e8", // participant3
-      balance: "1000000000000000000" // 1 ETH in wei
-    }
-  ];
+export function computeFinalStateRootWithParticipantRoots(
+  channelId: number, 
+  participants: Array<{ l2Address: string; balance: string; participantRoot: string }>
+): {
+  finalStateRoot: string;
+  participantLeaves: string[];
+} {
+  // For final state computation, we use individual participant roots to compute leaves
+  // then build a simple quaternary tree with those leaves
+  const tree = new SimpleQuaternaryTree(3);
+  const participantLeaves: string[] = [];
+
+  for (const participant of participants) {
+    const { l2Address, balance, participantRoot } = participant;
+    
+    // Compute leaf using the participant's specific root (like withdrawal verification)
+    const leaf = computeLeaf(participantRoot, l2Address, balance);
+    participantLeaves.push(leaf);
+  }
+
+  // Build the final tree with all participant leaves
+  tree.insertAll(participantLeaves);
+
+  return {
+    finalStateRoot: tree.root(),
+    participantLeaves
+  };
 }
+

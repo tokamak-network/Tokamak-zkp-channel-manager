@@ -1,10 +1,11 @@
 'use client';
 
 import React from 'react';
-import { useAccount, useContractRead } from 'wagmi';
+import { useAccount, useContractRead, useContractReads } from 'wagmi';
 import { formatUnits, isAddress } from 'viem';
 import { ROLLUP_BRIDGE_ABI, ROLLUP_BRIDGE_ADDRESS } from '@/lib/contracts';
 import { ClientOnly } from '@/components/ClientOnly';
+import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 
 export function ContractInfo() {
   const { address, isConnected } = useAccount();
@@ -26,156 +27,62 @@ export function ContractInfo() {
     enabled: isConnected && !!address,
   });
 
-  // Get total number of channels
-  const { data: totalChannels } = useContractRead({
+  // Use dynamic hook to check all channels for leadership and participation
+  const { hasChannels, isParticipant, isLoading: rolesLoading, totalChannels, participatingChannels, leadingChannels, channelStatsData } = useUserRolesDynamic();
+
+  // Create dynamic contract calls for user deposits in participating channels
+  const depositContracts = participatingChannels.map(channelId => ({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getTotalChannels',
-    enabled: isConnected,
+    functionName: 'getParticipantDeposit',
+    args: address ? [BigInt(channelId), address] : undefined,
+  }));
+
+  const { data: depositData } = useContractReads({
+    contracts: depositContracts,
+    enabled: isConnected && !!address && participatingChannels.length > 0,
   });
 
-  // Check participation in multiple channels (check first few channels)
-  const { data: participantsChannel0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(0)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 0,
-  });
-
-  const { data: participantsChannel1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(1)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 1,
-  });
-
-  const { data: participantsChannel2 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(2)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 2,
-  });
-
-  // Check if user is participating in any channels
-  const isParticipant = address && (
-    (participantsChannel0 && participantsChannel0.includes(address)) ||
-    (participantsChannel1 && participantsChannel1.includes(address)) ||
-    (participantsChannel2 && participantsChannel2.includes(address))
-  );
+  // Create a mapping of channel IDs to their contract indices for token data
+  const channelToTokenIndex: Record<number, number> = {};
+  let tokenContractIndex = 0;
   
-  // Check if user is a channel leader by getting channel stats
-  const { data: channelStats0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(0)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 0,
+  const tokenContracts = participatingChannels.flatMap(channelId => {
+    const channelStats = channelStatsData[channelId];
+    const targetContract = channelStats?.[1] as `0x${string}`;
+    
+    // Skip ETH channels (zero address or no target contract)
+    if (!targetContract || targetContract === '0x0000000000000000000000000000000000000000' || !isAddress(targetContract)) {
+      return [];
+    }
+
+    // Map this channel to the current token contract index
+    channelToTokenIndex[channelId] = tokenContractIndex;
+    tokenContractIndex++;
+
+    return [
+      {
+        address: targetContract,
+        abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }] as const,
+        functionName: 'decimals',
+      },
+      {
+        address: targetContract,
+        abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }] as const,
+        functionName: 'symbol',
+      }
+    ];
   });
 
-  const { data: channelStats1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(1)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 1,
-  });
-
-  const { data: channelStats2 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(2)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 2,
-  });
-
-  // Check if user is a leader of any channels
-  const hasChannels = address && (
-    (channelStats0 && channelStats0[5] && channelStats0[5].toLowerCase() === address.toLowerCase()) ||
-    (channelStats1 && channelStats1[5] && channelStats1[5].toLowerCase() === address.toLowerCase()) ||
-    (channelStats2 && channelStats2[5] && channelStats2[5].toLowerCase() === address.toLowerCase())
-  );
-
-  // Get token info for channel 0
-  const { data: tokenDecimals0 } = useContractRead({
-    address: channelStats0?.[1] as `0x${string}`,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'decimals',
-    enabled: isConnected && channelStats0?.[1] && isAddress(channelStats0[1]) && channelStats0[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenSymbol0 } = useContractRead({
-    address: channelStats0?.[1] as `0x${string}`,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'symbol',
-    enabled: isConnected && channelStats0?.[1] && isAddress(channelStats0[1]) && channelStats0[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  // Get token info for channel 1
-  const { data: tokenDecimals1 } = useContractRead({
-    address: channelStats1?.[1] as `0x${string}`,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'decimals',
-    enabled: isConnected && channelStats1?.[1] && isAddress(channelStats1[1]) && channelStats1[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenSymbol1 } = useContractRead({
-    address: channelStats1?.[1] as `0x${string}`,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'symbol',
-    enabled: isConnected && channelStats1?.[1] && isAddress(channelStats1[1]) && channelStats1[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  // Get user's deposited balance for channels they're participating in
-  const { data: userDepositChannel0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address ? [BigInt(0), address] : undefined,
-    enabled: isConnected && !!address && participantsChannel0 && participantsChannel0.includes(address),
-  });
-
-  const { data: userDepositChannel1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address ? [BigInt(1), address] : undefined,
-    enabled: isConnected && !!address && participantsChannel1 && participantsChannel1.includes(address),
+  const { data: tokenData } = useContractReads({
+    contracts: tokenContracts,
+    enabled: isConnected && tokenContracts.length > 0,
   });
 
   // Note: getParticipantWithdrawAmount function doesn't exist in contract
   // For now, we'll show withdrawn amounts as 0 or use hasWithdrawn status instead
 
-  // Get deposit info with proper token details
-  const getUserDepositInfo = () => {
-    const deposits = [];
-    
-    if (userDepositChannel0 && participantsChannel0 && address && participantsChannel0.includes(address)) {
-      const isETH = !channelStats0?.[1] || channelStats0[1] === '0x0000000000000000000000000000000000000000';
-      deposits.push({
-        amount: userDepositChannel0,
-        decimals: isETH ? 18 : (tokenDecimals0 || 18),
-        symbol: isETH ? 'ETH' : (tokenSymbol0 || 'TOKEN'),
-        channelId: 0
-      });
-    }
-    
-    if (userDepositChannel1 && participantsChannel1 && address && participantsChannel1.includes(address)) {
-      const isETH = !channelStats1?.[1] || channelStats1[1] === '0x0000000000000000000000000000000000000000';
-      deposits.push({
-        amount: userDepositChannel1,
-        decimals: isETH ? 18 : (tokenDecimals1 || 18),
-        symbol: isETH ? 'ETH' : (tokenSymbol1 || 'TOKEN'),
-        channelId: 1
-      });
-    }
-    
-    return deposits;
-  };
-
-  const userDeposits = getUserDepositInfo();
+  // Deposit tracking is now handled dynamically below
 
   // Get withdraw info with proper token details
   // Since getParticipantWithdrawAmount doesn't exist, we'll return empty for now
@@ -200,29 +107,63 @@ export function ContractInfo() {
 
   const userWithdraws = getUserWithdrawInfo();
 
-  // Get channel states for permission checking - only for channels where user is actually participating
-  const participatingChannelStates = [];
-  
-  // Check channel 0 if user is participant
-  if (participantsChannel0 && address && participantsChannel0.includes(address) && channelStats0?.[2] !== undefined) {
-    participatingChannelStates.push(channelStats0[2]);
-  }
-  
-  // Check channel 1 if user is participant  
-  if (participantsChannel1 && address && participantsChannel1.includes(address) && channelStats1?.[2] !== undefined) {
-    participatingChannelStates.push(channelStats1[2]);
-  }
-  
-  // Check channel 2 if user is participant  
-  if (participantsChannel2 && address && participantsChannel2.includes(address) && channelStats2?.[2] !== undefined) {
-    participatingChannelStates.push(channelStats2[2]);
-  }
-  
-  // Check if user can deposit (channels in Initialized state - state 1)
-  const canDeposit = participatingChannelStates.some(state => state === 1);
-  
-  // Check if user can withdraw (channels in Closed state - state 5)
-  const canWithdraw = participatingChannelStates.some(state => state === 5);
+  // Get channel-specific deposit/withdraw availability
+  const getDepositableChannels = () => {
+    return participatingChannels.filter(channelId => {
+      const channelStats = channelStatsData[channelId];
+      return channelStats && channelStats[2] === 1; // State 1 = Initialized, can deposit
+    });
+  };
+
+  const getWithdrawableChannels = () => {
+    return participatingChannels.filter(channelId => {
+      const channelStats = channelStatsData[channelId];
+      return channelStats && channelStats[2] === 5; // State 5 = Closed, can withdraw
+    });
+  };
+
+  const depositableChannels = getDepositableChannels();
+  const withdrawableChannels = getWithdrawableChannels();
+  const canDeposit = depositableChannels.length > 0;
+  const canWithdraw = withdrawableChannels.length > 0;
+
+  // Get user deposit information for participating channels
+  const getUserDepositInfo = () => {
+    const deposits: Array<{ amount: bigint; decimals: number; symbol: string; channelId: number; }> = [];
+    
+    participatingChannels.forEach((channelId, index) => {
+      const depositAmount = depositData?.[index]?.result as bigint;
+      const channelStats = channelStatsData[channelId];
+      const targetContract = channelStats?.[1] as `0x${string}`;
+      const isETH = !targetContract || targetContract === '0x0000000000000000000000000000000000000000' || !isAddress(targetContract);
+      
+      let decimals = 18;
+      let symbol = 'ETH';
+      
+      if (!isETH) {
+        // Get token info using the channel to token index mapping
+        const tokenIndex = channelToTokenIndex[channelId];
+        if (tokenIndex !== undefined) {
+          const decimalsResult = tokenData?.[tokenIndex * 2]?.result as number;
+          const symbolResult = tokenData?.[tokenIndex * 2 + 1]?.result as string;
+          
+          decimals = decimalsResult || 18;
+          symbol = symbolResult || 'TOKEN';
+        }
+      }
+      
+      deposits.push({
+        amount: depositAmount || BigInt(0),
+        decimals,
+        symbol,
+        channelId
+      });
+    });
+    
+    return deposits;
+  };
+
+  const userDeposits = getUserDepositInfo();
 
   const isOwner = address && owner && address.toLowerCase() === owner.toLowerCase();
 
@@ -239,59 +180,8 @@ export function ContractInfo() {
     }
   };
 
-  // Get channel state names for display - only for channels user is participating in
-  const channelStateNames = participatingChannelStates
-    .filter(state => state !== 0) // Filter out "None" states
-    .map(state => getChannelStateName(state as number));
-
-  // Get specific channels user participates in
-  const getParticipatingChannels = () => {
-    const channels = [];
-    if (participantsChannel0 && address && participantsChannel0.includes(address)) {
-      channels.push(0);
-    }
-    if (participantsChannel1 && address && participantsChannel1.includes(address)) {
-      channels.push(1);
-    }
-    if (participantsChannel2 && address && participantsChannel2.includes(address)) {
-      channels.push(2);
-    }
-    return channels;
-  };
-
-  // Get channels where user can deposit (Initialized state - state 1)
-  const getDepositableChannels = () => {
-    const channels = [];
-    if (participantsChannel0 && address && participantsChannel0.includes(address) && channelStats0?.[2] === 1) {
-      channels.push(0);
-    }
-    if (participantsChannel1 && address && participantsChannel1.includes(address) && channelStats1?.[2] === 1) {
-      channels.push(1);
-    }
-    if (participantsChannel2 && address && participantsChannel2.includes(address) && channelStats2?.[2] === 1) {
-      channels.push(2);
-    }
-    return channels;
-  };
-
-  // Get channels where user can withdraw (Closed state - state 5)
-  const getWithdrawableChannels = () => {
-    const channels = [];
-    if (participantsChannel0 && address && participantsChannel0.includes(address) && channelStats0?.[2] === 5) {
-      channels.push(0);
-    }
-    if (participantsChannel1 && address && participantsChannel1.includes(address) && channelStats1?.[2] === 5) {
-      channels.push(1);
-    }
-    if (participantsChannel2 && address && participantsChannel2.includes(address) && channelStats2?.[2] === 5) {
-      channels.push(2);
-    }
-    return channels;
-  };
-
-  const participatingChannels = getParticipatingChannels();
-  const depositableChannels = getDepositableChannels();
-  const withdrawableChannels = getWithdrawableChannels();
+  // Note: Specific channel details are now handled by the dynamic hook
+  // This component shows overall participation status rather than per-channel details
 
 
 
@@ -348,16 +238,16 @@ export function ContractInfo() {
         <div className="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 border border-orange-200 dark:border-orange-700 rounded-lg p-4">
           <div className="flex items-center gap-3">
             <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
-              isParticipant ? 'bg-orange-500' : 'bg-gray-400'
+              participatingChannels.length > 0 ? 'bg-orange-500' : 'bg-gray-400'
             }`}>
               <span className="text-white text-sm">
-                {isParticipant ? '👥' : '○'}
+                {participatingChannels.length > 0 ? '👥' : '○'}
               </span>
             </div>
             <div>
               <p className="font-medium text-gray-900 dark:text-gray-100">Participant</p>
-              <p className={`text-sm ${isParticipant ? 'text-orange-700 dark:text-orange-300' : 'text-gray-600 dark:text-gray-400'}`}>
-                {isParticipant ? 'In Channel' : 'Not Participating'}
+              <p className={`text-sm ${participatingChannels.length > 0 ? 'text-orange-700 dark:text-orange-300' : 'text-gray-600 dark:text-gray-400'}`}>
+                {participatingChannels.length > 0 ? `In ${participatingChannels.length} channel${participatingChannels.length > 1 ? 's' : ''}` : 'Not Participating'}
               </p>
             </div>
           </div>
@@ -367,16 +257,16 @@ export function ContractInfo() {
         <div className="bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
           <div className="flex items-center gap-3">
             <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
-              hasChannels ? 'bg-blue-500' : 'bg-gray-400'
+              leadingChannels.length > 0 ? 'bg-blue-500' : 'bg-gray-400'
             }`}>
               <span className="text-white text-sm">
-                {hasChannels ? '⚒' : '○'}
+                {leadingChannels.length > 0 ? '⚒' : '○'}
               </span>
             </div>
             <div>
               <p className="font-medium text-gray-900 dark:text-gray-100">Channel Leader</p>
-              <p className={`text-sm ${hasChannels ? 'text-blue-700 dark:text-blue-300' : 'text-gray-600 dark:text-gray-400'}`}>
-                {hasChannels ? 'Leading channel' : 'No channel yet'}
+              <p className={`text-sm ${leadingChannels.length > 0 ? 'text-blue-700 dark:text-blue-300' : 'text-gray-600 dark:text-gray-400'}`}>
+                {leadingChannels.length > 0 ? `Leading ${leadingChannels.length} channel${leadingChannels.length > 1 ? 's' : ''}` : 'No channel yet'}
               </p>
             </div>
           </div>
@@ -392,7 +282,7 @@ export function ContractInfo() {
               <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Contract Details</h4>
               <div className="space-y-3 text-sm">
                 <div>
-                  <span className="text-gray-600 dark:text-gray-400 block mb-1">Bridge Contract Address:</span>
+                  <span className="text-gray-600 dark:text-gray-400 block mb-1">Manager Contract Address:</span>
                   <code className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-3 py-2 rounded block font-mono break-all">
                     {ROLLUP_BRIDGE_ADDRESS}
                   </code>
@@ -405,29 +295,24 @@ export function ContractInfo() {
                   <span className="text-gray-600 dark:text-gray-400">Next Channel ID:</span>
                   <span className="font-medium text-gray-900 dark:text-gray-100">{totalChannels?.toString() || '0'}</span>
                 </div>
-                {isParticipant && channelStateNames.length > 0 && (
+                {(participatingChannels.length > 0 || leadingChannels.length > 0) && (
                   <div className="space-y-2">
-                    <span className="text-gray-600 dark:text-gray-400 block">Your Channel States:</span>
+                    <span className="text-gray-600 dark:text-gray-400 block">Your Channel Participation:</span>
                     <div className="space-y-1">
-                      {/* Display each channel the user participates in */}
-                      {participantsChannel0 && address && participantsChannel0.includes(address) && channelStats0?.[2] !== undefined && typeof channelStats0[2] === 'number' && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500 dark:text-gray-400">Channel 0:</span>
-                          <span className="font-medium text-gray-900 dark:text-gray-100">{getChannelStateName(channelStats0[2])}</span>
+                      {participatingChannels.map(channelId => (
+                        <div key={channelId} className="flex justify-between text-sm">
+                          <span className="text-gray-500 dark:text-gray-400">Channel {channelId}:</span>
+                          <span className="font-medium text-orange-700 dark:text-orange-300">
+                            Participant{leadingChannels.includes(channelId) ? ' & Leader' : ''}
+                          </span>
                         </div>
-                      )}
-                      {participantsChannel1 && address && participantsChannel1.includes(address) && channelStats1?.[2] !== undefined && typeof channelStats1[2] === 'number' && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500 dark:text-gray-400">Channel 1:</span>
-                          <span className="font-medium text-gray-900 dark:text-gray-100">{getChannelStateName(channelStats1[2])}</span>
+                      ))}
+                      {leadingChannels.filter(id => !participatingChannels.includes(id)).map(channelId => (
+                        <div key={channelId} className="flex justify-between text-sm">
+                          <span className="text-gray-500 dark:text-gray-400">Channel {channelId}:</span>
+                          <span className="font-medium text-blue-700 dark:text-blue-300">Leader Only</span>
                         </div>
-                      )}
-                      {participantsChannel2 && address && participantsChannel2.includes(address) && channelStats2?.[2] !== undefined && typeof channelStats2[2] === 'number' && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500 dark:text-gray-400">Channel 2:</span>
-                          <span className="font-medium text-gray-900 dark:text-gray-100">{getChannelStateName(channelStats2[2])}</span>
-                        </div>
-                      )}
+                      ))}
                     </div>
                   </div>
                 )}
@@ -447,7 +332,7 @@ export function ContractInfo() {
                 </div>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className={`h-2 w-2 rounded-full ${isParticipant ? 'bg-orange-500' : 'bg-gray-400'}`}></span>
+                    <span className={`h-2 w-2 rounded-full ${participatingChannels.length > 0 ? 'bg-orange-500' : 'bg-gray-400'}`}></span>
                     <span className="text-gray-600 dark:text-gray-400">Channel Participant:</span>
                   </div>
                   {participatingChannels.length > 0 ? (
@@ -521,7 +406,7 @@ export function ContractInfo() {
           </div>
 
           {/* Personal State Status - Show for all participants, including owners */}
-          {(isParticipant || isOwner) && (
+          {(participatingChannels.length > 0 || isOwner) && (
             <div className="mt-6 p-6 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg">
               <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
                 <svg className="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useDisconnect, useAccount, useContractRead } from 'wagmi';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 
 interface SidebarProps {
   isConnected: boolean;
@@ -44,59 +45,8 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
     enabled: isConnected && !!address,
   });
 
-  // Get total number of channels to check leadership
-  const { data: totalChannels } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getTotalChannels',
-    enabled: isConnected,
-  });
-
-  // Check if user is a channel leader by getting channel stats
-  const { data: channelStats0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(0)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 0,
-  });
-
-  const { data: channelStats1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(1)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 1,
-  });
-
-  // Check if user is a leader of any channels
-  const hasChannels = address && (
-    (channelStats0 && channelStats0[5] && channelStats0[5].toLowerCase() === address.toLowerCase()) ||
-    (channelStats1 && channelStats1[5] && channelStats1[5].toLowerCase() === address.toLowerCase())
-  );
-
-  // Check if user is a participant (not leader) in channels
-  const { data: participantsChannel0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(0)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 0,
-  });
-
-  const { data: participantsChannel1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(1)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 1,
-  });
-
-  // Check if user is participating in any channels (as participant, not leader)
-  const isParticipant = address && (
-    (participantsChannel0 && participantsChannel0.includes(address)) ||
-    (participantsChannel1 && participantsChannel1.includes(address))
-  ) && !hasChannels; // Participant but not leader
+  // Use the custom hook for dynamic channel leadership and participation checking
+  const { hasChannels, isParticipant, isLoading: leadershipLoading } = useUserRolesDynamic();
 
   // Base navigation items
   const baseNavigation = [
@@ -123,7 +73,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       });
     }
 
-    // Deposit and Withdraw - always available when connected (for both participants and leaders)
+    // Deposit and Withdraw - available for both participants and leaders
     if (isParticipant || hasChannels) {
       userActions.push(
         {
