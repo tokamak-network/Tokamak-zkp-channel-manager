@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useContractRead, useContractWrite, usePrepareContractWrite, useWaitForTransaction, useAccount } from 'wagmi';
+import { useContractRead, useContractWrite, usePrepareContractWrite, useWaitForTransaction, useAccount, useContractReads } from 'wagmi';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { DarkModeToggle } from '@/components/DarkModeToggle';
@@ -67,7 +67,7 @@ export default function SubmitProofPage() {
     enabled: Boolean(leaderChannel?.id !== undefined)
   });
   
-  const { data: channelParticipants } = useContractRead({
+  const { data: channelParticipants, error: participantsError, isLoading: participantsLoading } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'getChannelParticipants',
@@ -75,8 +75,31 @@ export default function SubmitProofPage() {
     enabled: Boolean(leaderChannel?.id !== undefined)
   });
 
+  // Log errors for debugging
+  useEffect(() => {
+    if (participantsError) {
+      console.error('Error fetching channel participants:', participantsError);
+    }
+  }, [participantsError]);
+
+  // Fetch L2 public keys for all channel participants
+  const l2PublicKeyContracts = channelParticipants && leaderChannel ? 
+    channelParticipants.map(participant => ({
+      address: ROLLUP_BRIDGE_ADDRESS,
+      abi: ROLLUP_BRIDGE_ABI,
+      functionName: 'getL2PublicKey',
+      args: [BigInt(leaderChannel.id), participant],
+    })) : [];
+
+  const { data: l2PublicKeysData, error: l2KeysError, isLoading: l2KeysLoading } = useContractReads({
+    contracts: l2PublicKeyContracts,
+    enabled: Boolean(channelParticipants && leaderChannel && channelParticipants.length > 0),
+  });
+
   // State to store fetched L2 addresses
   const [fetchedL2Addresses, setFetchedL2Addresses] = useState<string[]>([]);
+  const [showManualAddressInput, setShowManualAddressInput] = useState(false);
+  const [manualAddresses, setManualAddresses] = useState<string>('');
   
   const { data: isChannelReadyToClose } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
@@ -150,28 +173,135 @@ export default function SubmitProofPage() {
       // Initialize final state computation arrays - only balances now
       const defaultBalancesFS = Array(participantCount).fill('0.0');
       setParticipantBalances(defaultBalancesFS);
+      
+      // Clear computed values when participant count changes
+      setComputedFinalStateRoot('');
+      setParticipantLeavesData([]);
+      setParticipantRootsData([]);
     }
   }, [participantCount, initialBalances.length]);
 
-  // Fetch L2 addresses for all participants using viem client
+  // Fetch L2 addresses for all participants using the getL2PublicKey contract function
   useEffect(() => {
     const fetchL2Addresses = async () => {
-      if (!channelParticipants || !leaderChannel?.id) return;
+      console.log('fetchL2Addresses called', { 
+        channelParticipants, 
+        leaderChannelId: leaderChannel?.id,
+        hasAccess,
+        isConnected,
+        participantsError: !!participantsError,
+        participantsLoading,
+        l2PublicKeysData,
+        l2KeysError: !!l2KeysError,
+        l2KeysLoading
+      });
+      
+      // Early return if we don't have the required conditions
+      if (!isConnected || !hasAccess || leaderChannel?.id === undefined) {
+        console.log('Missing basic requirements for L2 address fetching', {
+          isConnected,
+          hasAccess,
+          leaderChannelId: leaderChannel?.id
+        });
+        return;
+      }
 
-      try {
-        setFetchedL2Addresses([...channelParticipants]); // For now, use L1 addresses as fallback
-        
-        // TODO: Implement proper L2 address fetching
-        // The getL2PublicKey function should return the L2 address for each participant
-        // For now, we'll use the L1 addresses directly as the system seems to work that way
-      } catch (error) {
-        console.error('Error fetching L2 addresses:', error);
+      // If we have L2 public keys data from the contract, use it
+      if (l2PublicKeysData && Array.isArray(l2PublicKeysData) && !l2KeysLoading) {
+        try {
+          console.log('L2 public keys data received:', l2PublicKeysData);
+          console.log('L2 public keys data structure:', JSON.stringify(l2PublicKeysData, null, 2));
+          
+          const l2Addresses = l2PublicKeysData.map((result: any, index) => {
+            console.log(`L2 public key result ${index}:`, result);
+            
+            // Handle different possible result structures
+            let l2Address: string | null = null;
+            
+            try {
+              // Check for success/result structure (wagmi v1 style)
+              if (result?.status === 'success' && result?.result) {
+                l2Address = result.result;
+              }
+              // Check for direct result property
+              else if (result?.result) {
+                l2Address = result.result;
+              }
+              // Check if result itself is the address
+              else if (typeof result === 'string' && result.startsWith('0x')) {
+                l2Address = result;
+              }
+              // Check if result has other properties that might contain the address
+              else if (result && typeof result === 'object') {
+                // Log all properties to understand the structure
+                console.log(`Result properties for ${index}:`, Object.keys(result));
+              }
+            } catch (error) {
+              console.error(`Error processing result ${index}:`, error);
+            }
+            
+            console.log(`Extracted L2 address for participant ${index}:`, l2Address);
+            
+            // Check if it's a valid non-zero address
+            if (l2Address && typeof l2Address === 'string' && l2Address !== '0x0000000000000000000000000000000000000000') {
+              return l2Address;
+            } else {
+              console.log(`L2 address is zero/empty for participant ${index}, using L1 address as fallback`);
+              return channelParticipants?.[index] || '';
+            }
+          }).filter(addr => addr && addr.length > 0);
+          
+          console.log('Setting L2 addresses:', l2Addresses);
+          setFetchedL2Addresses(l2Addresses);
+        } catch (error) {
+          console.error('Error processing L2 public keys:', error);
+          setFetchedL2Addresses([]);
+        }
+        return;
+      }
+
+      // If L2 keys are still loading, wait
+      if (l2KeysLoading) {
+        console.log('L2 public keys still loading...');
+        return;
+      }
+
+      // If there's an error fetching L2 keys but we have participants, use L1 as fallback
+      if (l2KeysError && channelParticipants && Array.isArray(channelParticipants)) {
+        console.log('L2 keys fetch failed, using L1 addresses as fallback:', l2KeysError);
         setFetchedL2Addresses([...channelParticipants]);
+        return;
+      }
+
+      // If participants are still loading, wait
+      if (participantsLoading) {
+        console.log('Channel participants still loading...');
+        return;
+      }
+
+      // If there's an error or no participants after loading, provide manual option
+      if (participantsError || (!participantsLoading && !channelParticipants)) {
+        console.log('No participants data available - manual input required');
       }
     };
 
     fetchL2Addresses();
-  }, [channelParticipants, leaderChannel?.id]);
+  }, [channelParticipants, leaderChannel?.id, hasAccess, isConnected, participantsError, participantsLoading, l2PublicKeysData, l2KeysError, l2KeysLoading]);
+
+  // Clear computed values when inputs change
+  useEffect(() => {
+    // Clear computed final state root when participant balances or L2 addresses change
+    setComputedFinalStateRoot('');
+    setParticipantLeavesData([]);
+    setParticipantRootsData([]);
+  }, [participantBalances, fetchedL2Addresses, leaderChannel?.id, tokenDecimals]);
+
+  // Clear generated MPT leaves when balance inputs change
+  useEffect(() => {
+    // Clear generated MPT leaves when initial/final balances change
+    setGeneratedInitialMPTLeaves([]);
+    setGeneratedFinalMPTLeaves([]);
+  }, [initialBalances, finalBalances, tokenDecimals]);
   
   // Prepare final submission data for contract call
   const prepareFinalSubmissionData = () => {
@@ -466,7 +596,7 @@ export default function SubmitProofPage() {
       
       setComputedFinalStateRoot(result.finalStateRoot);
       setParticipantLeavesData(result.participantLeaves);
-      setParticipantRootsData(result.channelRootSequence);
+      setParticipantRootsData(result.participantRoots); // Use participant roots, not channel root sequence
       
     } catch (error) {
       console.error('Error computing final state root:', error);
@@ -851,7 +981,7 @@ export default function SubmitProofPage() {
                         {fetchedL2Addresses.length > 0 && (
                           <div className="mb-6">
                             <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">
-                              Participant L2 Addresses (Auto-fetched)
+                              Participant L2 Addresses {l2KeysError ? '(L1 Fallback)' : '(From Contract)'}
                             </h5>
                             <div className="bg-blue-100 dark:bg-blue-800 p-3 rounded-lg">
                               <div className="space-y-1 text-xs">
@@ -859,8 +989,57 @@ export default function SubmitProofPage() {
                                   <div key={index} className="flex items-center gap-2 text-blue-900 dark:text-blue-100">
                                     <span className="w-20">Participant {index + 1}:</span>
                                     <span className="font-mono">{l2Address}</span>
+                                    {l2KeysError && channelParticipants && l2Address === channelParticipants[index] && (
+                                      <span className="text-xs text-blue-600 dark:text-blue-300">(L1 fallback)</span>
+                                    )}
                                   </div>
                                 ))}
+                              </div>
+                              {l2KeysError && (
+                                <div className="mt-2 text-xs text-yellow-700 dark:text-yellow-300">
+                                  ⚠️ L2 public key fetch failed, using L1 addresses as fallback
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Manual address input */}
+                        {showManualAddressInput && fetchedL2Addresses.length === 0 && (
+                          <div className="mb-6">
+                            <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">
+                              Manual Participant L2 Addresses
+                            </h5>
+                            <div className="space-y-3">
+                              <textarea
+                                value={manualAddresses}
+                                onChange={(e) => setManualAddresses(e.target.value)}
+                                className="w-full h-24 p-3 text-xs font-mono border border-blue-300 dark:border-blue-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                                placeholder="Enter participant addresses one per line, e.g.:&#10;0x1234...&#10;0x5678...&#10;0x9abc..."
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    const addresses = manualAddresses
+                                      .split('\n')
+                                      .map(addr => addr.trim())
+                                      .filter(addr => addr.length > 0);
+                                    setFetchedL2Addresses(addresses);
+                                    setShowManualAddressInput(false);
+                                  }}
+                                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
+                                >
+                                  Use These Addresses
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setShowManualAddressInput(false);
+                                    setManualAddresses('');
+                                  }}
+                                  className="px-3 py-1 bg-gray-400 hover:bg-gray-500 text-white text-xs rounded transition-colors"
+                                >
+                                  Cancel
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -898,13 +1077,83 @@ export default function SubmitProofPage() {
                         
                         {/* Compute Button */}
                         <div className="flex flex-wrap gap-2 mt-4">
-                          <button
-                            onClick={handleComputeFinalStateRoot}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            disabled={fetchedL2Addresses.length === 0}
-                          >
-                            Compute Final State Root
-                          </button>
+                          <div className="space-y-2">
+                            <button
+                              onClick={handleComputeFinalStateRoot}
+                              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              disabled={fetchedL2Addresses.length === 0}
+                            >
+                              Compute Final State Root
+                            </button>
+                            
+                            {/* User feedback for disabled state */}
+                            {fetchedL2Addresses.length === 0 && (
+                              <div className="text-xs">
+                                {!isConnected ? (
+                                  <div className="text-red-600 dark:text-red-400">
+                                    ⚠️ Please connect your wallet to submit proofs
+                                  </div>
+                                ) : !hasAccess ? (
+                                  <div className="text-red-600 dark:text-red-400">
+                                    ⚠️ Only channel leaders can submit proofs. You must be the leader of a channel to access this feature.
+                                  </div>
+                                ) : !leaderChannel ? (
+                                  <div className="text-orange-600 dark:text-orange-400">
+                                    ⏳ Loading your channel information...
+                                  </div>
+                                ) : !channelParticipants ? (
+                                  <div className="text-orange-600 dark:text-orange-400">
+                                    ⏳ Loading channel participants...
+                                  </div>
+                                ) : l2KeysLoading ? (
+                                  <div className="text-orange-600 dark:text-orange-400">
+                                    ⏳ Fetching L2 public keys from contract...
+                                  </div>
+                                ) : l2KeysError ? (
+                                  <div className="space-y-2">
+                                    <div className="text-yellow-600 dark:text-yellow-400">
+                                      ⚠️ L2 key fetch failed, using L1 addresses as fallback
+                                    </div>
+                                    <button
+                                      onClick={() => setShowManualAddressInput(true)}
+                                      className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline"
+                                    >
+                                      Enter L2 addresses manually
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    <div className="text-orange-600 dark:text-orange-400">
+                                      ⏳ Processing L2 public keys...
+                                    </div>
+                                    <button
+                                      onClick={() => setShowManualAddressInput(true)}
+                                      className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline"
+                                    >
+                                      Enter L2 addresses manually
+                                    </button>
+                                  </div>
+                                )}
+                                
+                                {/* Debug information (show only in development) */}
+                                {process.env.NODE_ENV === 'development' && (
+                                  <details className="mt-2">
+                                    <summary className="text-gray-500 cursor-pointer">Debug Info</summary>
+                                    <div className="ml-2 space-y-1 text-gray-600 dark:text-gray-400">
+                                      <div>• Connected: {isConnected ? 'Yes' : 'No'}</div>
+                                      <div>• Has access: {hasAccess ? 'Yes' : 'No'}</div>
+                                      <div>• Leader channel: {leaderChannel?.id !== undefined ? `Channel ${leaderChannel.id}` : 'None'}</div>
+                                      <div>• Channel participants: {channelParticipants ? `${channelParticipants.length} found` : 'Loading...'}</div>
+                                      <div>• L2 keys loading: {l2KeysLoading ? 'Yes' : 'No'}</div>
+                                      <div>• L2 keys error: {l2KeysError ? 'Yes' : 'No'}</div>
+                                      <div>• L2 keys data: {l2PublicKeysData ? `${l2PublicKeysData.length} results` : 'None'}</div>
+                                      <div>• L2 addresses: {fetchedL2Addresses.length} fetched</div>
+                                    </div>
+                                  </details>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                         
                         {/* Balance Summary */}
@@ -923,7 +1172,7 @@ export default function SubmitProofPage() {
                               <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200">
                                 Computed Final State Root
                               </h5>
-                              <span className="text-xs text-blue-600 dark:text-blue-400">
+                              <span className="text-xs text-green-600 dark:text-green-400">
                                 ✅ Computation complete
                               </span>
                             </div>
@@ -1100,7 +1349,7 @@ export default function SubmitProofPage() {
                               <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200">
                                 Generated MPT Leaves Preview
                               </h5>
-                              <span className="text-xs text-blue-600 dark:text-blue-400">
+                              <span className="text-xs text-green-600 dark:text-green-400">
                                 ✅ Ready to download
                               </span>
                             </div>
