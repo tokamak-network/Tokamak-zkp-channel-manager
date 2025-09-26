@@ -159,14 +159,19 @@ export class SimpleQuaternaryTree {
 export function computeLeaf(prevRoot: string, l2Address: string, balance: string): string {
   // RLC computation matching contract's _computeLeafPure
   // Use abi.encodePacked (like the contract) instead of abi.encode
-  const l2AddressBytes32 = pad(toHex(BigInt(l2Address)), { size: 32 });
+  const l2AddressBigInt = BigInt(l2Address);
+  const l2AddressBytes32 = pad(toHex(l2AddressBigInt), { size: 32 });
   const packedData = concat([prevRoot as `0x${string}`, l2AddressBytes32]);
   const gamma = keccak256(packedData);
   
   // RLC formula: l2Address + gamma * balance
-  // Use BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff") + 1n for 2^256
-  const maxUint256 = BigInt("0x10000000000000000000000000000000000000000000000000000000000000000");
-  const leafValue = (BigInt(l2Address) + BigInt(gamma) * BigInt(balance)) % maxUint256;
+  const gammaBigInt = BigInt(gamma);
+  const balanceBigInt = BigInt(balance);
+  
+  // Handle potential overflow by using modular arithmetic  
+  const maxUint256 = (BigInt(1) << BigInt(256)) - BigInt(1); // 2^256 - 1
+  const leafValue = (l2AddressBigInt + (gammaBigInt * balanceBigInt) % (maxUint256 + BigInt(1))) % (maxUint256 + BigInt(1));
+  
   return pad(toHex(leafValue), { size: 32 });
 }
 
@@ -443,14 +448,19 @@ export class QuaternaryMerkleTree {
     }
 
     // Compute gamma = keccak256(abi.encodePacked(prevRoot, bytes32(l2Address)))
-    const l2AddressBytes32 = pad(toHex(BigInt(l2Address)), { size: 32 });
+    const l2AddressBigInt = BigInt(l2Address);
+    const l2AddressBytes32 = pad(toHex(l2AddressBigInt), { size: 32 });
     const packedData = concat([prevRoot as `0x${string}`, l2AddressBytes32]);
     const gamma = keccak256(packedData);
 
     // RLC formula: l2Address + gamma * balance
-    // Use BigInt("0x10000000000000000000000000000000000000000000000000000000000000000") for 2^256
-    const maxUint256 = BigInt("0x10000000000000000000000000000000000000000000000000000000000000000");
-    const leafValue = (BigInt(l2Address) + BigInt(gamma) * BigInt(balance)) % maxUint256;
+    const gammaBigInt = BigInt(gamma);
+    const balanceBigInt = BigInt(balance);
+    
+    // Match Solidity's unchecked overflow behavior - wrap at 2^256 exactly like uint256
+    const maxUint256Plus1 = BigInt(1) << BigInt(256); // 2^256
+    const leafValue = (l2AddressBigInt + gammaBigInt * balanceBigInt) % maxUint256Plus1;
+    
     return pad(toHex(leafValue), { size: 32 });
   }
 
@@ -530,50 +540,153 @@ export function computeFinalStateRoot(channelId: number, participants: Array<{ l
   finalStateRoot: string;
   channelRootSequence: string[];
   participantLeaves: string[];
+  participantRoots: string[];
 } {
-  const tree = new QuaternaryMerkleTree(3); // TREE_DEPTH = 3 in contract
+  // Simulate contract storage exactly
+  const TREE_DEPTH = 3;
+  const cachedSubtrees: string[] = new Array(TREE_DEPTH).fill('0x0000000000000000000000000000000000000000000000000000000000000000');
+  const channelRootSequence: string[] = [];
   const participantLeaves: string[] = [];
+  const participantRoots: string[] = [];
+  let nextLeafIndex = 0;
+  let currentRootIndex = 0;
   let nonce = 0;
 
-  console.log('=== COMPUTING FINAL STATE ROOT (Submit-Proof Page) ===');
+  console.log('=== COMPUTING FINAL STATE ROOT (Contract Logic) ===');
   console.log('Channel ID:', channelId);
   console.log('Participants:', participants.length);
 
-  // Process each participant like the contract does in initializeChannelState
-  for (const participant of participants) {
+  // Helper function matching contract's _computeLeaf exactly
+  function computeLeafFromContract(channelId: number, l2Address: string, balance: string, nonce: number): string {
+    // Get previous root: if nonce == 0, use channelId, else use last root in sequence
+    let prevRoot: string;
+    if (nonce === 0) {
+      prevRoot = pad(toHex(BigInt(channelId)), { size: 32 }); // bytes32(channelId)
+    } else {
+      if (channelRootSequence.length === 0 || nonce > channelRootSequence.length) {
+        throw new Error("Invalid root sequence access");
+      }
+      prevRoot = channelRootSequence[nonce - 1];
+    }
+
+    // Compute gamma = keccak256(abi.encodePacked(prevRoot, bytes32(l2Address)))
+    // Convert l2Address to BigInt first, then to padded bytes32
+    const l2AddressBigInt = BigInt(l2Address);
+    const l2AddressBytes32 = pad(toHex(l2AddressBigInt), { size: 32 });
+    const packedData = concat([prevRoot as `0x${string}`, l2AddressBytes32]);
+    const gamma = keccak256(packedData);
+
+    // RLC formula: l2Address + gamma * balance (with overflow wrapping)
+    const gammaBigInt = BigInt(gamma);
+    const balanceBigInt = BigInt(balance);
+    
+    // Match Solidity's unchecked overflow behavior - wrap at 2^256 exactly like uint256
+    const maxUint256Plus1 = BigInt(1) << BigInt(256); // 2^256
+    const leafValue = (l2AddressBigInt + gammaBigInt * balanceBigInt) % maxUint256Plus1;
+    
+    return pad(toHex(leafValue), { size: 32 });
+  }
+
+  // Helper function matching contract's _insertLeaf exactly
+  function insertLeafFromContract(leafHash: string): void {
+    const leafIndex = nextLeafIndex;
+
+    // Check if tree is full
+    if (leafIndex >= 4 ** TREE_DEPTH) {
+      throw new Error("MerkleTreeFull");
+    }
+
+    console.log(`Inserting leaf ${leafIndex}: ${leafHash}`);
+
+    // Update the cached subtrees and compute new root (matching contract exactly)
+    let currentHash = leafHash;
+    let currentIndex = leafIndex;
+
+    for (let level = 0; level < TREE_DEPTH; level++) {
+      console.log(`Level ${level}: currentIndex=${currentIndex}, currentIndex%4=${currentIndex % 4}`);
+      
+      if (currentIndex % 4 === 0) {
+        // This is a leftmost node, cache it and break
+        cachedSubtrees[level] = currentHash;
+        console.log(`  Caching leftmost node at level ${level}: ${currentHash}`);
+        break;
+      } else {
+        // Compute parent hash using 4 children
+        const left = cachedSubtrees[level] || '0x0000000000000000000000000000000000000000000000000000000000000000';
+        const child2 = currentIndex % 4 >= 2 ? currentHash : '0x0000000000000000000000000000000000000000000000000000000000000000';
+        const child3 = currentIndex % 4 === 3 ? currentHash : '0x0000000000000000000000000000000000000000000000000000000000000000';
+        const child4 = '0x0000000000000000000000000000000000000000000000000000000000000000';
+
+        console.log(`  Computing parent: left=${left}, child2=${child2}, child3=${child3}, child4=${child4}`);
+        const packed = concat([left as `0x${string}`, child2 as `0x${string}`, child3 as `0x${string}`, child4 as `0x${string}`]);
+        currentHash = keccak256(packed);
+        console.log(`  New hash: ${currentHash}`);
+        currentIndex = Math.floor(currentIndex / 4);
+      }
+    }
+
+    // Update tree state
+    nextLeafIndex = leafIndex + 1;
+
+    // Store new root (like contract stores in roots[channelId][newRootIndex])
+    currentRootIndex++;
+    channelRootSequence.push(currentHash);
+    
+    console.log(`New root ${currentRootIndex}: ${currentHash}`);
+  }
+
+  // Process each participant exactly like contract's initializeChannelState
+  for (let i = 0; i < participants.length; i++) {
+    const participant = participants[i];
     const { l2Address, balance } = participant;
 
-    console.log(`Processing participant ${nonce}:`);
+    console.log(`Processing participant ${i} (nonce ${nonce}):`);
     console.log(`  L2 Address: ${l2Address}`);
     console.log(`  Balance: ${balance}`);
 
-    // Compute and insert leaf (matching contract logic exactly)
-    const leaf = tree.computeLeaf(channelId, l2Address, balance, nonce);
-    tree.insertLeaf(leaf);
+    // Compute leaf exactly like contract _computeLeaf
+    const leaf = computeLeafFromContract(channelId, l2Address, balance, nonce);
     participantLeaves.push(leaf);
 
     console.log(`  Computed leaf: ${leaf}`);
-    console.log(`  Current root: ${tree.getCurrentRoot()}`);
 
-    nonce++;
+    // Insert leaf exactly like contract _insertLeaf  
+    insertLeafFromContract(leaf);
+
+    // Store the current root as this participant's root (what gets stored in participantRoots)
+    const currentParticipantRoot = channelRootSequence[channelRootSequence.length - 1];
+    participantRoots.push(currentParticipantRoot);
+
+    console.log(`  Participant ${i} root: ${currentParticipantRoot}`);
+
+    // DON'T increment nonce here - all participants use the same nonce (0) during initialization
+    // nonce++;
   }
 
+  // After processing all participants, increment nonce (matching contract line 437)
+  nonce++;
+
+  // Get final root (matching contract: channel.initialStateRoot = $.roots[channelId][$.currentRootIndex[channelId]])
+  const finalStateRoot = channelRootSequence[channelRootSequence.length - 1] || pad('0x0', { size: 32 });
+
   const finalResult = {
-    finalStateRoot: tree.getCurrentRoot(),
-    channelRootSequence: tree.getChannelRootSequence(),
-    participantLeaves
+    finalStateRoot,
+    channelRootSequence,
+    participantLeaves,
+    participantRoots
   };
 
   console.log('=== FINAL STATE ROOT COMPUTATION COMPLETE ===');
   console.log('Final state root:', finalResult.finalStateRoot);
   console.log('Channel root sequence:', finalResult.channelRootSequence);
   console.log('Participant leaves:', finalResult.participantLeaves);
+  console.log('Participant roots:', finalResult.participantRoots);
 
   return finalResult;
 }
 
 export function computeFinalStateRootWithParticipantRoots(
-  channelId: number, 
+  _channelId: number, 
   participants: Array<{ l2Address: string; balance: string; participantRoot: string }>
 ): {
   finalStateRoot: string;
