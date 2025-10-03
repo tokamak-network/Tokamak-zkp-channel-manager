@@ -92,8 +92,6 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
       targetContract: formData.targetContract as `0x${string}`,
       participants: parseParticipantAddresses(participantsText) as `0x${string}`[],
       l2PublicKeys: parseParticipantAddresses(l2KeysText) as `0x${string}`[],
-      preprocessedPart1: [], // Empty for now - would be populated in production
-      preprocessedPart2: [], // Empty for now - would be populated in production
       timeout: timeoutToSeconds(parseFloat(formData.timeout), formData.timeoutUnit),
       pkx: formData.pkx ? BigInt(formData.pkx) : BigInt(0),
       pky: formData.pky ? BigInt(formData.pky) : BigInt(0)
