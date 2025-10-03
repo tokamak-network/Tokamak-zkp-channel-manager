@@ -53,11 +53,51 @@
   * {
     @apply border-gray-200;
   }
+  
+  /* Root element styling to prevent white background during overscroll */
   html {
-    @apply bg-background;
+    @apply bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-slate-900;
+    min-height: 100vh;
+    min-height: 100dvh; /* Dynamic viewport height for mobile */
+    background-attachment: fixed;
+    /* Prevent overscroll bounce effect */
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
+    /* Ensure background covers beyond viewport */
+    background-size: 100% 120vh;
   }
+  
   body {
-    @apply bg-background text-foreground;
+    @apply bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-slate-900 text-foreground;
+    min-height: 100vh;
+    min-height: 100dvh;
+    background-attachment: fixed;
+    /* Prevent overscroll bounce */
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
+    /* Ensure background covers beyond viewport */
+    background-size: 100% 120vh;
+    /* Prevent pull-to-refresh and overscroll glow */
+    overscroll-behavior-x: none;
+  }
+  
+  /* Additional safety net for the root container */
+  #__next {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  
+  /* Create extended background to cover overscroll areas */
+  html::before {
+    content: '';
+    position: fixed;
+    top: -100vh;
+    left: 0;
+    right: 0;
+    height: 300vh;
+    @apply bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-slate-900;
+    z-index: -9999;
+    pointer-events: none;
   }
 }
 
@@ -105,15 +145,15 @@
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-gray-100;
+  @apply bg-gray-100 dark:bg-gray-800;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 rounded-full;
+  @apply bg-gray-300 dark:bg-gray-600 rounded-full;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400;
+  @apply bg-gray-400 dark:bg-gray-500;
 }
 
 /* Loading animations */
