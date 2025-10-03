@@ -71,11 +71,6 @@ export default function CreateChannelPage() {
   const [timeout, setTimeout] = useState(24); // in hours
   const [pkx, setPkx] = useState('');
   const [pky, setPky] = useState('');
-  const [preprocessData, setPreprocessData] = useState<{
-    preprocess_entries_part1: string[];
-    preprocess_entries_part2: string[];
-  } | null>(null);
-  const [preprocessError, setPreprocessError] = useState<string>('');
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [createdChannelId, setCreatedChannelId] = useState<string>('');
   const [txHash, setTxHash] = useState<string>('');
@@ -99,63 +94,6 @@ export default function CreateChannelPage() {
     setParticipants(newParticipants);
   };
 
-  // Handle JSON file upload for preprocess data
-  const handlePreprocessFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (file.type !== 'application/json') {
-      setPreprocessError('Please upload a JSON file');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const text = e.target?.result as string;
-        const data = JSON.parse(text);
-        
-        // Validate the JSON structure
-        if (!data.preprocess_entries_part1 || !data.preprocess_entries_part2) {
-          setPreprocessError('JSON must contain preprocess_entries_part1 and preprocess_entries_part2 arrays');
-          return;
-        }
-
-        if (!Array.isArray(data.preprocess_entries_part1) || !Array.isArray(data.preprocess_entries_part2)) {
-          setPreprocessError('preprocess_entries_part1 and preprocess_entries_part2 must be arrays');
-          return;
-        }
-
-        // Validate hex strings
-        const isValidHex16 = (str: string) => /^0x[a-fA-F0-9]{32}$/.test(str);
-        const isValidHex64 = (str: string) => /^0x[a-fA-F0-9]{64}$/.test(str);
-
-        const part1Valid = data.preprocess_entries_part1.every((entry: any) => 
-          typeof entry === 'string' && isValidHex16(entry)
-        );
-        const part2Valid = data.preprocess_entries_part2.every((entry: any) => 
-          typeof entry === 'string' && isValidHex64(entry)
-        );
-
-        if (!part1Valid) {
-          setPreprocessError('preprocess_entries_part1 must contain 32-character hex strings (0x + 32 hex chars)');
-          return;
-        }
-
-        if (!part2Valid) {
-          setPreprocessError('preprocess_entries_part2 must contain 64-character hex strings (0x + 64 hex chars)');
-          return;
-        }
-
-        setPreprocessData(data);
-        setPreprocessError('');
-      } catch (error) {
-        setPreprocessError('Invalid JSON format');
-      }
-    };
-    
-    reader.readAsText(file);
-  };
 
   // Validation
   const isValidEthereumAddress = (addr: string) => /^0x[a-fA-F0-9]{40}$/.test(addr);
@@ -172,22 +110,15 @@ export default function CreateChannelPage() {
       ) &&
       timeout >= 1 && timeout <= 168 && // 1 hour to 7 days
       isValidHex(pkx) &&
-      isValidHex(pky) &&
-      preprocessData !== null // Preprocess data is required
+      isValidHex(pky)
     );
   };
 
   // Prepare contract call
-  const channelParams = isFormValid() && preprocessData ? {
+  const channelParams = isFormValid() ? {
     targetContract: targetContract as `0x${string}`,
     participants: participants.map(p => p.address as `0x${string}`),
     l2PublicKeys: participants.map(p => p.l2PublicKey as `0x${string}`),
-    preprocessedPart1: preprocessData.preprocess_entries_part1.map(entry => 
-      BigInt(entry) // Convert hex string to bigint
-    ),
-    preprocessedPart2: preprocessData.preprocess_entries_part2.map(entry => 
-      BigInt(entry) // Convert hex string to bigint
-    ),
     timeout: BigInt(timeout * 3600), // Convert hours to seconds
     pkx: BigInt(pkx),
     pky: BigInt(pky)
@@ -498,65 +429,6 @@ export default function CreateChannelPage() {
                 </p>
               </div>
 
-              {/* Preprocess Data Upload */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Preprocess Data (JSON File)
-                </label>
-                <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center hover:border-gray-400 dark:hover:border-gray-500 transition-colors">
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={handlePreprocessFileUpload}
-                    className="hidden"
-                    id="preprocess-upload"
-                  />
-                  <label
-                    htmlFor="preprocess-upload"
-                    className="cursor-pointer flex flex-col items-center"
-                  >
-                    <div className="h-12 w-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center mb-3">
-                      <span className="text-2xl">📄</span>
-                    </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
-                      {preprocessData ? 'File uploaded successfully!' : 'Click to upload JSON file'}
-                    </p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">
-                      Upload JSON with preprocess_entries_part1 and preprocess_entries_part2
-                    </p>
-                  </label>
-                </div>
-                
-                {preprocessError && (
-                  <p className="text-red-600 dark:text-red-400 text-sm mt-2">{preprocessError}</p>
-                )}
-                
-                {preprocessData && (
-                  <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-md transition-colors duration-300">
-                    <p className="text-green-800 dark:text-green-300 text-sm font-medium">✓ Preprocess data loaded</p>
-                    <p className="text-green-700 dark:text-green-400 text-xs mt-1">
-                      Part 1: {preprocessData.preprocess_entries_part1.length} entries, 
-                      Part 2: {preprocessData.preprocess_entries_part2.length} entries
-                    </p>
-                  </div>
-                )}
-                
-                <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-md transition-colors duration-300">
-                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Expected JSON format:</p>
-                  <pre className="text-xs text-gray-600 dark:text-gray-400 overflow-x-auto">
-{`{
-  "preprocess_entries_part1": [
-    "0x1186b2f2b6871713b10bc24ef04a9a39",
-    "0x02b36b71d4948be739d14bb0e8f4a887"
-  ],
-  "preprocess_entries_part2": [
-    "0x7e084b3358f7f1404f0a4ee1acc6d254997032f77fd77593fab7c896b7cfce1e",
-    "0xe2dfa30cd1fca5558bfe26343dc755a0a52ef6115b9aef97d71b047ed5d830c8"
-  ]
-}`}
-                  </pre>
-                </div>
-              </div>
 
               {/* Group Public Key */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

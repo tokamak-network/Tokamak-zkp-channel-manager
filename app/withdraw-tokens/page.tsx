@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount, useContractRead, useContractWrite, usePrepareContractWrite, useWaitForTransaction, useContractReads } from 'wagmi';
+import { readContract } from 'wagmi/actions';
 import { formatUnits, parseUnits } from 'viem';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
@@ -309,7 +310,7 @@ export default function WithdrawTokensPage() {
       BigInt(generatedProof.claimedBalance),
       BigInt(generatedProof.leafIndex),
       generatedProof.merkleProof as `0x${string}`[]
-    ] : undefined,
+    ] : [BigInt(0), BigInt(0), BigInt(0), [] as `0x${string}`[]], // Provide dummy args when no proof
     enabled: Boolean(
       generatedProof &&
       address &&
@@ -376,21 +377,57 @@ export default function WithdrawTokensPage() {
       }
       
       console.log('Channel has valid final state root, proceeding with withdrawal proof generation...');
-      // Get the L2 address for this L1 address and channel from dynamic data
+      
+      // Get the L2 address for this L1 address - validate it's a proper hex address
       let userL2Address = l2Address;
       
-      // If no L2 address mapping exists, derive it from L1 address for development/testing
-      if (!userL2Address || userL2Address === '0x0000000000000000000000000000000000000000') {
-        // For development: create a deterministic L2 address based on L1 address and channel
-        // This is a simple approach - in production you'd want a more sophisticated mapping
-        const addressNum = BigInt(address);
-        const channelOffset = BigInt(selectedChannel.channelId.toString()) + BigInt(1000000);
-        const maxAddress = BigInt("0xffffffffffffffffffffffffffffffffffffffff"); // 2^160 - 1
-        const derivedL2 = (addressNum + channelOffset) % (maxAddress + BigInt(1));
-        userL2Address = `0x${derivedL2.toString(16).padStart(40, '0')}`;
+      console.log('Raw L2 address from channelInfo:', l2Address);
+      
+      // Validate that the L2 address is actually a valid Ethereum address, not a token symbol
+      const isValidL2Address = userL2Address && 
+                               typeof userL2Address === 'string' && 
+                               userL2Address.startsWith('0x') && 
+                               userL2Address.length === 42 &&
+                               userL2Address !== '0x0000000000000000000000000000000000000000';
+      
+      if (!isValidL2Address) {
+        console.log(`Invalid L2 address (${userL2Address}), fetching from contract...`);
         
-        console.log(`No L2 public key found, using derived L2 address: ${userL2Address} for L1: ${address} in channel ${selectedChannel.channelId}`);
+        // Fetch L2 address directly from contract
+        try {
+          const contractL2Address = await readContract({
+            address: ROLLUP_BRIDGE_ADDRESS,
+            abi: ROLLUP_BRIDGE_ABI,
+            functionName: 'getL2PublicKey',
+            args: [selectedChannel.channelId, address as `0x${string}`],
+          });
+          
+          if (contractL2Address && contractL2Address !== '0x0000000000000000000000000000000000000000') {
+            userL2Address = contractL2Address as string;
+            console.log('Fetched L2 address from contract:', userL2Address);
+          } else {
+            throw new Error('Contract returned zero address');
+          }
+        } catch (error) {
+          console.warn('Failed to fetch L2 address from contract, using derived address');
+          // Fallback: derive L2 address from L1 address
+          const addressNum = BigInt(address);
+          const channelOffset = BigInt(selectedChannel.channelId.toString()) + BigInt(1000000);
+          const maxAddress = BigInt("0xffffffffffffffffffffffffffffffffffffffff"); // 2^160 - 1
+          const derivedL2 = (addressNum + channelOffset) % (maxAddress + BigInt(1));
+          userL2Address = `0x${derivedL2.toString(16).padStart(40, '0')}`;
+          console.log(`Using derived L2 address: ${userL2Address} for L1: ${address} in channel ${selectedChannel.channelId}`);
+        }
+      } else {
+        console.log('Using valid L2 address from channelInfo:', userL2Address);
       }
+      
+      // Final validation - ensure we have a valid L2 address
+      if (!userL2Address || typeof userL2Address !== 'string') {
+        throw new Error('Failed to obtain valid L2 address for withdrawal proof generation');
+      }
+      
+      console.log('Final userL2Address for proof generation:', userL2Address);
       
       // Get real participant data from dynamic channel data
       if (!participants || participants.length === 0) {
@@ -401,11 +438,47 @@ export default function WithdrawTokensPage() {
       const participantsData: Array<{ l2Address: string; balance: string }> = [];
       
       for (const participant of participants) {
+        // Validate that participant is actually an Ethereum address, not a token symbol
+        const isValidAddress = typeof participant === 'string' && 
+                              participant.startsWith('0x') && 
+                              participant.length === 42;
+        
+        if (!isValidAddress) {
+          console.warn(`Skipping invalid participant address: ${participant}`);
+          continue; // Skip non-address entries
+        }
+        
         // Get L2 address for each participant
         let participantL2Address = userL2Address; // Default to user's if this is the user
         if (participant.toLowerCase() !== address.toLowerCase()) {
-          // For other participants, we don't have individual L2 address data, so fallback to L1
-          participantL2Address = participant;
+          // For other participants, we need to fetch their L2 public keys from the contract
+          try {
+            const otherUserL2Address = await readContract({
+              address: ROLLUP_BRIDGE_ADDRESS,
+              abi: ROLLUP_BRIDGE_ABI,
+              functionName: 'getL2PublicKey',
+              args: [selectedChannel.channelId, participant as `0x${string}`],
+            });
+            
+            if (otherUserL2Address && otherUserL2Address !== '0x0000000000000000000000000000000000000000') {
+              participantL2Address = otherUserL2Address as string;
+            } else {
+              // Fallback: derive L2 address for other participants
+              const participantAddressNum = BigInt(participant);
+              const channelOffset = BigInt(selectedChannel.channelId.toString()) + BigInt(2000000);
+              const maxAddress = BigInt("0xffffffffffffffffffffffffffffffffffffffff");
+              const derivedL2 = (participantAddressNum + channelOffset) % (maxAddress + BigInt(1));
+              participantL2Address = `0x${derivedL2.toString(16).padStart(40, '0')}`;
+            }
+          } catch (error) {
+            console.warn(`Failed to get L2 address for participant ${participant}, using fallback`);
+            // Fallback: derive L2 address
+            const participantAddressNum = BigInt(participant);
+            const channelOffset = BigInt(selectedChannel.channelId.toString()) + BigInt(2000000);
+            const maxAddress = BigInt("0xffffffffffffffffffffffffffffffffffffffff");
+            const derivedL2 = (participantAddressNum + channelOffset) % (maxAddress + BigInt(1));
+            participantL2Address = `0x${derivedL2.toString(16).padStart(40, '0')}`;
+          }
         }
         
         // Get deposit balance for each participant
@@ -425,14 +498,27 @@ export default function WithdrawTokensPage() {
         });
       }
       
-      // Get participant roots for the selected channel from dynamic data
-      const participantRootsForChannel = participantRoots ? participantRoots.map(root => root as string) : [];
+      if (participantsData.length === 0) {
+        throw new Error('No valid participants found after filtering. Check if participant data contains proper Ethereum addresses.');
+      }
+      
+      // Fetch participant roots directly from the contract using getChannelParticipantRoots
+      console.log('Fetching participant roots from contract for channel:', selectedChannel.channelId.toString());
+      
+      const participantRootsResult = await readContract({
+        address: ROLLUP_BRIDGE_ADDRESS,
+        abi: ROLLUP_BRIDGE_ABI,
+        functionName: 'getChannelParticipantRoots',
+        args: [selectedChannel.channelId],
+      });
+      
+      const participantRootsForChannel = Array.isArray(participantRootsResult) ? participantRootsResult.map(root => root as string) : [];
       
       if (participantRootsForChannel.length === 0) {
         throw new Error('Participant roots not available for this channel. Make sure aggregated proof has been submitted.');
       }
       
-      console.log('Using participant roots:', participantRootsForChannel);
+      console.log('Fetched participant roots from contract:', participantRootsForChannel);
 
       // Generate withdrawal proof using L2 address and final state root
       const proof = await generateWithdrawalProof(

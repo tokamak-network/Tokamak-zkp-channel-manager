@@ -1,7 +1,7 @@
 import { Address } from 'wagmi';
 
 // Contract addresses - update these with actual deployed contract addresses
-export const ROLLUP_BRIDGE_ADDRESS: Address = '0x12A4db45153672d11D0c18453Fd86B2f5394Ee11' as Address; 
+export const ROLLUP_BRIDGE_ADDRESS: Address = '0x43D25e32b81523BBE9E2dDCFD9493ccD0dBB0c6e' as Address; 
 export const VERIFIER_ADDRESS: Address = '0x708fbfE3acC1F65948304015f1789a05383a674b' as Address; 
 export const ZECFROST_ADDRESS: Address = '0x242E4891d939ec102cA5bBC597ea6490DA0902CD' as Address; 
 
@@ -18,8 +18,6 @@ export const ROLLUP_BRIDGE_ABI = [
           { name: 'targetContract', type: 'address' },
           { name: 'participants', type: 'address[]' },
           { name: 'l2PublicKeys', type: 'address[]' },
-          { name: 'preprocessedPart1', type: 'uint128[]' },
-          { name: 'preprocessedPart2', type: 'uint256[]' },
           { name: 'timeout', type: 'uint256' },
           { name: 'pkx', type: 'uint256' },
           { name: 'pky', type: 'uint256' }
@@ -254,6 +252,13 @@ export const ROLLUP_BRIDGE_ABI = [
     stateMutability: 'view',
     type: 'function'
   },
+  {
+    inputs: [{ name: 'targetContract', type: 'address' }],
+    name: 'isAllowedTargetContract',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
 
   // Additional view functions
   {
@@ -301,6 +306,18 @@ export const ROLLUP_BRIDGE_ABI = [
   {
     inputs: [{ name: 'creator', type: 'address' }],
     name: 'authorizeCreator',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function'
+  },
+  {
+    inputs: [
+      { name: 'targetContract', type: 'address' },
+      { name: 'preprocessedPart1', type: 'uint128[]' },
+      { name: 'preprocessedPart2', type: 'uint256[]' },
+      { name: 'allowed', type: 'bool' }
+    ],
+    name: 'setAllowedTargetContract',
     outputs: [],
     stateMutability: 'nonpayable',
     type: 'function'
