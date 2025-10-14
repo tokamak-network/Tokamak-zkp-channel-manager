@@ -1,0 +1,143 @@
+version: '3.8'
+
+services:
+  tokamak-dkg-server:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: tokamak-dkg-server
+    restart: unless-stopped
+    
+    ports:
+      - "9000:9000"  # WebSocket DKG endpoint
+      - "9001:9001"  # Metrics endpoint  
+      - "9002:9002"  # Health check endpoint
+    
+    environment:
+      - DKG_SERVER_BIND=0.0.0.0:9000
+      - DKG_SERVER_LOG_LEVEL=info
+      - DKG_SERVER_DEV_MODE=false
+      - DKG_METRICS_PORT=9001
+      - DKG_HEALTH_CHECK_PORT=9002
+      - DKG_MAX_CONNECTIONS=100
+      - DKG_SESSION_TIMEOUT=3600
+    
+    volumes:
+      - dkg_data:/app/data
+      - dkg_logs:/app/logs
+      - ./config:/app/config:ro
+    
+    networks:
+      - dkg_network
+    
+    # Resource limits for production
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.5'
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Logging configuration
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+        compress: "true"
+
+  # Optional: Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: dkg-prometheus
+    restart: unless-stopped
+    
+    ports:
+      - "9090:9090"
+    
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    
+    networks:
+      - dkg_network
+    
+    profiles:
+      - monitoring
+
+  # Optional: Grafana for metrics visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: dkg-grafana
+    restart: unless-stopped
+    
+    ports:
+      - "3000:3000"
+    
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    
+    networks:
+      - dkg_network
+    
+    profiles:
+      - monitoring
+
+  # Optional: Redis for session persistence (if needed for scaling)  
+  redis:
+    image: redis:7-alpine
+    container_name: dkg-redis
+    restart: unless-stopped
+    
+    ports:
+      - "6379:6379"
+    
+    volumes:
+      - redis_data:/data
+    
+    command: redis-server --appendonly yes
+    
+    networks:
+      - dkg_network
+    
+    profiles:
+      - persistence
+
+networks:
+  dkg_network:
+    driver: bridge
+
+volumes:
+  dkg_data:
+    driver: local
+  dkg_logs:
+    driver: local  
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  redis_data:
+    driver: local
