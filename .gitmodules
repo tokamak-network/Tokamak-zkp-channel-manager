@@ -1,3 +1,6 @@
 [submodule "contracts"]
 	path = contracts
 	url = https://github.com/tokamak-network/Tokamak-zk-EVM-contracts.git
+[submodule "frost-dkg"]
+	path = frost-dkg
+	url = https://github.com/tokamak-network/threshold-signature-Frost.git

@@ -73,6 +73,15 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       });
     }
 
+    // DKG Management - available for all connected users
+    userActions.push({
+      name: 'DKG Management',
+      href: '/dkg-management',
+      icon: '🔑',
+      description: 'Distributed Key Generation',
+      requiresConnection: true
+    });
+
     // Deposit and Withdraw - available for both participants and leaders
     if (isParticipant || hasChannels) {
       userActions.push(
