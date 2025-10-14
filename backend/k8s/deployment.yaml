@@ -1,0 +1,168 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tokamak-dkg-server
+  labels:
+    app: tokamak-dkg-server
+    version: v1.0.0
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: tokamak-dkg-server
+  template:
+    metadata:
+      labels:
+        app: tokamak-dkg-server
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9001"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: dkg-server
+        image: tokamak-dkg-server:latest
+        imagePullPolicy: IfNotPresent
+        
+        ports:
+        - containerPort: 9000
+          name: websocket
+          protocol: TCP
+        - containerPort: 9001
+          name: metrics
+          protocol: TCP
+        - containerPort: 9002
+          name: health
+          protocol: TCP
+        
+        env:
+        - name: DKG_SERVER_BIND
+          value: "0.0.0.0:9000"
+        - name: DKG_SERVER_LOG_LEVEL
+          value: "info"
+        - name: DKG_SERVER_DEV_MODE
+          value: "false"
+        - name: DKG_METRICS_PORT
+          value: "9001"
+        - name: DKG_HEALTH_CHECK_PORT
+          value: "9002"
+        - name: DKG_MAX_CONNECTIONS
+          value: "100"
+        - name: DKG_SESSION_TIMEOUT
+          value: "3600"
+        
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: health
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        volumeMounts:
+        - name: data-volume
+          mountPath: /app/data
+        - name: logs-volume
+          mountPath: /app/logs
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+        
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      
+      volumes:
+      - name: data-volume
+        emptyDir: {}
+      - name: logs-volume
+        emptyDir: {}
+      - name: config-volume
+        configMap:
+          name: dkg-server-config
+      
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - tokamak-dkg-server
+              topologyKey: kubernetes.io/hostname
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tokamak-dkg-server
+  labels:
+    app: tokamak-dkg-server
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9000
+    targetPort: websocket
+    protocol: TCP
+    name: websocket
+  - port: 9001
+    targetPort: metrics
+    protocol: TCP
+    name: metrics  
+  - port: 9002
+    targetPort: health
+    protocol: TCP
+    name: health
+  selector:
+    app: tokamak-dkg-server
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tokamak-dkg-server-external
+  labels:
+    app: tokamak-dkg-server
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 9000
+    targetPort: websocket
+    protocol: TCP
+    name: websocket
+  selector:
+    app: tokamak-dkg-server

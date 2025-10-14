@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dkg-server-config
+  labels:
+    app: tokamak-dkg-server
+data:
+  server.toml: |
+    # Tokamak DKG Server Configuration
+    
+    [server]
+    bind = "0.0.0.0:9000"
+    log_level = "info"
+    dev_mode = false
+    max_connections = 100
+    session_timeout = 3600
+    
+    [security]
+    enable_tls = false
+    rate_limit_connections = 10
+    rate_limit_messages = 100
+    
+    [monitoring]
+    metrics_port = 9001
+    health_check_port = 9002
+    enable_prometheus = true
+    
+    [logging]
+    format = "json"
+    level = "info"
+    
+  logging.yaml: |
+    # Logging configuration for structured logs
+    version: 1
+    disable_existing_loggers: false
+    
+    formatters:
+      json:
+        format: '{"timestamp": "%(asctime)s", "level": "%(levelname)s", "message": "%(message)s", "component": "dkg-server"}'
+      simple:
+        format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    
+    handlers:
+      console:
+        class: logging.StreamHandler
+        level: INFO
+        formatter: json
+        stream: ext://sys.stdout
+      
+      file:
+        class: logging.FileHandler
+        level: DEBUG
+        formatter: json
+        filename: /app/logs/dkg-server.log
+    
+    loggers:
+      dkg:
+        level: INFO
+        handlers: [console, file]
+        propagate: false
+    
+    root:
+      level: INFO
+      handlers: [console]
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dkg-server-secrets
+  labels:
+    app: tokamak-dkg-server
+type: Opaque
+data:
+  # These should be base64 encoded in production
+  # Example: echo -n "your-secret" | base64
+  admin_token: "YWRtaW4tdG9rZW4tY2hhbmdlLW1l"  # admin-token-change-me
+  jwt_secret: "and0LXNlY3JldC1jaGFuZ2UtbWU="    # jwt-secret-change-me

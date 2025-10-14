@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, useSignMessage } from 'wagmi';
+import { recoverPublicKey, keccak256, toBytes, hexToBytes } from 'viem';
 import { Layout } from '@/components/Layout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 
+interface DKGParticipant {
+  uid: number;
+  publicKey: string; // ECDSA public key for authenticated channel
+  nickname?: string;
+  address?: string; // Optional wallet address
+}
+
 interface DKGSession {
   id: string;
   creator: string;
@@ -19,11 +27,12 @@ interface DKGSession {
   currentParticipants: number;
   status: 'waiting' | 'round1' | 'round2' | 'finalizing' | 'completed' | 'failed';
   groupId: string;
+  topic: string; // Unique topic string for this DKG ceremony
   createdAt: Date;
   myRole: 'creator' | 'participant';
   description?: string;
-  participants: number[];
-  participantsPubs: Array<[number, string]>;
+  participants: DKGParticipant[];
+  roster: Array<[number, string, string]>; // [uid, id_hex, ecdsa_pub_hex]
 }
 
 interface ParticipantStatus {
@@ -39,17 +48,20 @@ interface ParticipantStatus {
 interface AuthState {
   isAuthenticated: boolean;
   challenge?: string;
+  uuid?: string; // The UUID from challenge
   accessToken?: string;
   userId?: number;
   publicKeyHex?: string;
+  signature?: string;
 }
 
 export default function DKGManagementPage() {
   const { address, isConnected } = useAccount();
-  const { hasChannels, isParticipant } = useUserRolesDynamic();
+  const { signMessageAsync } = useSignMessage();
+  const { } = useUserRolesDynamic();
   const [sessions, setSessions] = useState<DKGSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<DKGSession | null>(null);
-  const [participants, setParticipants] = useState<ParticipantStatus[]>([]);
+  const [sessionParticipants, setSessionParticipants] = useState<ParticipantStatus[]>([]);
   const [wsConnection, setWsConnection] = useState<WebSocket | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const [authState, setAuthState] = useState<AuthState>({ isAuthenticated: false });
@@ -62,12 +74,20 @@ export default function DKGManagementPage() {
   const [minSigners, setMinSigners] = useState(2);
   const [maxSigners, setMaxSigners] = useState(3);
   const [groupId, setGroupId] = useState('');
+  const [topic, setTopic] = useState('');
   const [description, setDescription] = useState('');
-  const [serverUrl, setServerUrl] = useState('ws://127.0.0.1:9043/ws');
+  const [serverUrl, setServerUrl] = useState('ws://127.0.0.1:9000/ws');
   const [sessionToJoin, setSessionToJoin] = useState('');
-  const [participantsList, setParticipantsList] = useState<string>('');
+  const [participants, setParticipants] = useState<DKGParticipant[]>([]);
   const [error, setError] = useState<string>('');
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+  
+  // Current participant being added
+  const [newParticipant, setNewParticipant] = useState<DKGParticipant>({
+    uid: 1,
+    publicKey: '',
+    nickname: ''
+  });
 
   // Anyone can create DKG sessions (works in demo mode)
   // Joining requires connection for real coordination
@@ -182,7 +202,12 @@ export default function DKGManagementPage() {
     
     switch (message.type) {
       case 'Challenge':
-        setAuthState(prev => ({ ...prev, challenge: message.payload.challenge }));
+        // Server sends: Challenge { challenge: string }
+        setAuthState(prev => ({ 
+          ...prev, 
+          challenge: message.payload.challenge,
+          uuid: message.payload.challenge 
+        }));
         break;
         
       case 'LoginOk':
@@ -204,11 +229,12 @@ export default function DKGManagementPage() {
           currentParticipants: 1,
           status: 'waiting',
           groupId: groupId || `group_${Date.now()}`,
+          topic: topic || `topic_${Date.now()}`,
           createdAt: new Date(),
           myRole: 'creator',
           description: description,
-          participants: parseParticipantsList(),
-          participantsPubs: generateParticipantsPubs()
+          participants: [...participants],
+          roster: participants.map((p) => [p.uid, `id_${p.uid}`, p.publicKey])
         };
         setSessions(prev => [...prev, newSession]);
         setSelectedSession(newSession);
@@ -221,12 +247,12 @@ export default function DKGManagementPage() {
         break;
         
       case 'Error':
-        setError(`Server error: ${message.payload.message || 'Unknown error'}`);
+        setError(`Server error: ${message.payload?.message || 'Unknown error'}`);
         setIsCreatingSession(false);
         break;
       
       case 'Info':
-        console.log('Server info:', message.payload.message);
+        console.log('Server info:', message.payload?.message);
         break;
 
       case 'ReadyRound1':
@@ -240,7 +266,7 @@ export default function DKGManagementPage() {
             idHex: item[1],
             ecdsaPubHex: item[2]
           }));
-          setParticipants(participantsData);
+          setSessionParticipants(participantsData);
         }
         break;
 
@@ -270,21 +296,60 @@ export default function DKGManagementPage() {
     }
   };
 
-  const parseParticipantsList = (): number[] => {
-    if (!participantsList.trim()) {
-      // Generate default participant IDs
-      return Array.from({ length: maxSigners }, (_, i) => i + 1);
+  // Participant management functions
+  const addParticipant = () => {
+    if (!newParticipant.publicKey.trim()) {
+      setError('ECDSA public key is required');
+      return;
     }
-    return participantsList.split(',').map(p => parseInt(p.trim())).filter(p => !isNaN(p));
+    
+    // Validate ECDSA public key format (33 bytes hex = 66 characters + optional 0x prefix)
+    const pubkeyHex = newParticipant.publicKey.trim();
+    const cleanHex = pubkeyHex.startsWith('0x') ? pubkeyHex.slice(2) : pubkeyHex;
+    
+    if (!/^[0-9a-fA-F]{66}$/.test(cleanHex)) {
+      setError('Invalid ECDSA public key format. Must be 66 hex characters (33 bytes compressed SEC1).');
+      return;
+    }
+    
+    // Check if it's a valid compressed public key (starts with 02 or 03)
+    if (!cleanHex.startsWith('02') && !cleanHex.startsWith('03')) {
+      setError('Invalid compressed ECDSA public key. Must start with 02 or 03.');
+      return;
+    }
+    
+    if (participants.some(p => p.uid === newParticipant.uid)) {
+      setError('UID already exists. Each participant must have a unique UID.');
+      return;
+    }
+    
+    if (participants.some(p => p.publicKey === cleanHex)) {
+      setError('Public key already exists. Each participant must have a unique public key.');
+      return;
+    }
+    
+    setParticipants(prev => [...prev, { 
+      ...newParticipant, 
+      publicKey: cleanHex // Store without 0x prefix
+    }]);
+    
+    setNewParticipant({
+      uid: Math.max(...participants.map(p => p.uid), 0) + 1,
+      publicKey: '',
+      nickname: ''
+    });
+    setError('');
   };
-
-  const generateParticipantsPubs = (): Array<[number, string]> => {
-    const participants = parseParticipantsList();
-    // For demo, we'll use placeholder public keys
-    // In real implementation, these should be actual ECDSA public keys
-    return participants.map(uid => [
-      uid,
-      address || '0x' + '04'.repeat(33) // Placeholder compressed pubkey
+  
+  const removeParticipant = (uid: number) => {
+    setParticipants(prev => prev.filter(p => p.uid !== uid));
+  };
+  
+  const generateRosterFromParticipants = (): Array<[number, string, string]> => {
+    return participants.map(p => [
+      p.uid,
+      `0x${p.uid.toString(16).padStart(4, '0')}`, // Generate ID hex from UID
+      p.publicKey
     ]);
   };
 
@@ -294,20 +359,58 @@ export default function DKGManagementPage() {
     wsConnection.send(JSON.stringify(message));
   };
 
+
   const authenticateWithServer = async () => {
-    if (!wsConnection || !authState.challenge || !address) return;
+    if (!wsConnection || !authState.uuid || !address) return;
     
-    // In a real implementation, you would sign the challenge with the user's private key
-    // For demo purposes, we'll simulate the authentication
-    const message = {
-      type: 'Login',
-      payload: {
-        challenge: authState.challenge,
-        pubkey_hex: address, // This should be the actual ECDSA public key
-        signature_hex: '0x' + '00'.repeat(64) // Placeholder signature
+    try {
+      // 1. Parse challenge UUID and get bytes
+      const uuidBytes = new Uint8Array(16);
+      const uuid = authState.uuid.replace(/-/g, '');
+      for (let i = 0; i < 16; i++) {
+        uuidBytes[i] = parseInt(uuid.substring(i * 2, i * 2 + 2), 16);
       }
-    };
-    wsConnection.send(JSON.stringify(message));
+      
+      // 2. Compute Keccak256(challenge_bytes)
+      const digest = keccak256(uuidBytes);
+      
+      // 3. Sign the digest with the wallet
+      const signature = await signMessageAsync({
+        message: { raw: digest } as any
+      });
+      
+      // 4. Recover the public key from the signature
+      const publicKey = await recoverPublicKey({
+        hash: digest,
+        signature: signature as `0x${string}`
+      });
+      
+      // 5. Convert to compressed SEC1 format (33 bytes)
+      // Remove 0x prefix and ensure it's in compressed format
+      const pubkeyHex = publicKey.slice(2);
+      
+      // 6. Convert Ethereum signature (65 bytes: r + s + v) to 64-byte compact format (r + s)
+      // Remove the recovery byte (v) from the end
+      const signatureBytes = hexToBytes(signature as `0x${string}`);
+      const compactSignature = signatureBytes.slice(0, 64); // Remove recovery byte
+      const signatureHex = Array.from(compactSignature)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      
+      const message = {
+        type: 'Login',
+        challenge: authState.uuid,
+        pubkey_hex: pubkeyHex, // 33-byte compressed SEC1 format
+        signature_hex: signatureHex // 64-byte compact format (r||s)
+      };
+      
+      setAuthState(prev => ({ ...prev, signature: signature }));
+      wsConnection.send(JSON.stringify(message));
+      
+    } catch (error) {
+      console.error('Authentication error:', error);
+      setError('Failed to authenticate with server: ' + (error as Error).message);
+    }
   };
 
   const createDKGSession = async () => {
@@ -332,27 +435,66 @@ export default function DKGManagementPage() {
       setError('Must have at least 3 max signers.');
       return;
     }
-
-    if (!authState.isAuthenticated && wsConnection && connectionStatus === 'connected') {
-      setError('Must authenticate with server first.');
+    
+    // Server requires exactly maxSigners total participants (including creator)
+    // Creator is auto-added, so we need exactly (maxSigners - 1) additional participants
+    const additionalParticipantsNeeded = maxSigners - 1;
+    
+    if (participants.length !== additionalParticipantsNeeded) {
+      if (participants.length > additionalParticipantsNeeded) {
+        setError(`Too many participants. Need exactly ${additionalParticipantsNeeded} additional participants (creator auto-added). Remove ${participants.length - additionalParticipantsNeeded} participants.`);
+      } else {
+        setError(`Need exactly ${additionalParticipantsNeeded} additional participants (creator auto-added). Add ${additionalParticipantsNeeded - participants.length} more participants with their ECDSA public keys.`);
+      }
       return;
     }
+
+    // Note: Authentication happens after session creation since we need to be in the roster first
 
     setIsCreatingSession(true);
 
     try {
-      const participants = parseParticipantsList();
-      const participantsPubs = generateParticipantsPubs();
+      // We need to convert Ethereum addresses to public keys for the current server implementation
+      // For now, we'll need to manually derive public keys from authentication 
+      // This is a simplified approach - in practice, users would need to provide their public keys
+
+      // Auto-include the creator (current user) in participants if not already included
+      let allParticipants = [...participants];
+      const creatorUID = 1; // Assign UID 1 to the creator
+      
+      // Get the creator's public key (we need to derive it like we do in authentication)
+      const dummyUuidBytes = new Uint8Array(16);
+      const dummyDigest = keccak256(dummyUuidBytes);
+      
+      let creatorPubkey = '';
+      try {
+        const dummySignature = await signMessageAsync({
+          message: { raw: dummyDigest } as any
+        });
+        const creatorPublicKey = await recoverPublicKey({
+          hash: dummyDigest,
+          signature: dummySignature as `0x${string}`
+        });
+        creatorPubkey = creatorPublicKey.slice(2); // Remove 0x prefix
+      } catch (e) {
+        setError('Failed to derive public key for session creation. Please make sure your wallet is connected.');
+        setIsCreatingSession(false);
+        return;
+      }
+      
+      // Check if creator is already in participants, if not add them
+      const creatorExists = allParticipants.some(p => p.uid === creatorUID);
+      if (!creatorExists) {
+        allParticipants.unshift({ uid: creatorUID, publicKey: creatorPubkey, nickname: 'Creator (You)' });
+      }
       
       const message = {
         type: 'AnnounceSession',
-        payload: {
-          min_signers: minSigners,
-          max_signers: maxSigners,
-          group_id: groupId || `group_${Date.now()}`,
-          participants,
-          participants_pubs: participantsPubs
-        }
+        min_signers: minSigners,
+        max_signers: maxSigners,
+        group_id: groupId || `group_${Date.now()}`,
+        participants: allParticipants.map(p => p.uid),
+        participants_pubs: allParticipants.map(p => [p.uid, p.publicKey])
       };
 
       if (wsConnection && connectionStatus === 'connected') {
@@ -368,7 +510,7 @@ export default function DKGManagementPage() {
       } else {
         console.log('Demo mode: Creating DKG session:', message);
         setTimeout(() => {
-          simulateSessionCreated(message.payload);
+          simulateSessionCreated(message);
         }, 1500);
       }
 
@@ -387,12 +529,13 @@ export default function DKGManagementPage() {
       maxSigners,
       currentParticipants: 1,
       status: 'waiting',
-      groupId: originalMessage.group_id,
+      groupId: groupId || `group_${Date.now()}`,
+      topic: originalMessage.topic || `topic_${Date.now()}`,
       createdAt: new Date(),
       myRole: 'creator',
       description: description || 'DKG Key Generation Ceremony',
-      participants: originalMessage.participants || parseParticipantsList(),
-      participantsPubs: originalMessage.participants_pubs || generateParticipantsPubs()
+      participants: [...participants],
+      roster: originalMessage.roster || generateRosterFromParticipants()
     };
     
     setSessions(prev => [...prev, newSession]);
@@ -415,9 +558,7 @@ export default function DKGManagementPage() {
 
     const message = {
       type: 'JoinSession',
-      payload: {
-        session: sessionToJoin
-      }
+      payload: sessionToJoin
     };
 
     wsConnection.send(JSON.stringify(message));
@@ -536,11 +677,26 @@ export default function DKGManagementPage() {
             </div>
           </div>
           {authState.challenge && !authState.isAuthenticated && (
-            <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs">
-              <p>Challenge: {authState.challenge.slice(0, 20)}...</p>
-              <p className="text-gray-500 dark:text-gray-400 mt-1">
-                In production, sign this challenge with your ECDSA private key
-              </p>
+            <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+              <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2">Challenge-Response Authentication</h4>
+              <div className="space-y-2 text-xs">
+                <div>
+                  <span className="font-mono text-blue-700 dark:text-blue-300">UUID: </span>
+                  <span className="font-mono">{authState.challenge}</span>
+                </div>
+                <div className="text-gray-600 dark:text-gray-400">
+                  <p>• Parse UUID and get bytes: uuid.as_bytes()</p>
+                  <p>• Compute signature: sig = sign(Keccak256(uuid_bytes))</p>
+                  <p>• Send Login with challenge, pubkey_hex (SEC1), signature_hex (DER)</p>
+                  <p>• Server verifies ECDSA signature and roster membership</p>
+                </div>
+                {authState.signature && (
+                  <div>
+                    <span className="font-mono text-blue-700 dark:text-blue-300">Signature: </span>
+                    <span className="font-mono">{authState.signature.slice(0, 20)}...</span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </Card>
@@ -589,7 +745,7 @@ export default function DKGManagementPage() {
           </div>
           <div className="flex gap-2">
             <Input
-              placeholder="Server URL (e.g., ws://127.0.0.1:9043/ws)"
+              placeholder="Server URL (e.g., ws://127.0.0.1:9000/ws)"
               value={serverUrl}
               onChange={(e) => setServerUrl(e.target.value)}
               className="w-80"
@@ -771,16 +927,122 @@ export default function DKGManagementPage() {
             </div>
           </div>
           
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Participants (comma-separated UIDs)</label>
+          <div className="mb-6">
+            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Topic (Optional)</label>
             <Input
-              placeholder="e.g., 1,2,3 (leave empty for auto-generation)"
-              value={participantsList}
-              onChange={(e) => setParticipantsList(e.target.value)}
+              placeholder="Unique topic string for this DKG ceremony"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
             />
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Participant user IDs. If empty, will generate sequential IDs (1,2,3...)
+              Unique identifier for the DKG topic. Auto-generated if empty.
             </p>
+          </div>
+          
+          {/* Participant Registration Section */}
+          <div className="mb-6 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
+              Participant Registration
+              <Badge className="ml-2 bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                Authenticated ECDSA Channel
+              </Badge>
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Each participant needs a unique UID and ECDSA public key for the authenticated channel. 
+              DKG messages will be exchanged through this secure channel.
+            </p>
+            
+            {/* Add New Participant Form */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">UID</label>
+                <Input
+                  type="number"
+                  value={newParticipant.uid}
+                  onChange={(e) => setNewParticipant(prev => ({ ...prev, uid: parseInt(e.target.value) || 1 }))}
+                  min={1}
+                  placeholder="1"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Nickname (Optional)</label>
+                <Input
+                  value={newParticipant.nickname}
+                  onChange={(e) => setNewParticipant(prev => ({ ...prev, nickname: e.target.value }))}
+                  placeholder="Alice"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                  ECDSA Public Key *
+                </label>
+                <Input
+                  value={newParticipant.publicKey}
+                  onChange={(e) => setNewParticipant(prev => ({ ...prev, publicKey: e.target.value }))}
+                  placeholder="0x02... (33 bytes compressed SEC1 format)"
+                  className="font-mono text-xs"
+                />
+              </div>
+              <div className="flex items-end">
+                <Button
+                  onClick={addParticipant}
+                  disabled={!newParticipant.publicKey.trim()}
+                  className="w-full"
+                >
+                  Add Participant
+                </Button>
+              </div>
+            </div>
+            
+            {/* Registered Participants List */}
+            <div>
+              <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">
+                Registered Participants ({participants.length}/{maxSigners})
+              </h4>
+              {participants.length === 0 ? (
+                <div className="text-center py-4 text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  No participants registered yet
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {participants.map((participant) => (
+                    <div key={participant.uid} className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-4">
+                          <div className="min-w-0">
+                            <p className="font-medium text-gray-900 dark:text-gray-100">
+                              UID: {participant.uid}
+                              {participant.nickname && (
+                                <span className="ml-2 text-gray-600 dark:text-gray-400">({participant.nickname})</span>
+                              )}
+                            </p>
+                            <p className="text-xs font-mono text-gray-600 dark:text-gray-400 truncate">
+                              PubKey: {participant.publicKey}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeParticipant(participant.uid)}
+                        className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            {participants.length < maxSigners && (
+              <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                <p className="text-sm text-yellow-800 dark:text-yellow-300">
+                  ⚠️ You need to register {maxSigners - participants.length} more participant(s) to match the max signers count.
+                </p>
+              </div>
+            )}
           </div>
           
           <div className="flex items-end">
@@ -799,9 +1061,11 @@ export default function DKGManagementPage() {
             <div className="text-sm space-y-1 text-gray-700 dark:text-gray-300">
               <p>• Min/Max Signers: {minSigners} of {maxSigners} signatures required</p>
               <p>• Description: {description || 'DKG Key Generation Ceremony'}</p>
-              <p>• Role: You will be the session creator and coordinator</p>
+              <p>• Topic: {topic || 'Auto-generated'}</p>
               <p>• Group ID: {groupId || 'Auto-generated'}</p>
-              <p>• Participants: {participantsList || `Auto-generated (1-${maxSigners})`}</p>
+              <p>• Registered Participants: {participants.length}/{maxSigners}</p>
+              <p>• Role: You will be the session creator and coordinator</p>
+              <p>• Authentication: ECDSA-signed messages over Keccak256 digest</p>
             </div>
           </div>
         </Card>
@@ -961,7 +1225,7 @@ export default function DKGManagementPage() {
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Participants</label>
                 <div className="space-y-2">
-                  {participants.map((participant) => (
+                  {sessionParticipants.map((participant) => (
                     <div key={participant.uid} className="flex justify-between items-center p-2 border border-gray-200 dark:border-gray-600 rounded bg-gray-50 dark:bg-gray-700">
                       <div className="flex flex-col">
                         <span className="font-mono text-sm text-gray-900 dark:text-gray-100">UID: {participant.uid}</span>
@@ -1014,16 +1278,45 @@ export default function DKGManagementPage() {
         </Dialog>
       )}
 
-      {/* Instructions */}
+      {/* Enhanced Instructions */}
       <Card className="p-6 bg-blue-50 dark:bg-blue-900/20">
-        <h3 className="font-semibold mb-2 text-blue-800 dark:text-blue-200">DKG Process Overview</h3>
-        <div className="text-sm space-y-2 text-gray-700 dark:text-gray-300">
-          <p><strong>1. Setup:</strong> Leader creates a session with threshold (t) and total participants (n)</p>
-          <p><strong>2. Join:</strong> Participants join using the session ID</p>
-          <p><strong>3. Round 1:</strong> All parties generate and share commitments</p>
-          <p><strong>4. Round 2:</strong> Parties create encrypted secret shares for each other</p>
-          <p><strong>5. Finalize:</strong> Each party computes their key share and group public key</p>
-          <p><strong>6. Result:</strong> Distributed key generation complete - ready for threshold signing</p>
+        <h3 className="font-semibold mb-4 text-blue-800 dark:text-blue-200">FROST DKG Process Overview</h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div>
+            <h4 className="font-medium mb-2 text-blue-700 dark:text-blue-300">Authentication Flow</h4>
+            <div className="text-sm space-y-1 text-gray-700 dark:text-gray-300">
+              <p>1. Client → Server: RequestChallenge</p>
+              <p>2. Server → Client: Challenge {`{ challenge: uuid }`}</p>
+              <p>3. Client computes: sig = sign(Keccak256(uuid.as_bytes()))</p>
+              <p>4. Client → Server: Login {`{ challenge, pubkey_hex, signature_hex }`}</p>
+              <p>5. Server verifies ECDSA signature and roster membership</p>
+              <p>6. Server → Client: LoginOk {`{ user_id, access_token }`}</p>
+            </div>
+          </div>
+          
+          <div>
+            <h4 className="font-medium mb-2 text-blue-700 dark:text-blue-300">DKG Ceremony Flow</h4>
+            <div className="text-sm space-y-1 text-gray-700 dark:text-gray-300">
+              <p>1. Creator announces session with participant roster (UIDs + public keys)</p>
+              <p>2. Participants join session after authentication</p>
+              <p>3. Round 1: Submit FROST commitments (signed)</p>
+              <p>4. Round 2: Submit ECIES-encrypted secret shares</p>
+              <p>5. Finalize: Submit group public key (signed)</p>
+              <p>6. Complete: Key shares written to files</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="border-t border-blue-200 dark:border-blue-700 pt-4">
+          <h4 className="font-medium mb-2 text-blue-700 dark:text-blue-300">Implementation Details</h4>
+          <div className="text-sm space-y-1 text-gray-700 dark:text-gray-300">
+            <p>• <strong>Message Signing:</strong> ECDSA signatures over Keccak256(payload) with specific domains</p>
+            <p>• <strong>Round 2 Encryption:</strong> ECIES (secp256k1 ECDH → AES-256-GCM) per recipient</p>
+            <p>• <strong>Serialization:</strong> Bincode format for FROST data structures</p>
+            <p>• <strong>Output Files:</strong> group.json (public) and share_*.json (private)</p>
+            <p>• <strong>Server Architecture:</strong> WebSocket coordinator with session management</p>
+          </div>
         </div>
       </Card>
       </div>
