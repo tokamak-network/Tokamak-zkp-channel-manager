@@ -851,7 +851,9 @@ export default function DKGManagementPage() {
 
     const message = {
       type: 'JoinSession',
-      payload: sessionToJoin
+      payload: {
+        session: sessionToJoin
+      }
     };
 
     wsConnection.send(JSON.stringify(message));
@@ -993,11 +995,6 @@ export default function DKGManagementPage() {
                   >
                     Reset Auth
                   </Button>
-                  {authState.derivationMethod && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Method: {authState.derivationMethod === 'client_keypair' ? 'Client Keypair ✅' : authState.derivationMethod}
-                    </div>
-                  )}
                 </>
               )}
             </div>
@@ -1016,17 +1013,6 @@ export default function DKGManagementPage() {
                   <p>• Send Login with challenge, pubkey_hex (SEC1), signature_hex (DER)</p>
                   <p>• Server verifies ECDSA signature and roster membership</p>
                 </div>
-                {authState.publicKeyHex && (
-                  <div className="border-t border-blue-200 dark:border-blue-700 pt-2">
-                    <div className="mb-1">
-                      <span className="font-mono text-green-700 dark:text-green-300 font-semibold">Authenticating with Public Key: </span>
-                    </div>
-                    <div className="bg-green-50 dark:bg-green-900/20 p-2 rounded border">
-                      <span className="font-mono text-xs text-green-800 dark:text-green-200 break-all select-all cursor-pointer">{authState.publicKeyHex}</span>
-                    </div>
-                    <p className="text-xs text-green-600 dark:text-green-400 mt-1">This key must be registered in the session roster by the creator</p>
-                  </div>
-                )}
                 {authState.signature && (
                   <div>
                     <span className="font-mono text-blue-700 dark:text-blue-300">Signature: </span>
