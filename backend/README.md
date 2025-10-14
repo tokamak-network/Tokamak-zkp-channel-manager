@@ -39,6 +39,24 @@ cargo build --release -p fserver
 ./scripts/health-check.sh
 ```
 
+## Quick Server Management Commands
+
+```bash
+# Check server status
+ps aux | grep fserver
+curl -f http://localhost:9000/health 2>/dev/null && echo "Server OK" || echo "Server Down"
+
+# Restart server (if authentication issues or crashes)
+pkill -f fserver
+cd frost-dkg && ./target/release/fserver server --bind 0.0.0.0:9000
+
+# Background server with logs
+cd frost-dkg && nohup ./target/release/fserver server --bind 0.0.0.0:9000 > server.log 2>&1 &
+
+# Stop server gracefully
+curl -X POST http://localhost:9000/close
+```
+
 ## Production Configuration
 
 ### Environment Variables
@@ -196,9 +214,40 @@ echo $DKG_ECDSA_PRIV_HEX | wc -c  # Should be 65 (64 hex + newline)
 
 # Check participant roster registration
 curl -s http://localhost:9002/health | jq .active_sessions
+
+# If authentication fails with "ECDSA signature verification failed":
+# 1. Restart the server to clear corrupted session state
+pkill -f fserver
+cd frost-dkg && ./target/release/fserver server --bind 0.0.0.0:9000
+
+# 2. Recreate session with your public key before authenticating
+# 3. Ensure the same keypair is used for both session creation and authentication
 ```
 
-**3. Performance Issues**
+**3. Server Crashes or State Corruption**
+```bash
+# Check if server is still running
+ps aux | grep fserver
+
+# Kill all fserver processes
+pkill -f fserver
+
+# Restart server (choose one method):
+
+# Method 1: Direct binary
+cd frost-dkg && ./target/release/fserver server --bind 0.0.0.0:9000
+
+# Method 2: Docker
+docker restart tokamak-dkg-server
+
+# Method 3: Using scripts
+./scripts/stop-server.sh && ./scripts/start-server.sh
+
+# Verify server is running
+curl -f http://localhost:9000/health || echo "Health endpoint not available"
+```
+
+**4. Performance Issues**
 ```bash
 # Check metrics
 curl http://localhost:9001/metrics | grep dkg_
