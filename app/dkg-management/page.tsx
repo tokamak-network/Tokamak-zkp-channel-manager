@@ -556,7 +556,7 @@ export default function DKGManagementPage() {
         publicKeyHex: keypair.publicKey,
         dkgPrivateKey: keypair.privateKey,
         dkgPublicKey: keypair.publicKey,
-        derivationMethod: 'client_keypair'
+        derivationMethod: 'client_keypair' as const
       };
       console.log('📝 Updating auth state with DKG keypair:', {
         hadPrivateKey: !!prev.dkgPrivateKey,
@@ -605,7 +605,7 @@ export default function DKGManagementPage() {
           publicKeyHex: keypair.publicKey,
           dkgPrivateKey: keypair.privateKey,
           dkgPublicKey: keypair.publicKey,
-          derivationMethod: 'client_keypair'
+          derivationMethod: 'client_keypair' as const
         }));
         
         console.log('✅ Generated fresh keypair for authentication:', pubkeyHex);
@@ -620,20 +620,23 @@ export default function DKGManagementPage() {
         uuidBytes[i] = parseInt(uuid.substring(i * 2, i * 2 + 2), 16);
       }
       
-      console.log('Challenge UUID:', authState.uuid);
-      console.log('UUID bytes:', Array.from(uuidBytes).map(b => b.toString(16).padStart(2, '0')).join(''));
+      console.log('🔍 DEBUG: Challenge UUID:', authState.uuid);
+      console.log('🔍 DEBUG: UUID without dashes:', uuid);
+      console.log('🔍 DEBUG: UUID bytes (hex):', Array.from(uuidBytes).map(b => b.toString(16).padStart(2, '0')).join(''));
+      console.log('🔍 DEBUG: UUID bytes (decimal):', Array.from(uuidBytes));
       
       // 3. Compute Keccak256(challenge_bytes) using proper js-sha3 library
       // This should match the server's Rust Keccak256 implementation
       const properDigest = '0x' + keccak256(uuidBytes);
-      console.log('Proper Keccak256 digest:', properDigest);
+      console.log('🔍 DEBUG: Keccak256 digest:', properDigest);
       
       // Test with known values to verify correctness
       const testBytes = new Uint8Array([0x01, 0x02, 0x03, 0x04]);
       const testDigest = '0x' + keccak256(testBytes);
-      console.log('Test digest (0x01020304):', testDigest);
+      console.log('🔍 DEBUG: Test digest (0x01020304):', testDigest);
       
       const digest = properDigest;
+      console.log('🔍 DEBUG: Final digest for signing:', digest);
       
       // 4. Sign using client-side DKG private key for raw signing
       console.log('🔑 Using DKG private key for signing...');
@@ -663,17 +666,38 @@ export default function DKGManagementPage() {
       
       // Sign the raw digest hash directly with elliptic.js
       const digestBytes = hexToBytes(digest as `0x${string}`);
+      console.log('🔍 DEBUG: Digest bytes for signing:', Array.from(digestBytes).map(b => b.toString(16).padStart(2, '0')).join(''));
+      console.log('🔍 DEBUG: Private key (first 16 chars):', privateKeyHex.slice(0, 16) + '...');
+      console.log('🔍 DEBUG: Public key:', pubkeyHex);
+      
       const signature = keyPair.sign(digestBytes);
+      console.log('🔍 DEBUG: Original signature r:', signature.r.toString(16));
+      console.log('🔍 DEBUG: Original signature s:', signature.s.toString(16));
+      
+      // Ensure canonical signature (low-s form) as required by many ECDSA implementations
+      const n = ec.curve.n;
+      let s = signature.s;
+      const wasNormalized = s.gt(n.shln(1));
+      if (wasNormalized) {
+        s = n.sub(s);
+        console.log('🔍 DEBUG: Signature s was normalized (high-s -> low-s)');
+      } else {
+        console.log('🔍 DEBUG: Signature s was already in canonical form');
+      }
+      console.log('🔍 DEBUG: Final signature s:', s.toString(16));
       
       // Convert to compact format (r + s, 64 bytes)
       const r = signature.r.toString(16).padStart(64, '0');
-      const s = signature.s.toString(16).padStart(64, '0');
-      const signatureHex = r + s;
+      const sHex = s.toString(16).padStart(64, '0');
+      const signatureHex = r + sHex;
       
-      console.log('Raw signature created:', signatureHex);
+      console.log('🔍 DEBUG: Signature r (hex):', r);
+      console.log('🔍 DEBUG: Signature s (hex):', sHex);
+      console.log('🔍 DEBUG: Final signature (r||s):', signatureHex);
       
-      // Verify the signature matches our public key
-      const isValid = keyPair.verify(digestBytes, signature);
+      // Verify the signature matches our public key (use normalized signature)
+      const normalizedSig = { r: signature.r, s: s };
+      const isValid = keyPair.verify(digestBytes, normalizedSig);
       console.log('✅ Signature verification:', isValid ? 'VALID' : 'INVALID');
       console.log('Final signature hex length:', signatureHex.length, 'signature:', signatureHex);
       
@@ -686,12 +710,21 @@ export default function DKGManagementPage() {
         }
       };
       
-      console.log('Sending login message:', {
+      console.log('🔍 DEBUG: Sending login message with:', {
+        type: 'Login',
         challenge: authState.uuid,
         pubkey_hex: pubkeyHex,
+        pubkey_length: pubkeyHex.length,
         signature_hex: signatureHex,
         signature_length: signatureHex.length,
         method: 'client_keypair'
+      });
+      
+      console.log('🔍 DEBUG: Message payload structure:', {
+        challenge_length: authState.uuid.length,
+        pubkey_format: 'compressed SEC1',
+        signature_format: 'compact r||s',
+        expected_sig_length: 128
       });
       
       setAuthState(prev => ({ 
@@ -744,16 +777,6 @@ export default function DKGManagementPage() {
     setIsCreatingSession(true);
 
     try {
-      // Generate DKG keypair for the session creator (current user) before creating session
-      console.log('🔄 Generating DKG keypair for session creation...');
-      const creatorPublicKey = await getDeterministicPublicKey();
-      if (!creatorPublicKey) {
-        setError('Failed to generate DKG keypair for session creation');
-        setIsCreatingSession(false);
-        return;
-      }
-      
-      console.log('✅ Creator DKG keypair ready:', creatorPublicKey);
       const message = {
         type: 'AnnounceSession',
         payload: {
