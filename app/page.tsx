@@ -111,6 +111,11 @@ export default function HomePage() {
     router.push('/delete-channel');
   };
 
+  const handleDKGManagement = () => {
+    if (!isConnected) return;
+    router.push('/dkg-management');
+  };
+
   return (
     <>
       <Layout>
@@ -209,6 +214,22 @@ export default function HomePage() {
                 <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1 text-sm group-hover:text-green-700 dark:group-hover:text-green-400 transition-colors">Create Channel</h3>
                 <p className="text-gray-600 dark:text-gray-300 text-xs group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors">
                   Create multi-party bridge channel
+                </p>
+              </div>
+            )}
+
+            {/* DKG Management - Available for all connected users */}
+            {isConnected && (
+              <div 
+                onClick={handleDKGManagement}
+                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-yellow-300 dark:hover:border-yellow-500 group"
+              >
+                <div className="h-10 w-10 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-yellow-200 dark:group-hover:bg-yellow-800/40 transition-colors">
+                  <span className="text-xl">🔑</span>
+                </div>
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1 text-sm group-hover:text-yellow-700 dark:group-hover:text-yellow-300 transition-colors">DKG Management</h3>
+                <p className="text-gray-600 dark:text-gray-300 text-xs group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors">
+                  Distributed Key Generation
                 </p>
               </div>
             )}
