@@ -2,7 +2,31 @@
 
 import { useState, useEffect } from 'react';
 import { useAccount, useSignMessage } from 'wagmi';
-import { recoverPublicKey, keccak256, toBytes, hexToBytes } from 'viem';
+import { recoverPublicKey, hexToBytes, toBytes } from 'viem';
+import { keccak256 } from 'js-sha3';
+
+// Use elliptic.js for browser-compatible ECDSA operations
+let EC: any = null;
+let ec: any = null;
+
+// Initialize elliptic.js when component loads
+const initializeElliptic = async () => {
+  if (typeof window !== 'undefined' && !ec) {
+    try {
+      console.log('Loading elliptic.js...');
+      const elliptic = await import('elliptic');
+      EC = elliptic.ec;
+      ec = new EC('secp256k1');
+      console.log('✅ elliptic.js library loaded successfully');
+      return true;
+    } catch (error) {
+      console.error('❌ Failed to load elliptic.js:', error);
+      return false;
+    }
+  }
+  return ec !== null;
+};
+import { useWalletClient } from 'wagmi';
 import { Layout } from '@/components/Layout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -53,11 +77,39 @@ interface AuthState {
   userId?: number;
   publicKeyHex?: string;
   signature?: string;
+  derivationMethod?: 'eth_sign' | 'personal_sign' | 'client_keypair';
+  derivationHash?: string;
+  derivationMessage?: string;
+  // Client-side keypair for DKG operations
+  dkgPrivateKey?: string; // hex string
+  dkgPublicKey?: string;
+}
+
+// Helper function to compress an uncompressed public key
+function compressPublicKey(uncompressedHex: string): string {
+  if (uncompressedHex.length !== 130) {
+    throw new Error('Invalid uncompressed public key length');
+  }
+  
+  if (!uncompressedHex.startsWith('04')) {
+    throw new Error('Invalid uncompressed public key format');
+  }
+  
+  // Extract x and y coordinates (32 bytes each)
+  const x = uncompressedHex.slice(2, 66); // Skip '04' prefix
+  const y = uncompressedHex.slice(66, 130);
+  
+  // Determine if y is even or odd to choose prefix
+  const yBigInt = BigInt('0x' + y);
+  const prefix = yBigInt % BigInt(2) === BigInt(0) ? '02' : '03';
+  
+  return prefix + x;
 }
 
 export default function DKGManagementPage() {
   const { address, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
+  const { data: walletClient } = useWalletClient();
   const { } = useUserRolesDynamic();
   const [sessions, setSessions] = useState<DKGSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<DKGSession | null>(null);
@@ -146,6 +198,15 @@ export default function DKGManagementPage() {
     }
 
     setConnectionStatus('connecting');
+    
+    // Initialize elliptic.js when connecting
+    initializeElliptic().then(success => {
+      if (success) {
+        console.log('Elliptic.js initialized during connection');
+      } else {
+        console.warn('Failed to initialize elliptic.js during connection');
+      }
+    });
     setError('');
     
     try {
@@ -158,20 +219,26 @@ export default function DKGManagementPage() {
       };
 
       ws.onmessage = (event) => {
+        console.log('Raw WebSocket message:', event.data);
         try {
+          if (event.data === '' || event.data === null || event.data === undefined) {
+            console.warn('Received empty message from server');
+            return;
+          }
           const message = JSON.parse(event.data);
           handleServerMessage(message);
         } catch (err) {
-          console.error('Failed to parse server message:', err);
+          console.error('Failed to parse server message:', err, 'Raw data:', event.data);
           setError('Invalid message from server');
         }
       };
 
       ws.onclose = (event) => {
+        console.log('WebSocket closed:', event.code, event.reason);
         setConnectionStatus('disconnected');
         setWsConnection(null);
         if (event.code !== 1000) { // Not a normal closure
-          setError(`Connection closed unexpectedly (code: ${event.code})`);
+          setError(`Connection closed unexpectedly (code: ${event.code}, reason: ${event.reason})`);
         }
       };
 
@@ -199,15 +266,29 @@ export default function DKGManagementPage() {
 
   const handleServerMessage = (message: any) => {
     console.log('Received server message:', message);
+    console.log('Message type:', typeof message, 'Content:', JSON.stringify(message));
     
     switch (message.type) {
       case 'Challenge':
         // Server sends: Challenge { challenge: string }
-        setAuthState(prev => ({ 
-          ...prev, 
-          challenge: message.payload.challenge,
-          uuid: message.payload.challenge 
-        }));
+        setAuthState(prev => {
+          console.log('🎯 Challenge received - preserving auth state:', {
+            hadPrivateKey: !!prev.dkgPrivateKey,
+            hadPublicKey: !!prev.publicKeyHex,
+            challenge: message.payload.challenge
+          });
+          const newState = { 
+            ...prev, 
+            challenge: message.payload.challenge,
+            uuid: message.payload.challenge 
+          };
+          console.log('📝 New auth state after challenge:', {
+            hasPrivateKey: !!newState.dkgPrivateKey,
+            hasPublicKey: !!newState.publicKeyHex,
+            derivationMethod: newState.derivationMethod
+          });
+          return newState;
+        });
         break;
         
       case 'LoginOk':
@@ -221,6 +302,7 @@ export default function DKGManagementPage() {
         break;
         
       case 'SessionCreated':
+        console.log('Session created successfully:', message.payload.session);
         const newSession: DKGSession = {
           id: message.payload.session,
           creator: address!,
@@ -303,38 +385,52 @@ export default function DKGManagementPage() {
       return;
     }
     
-    // Validate ECDSA public key format (33 bytes hex = 66 characters + optional 0x prefix)
+    // Validate and normalize ECDSA public key format
     const pubkeyHex = newParticipant.publicKey.trim();
     const cleanHex = pubkeyHex.startsWith('0x') ? pubkeyHex.slice(2) : pubkeyHex;
     
-    if (!/^[0-9a-fA-F]{66}$/.test(cleanHex)) {
-      setError('Invalid ECDSA public key format. Must be 66 hex characters (33 bytes compressed SEC1).');
+    let finalPubkeyHex: string;
+    
+    if (/^[0-9a-fA-F]{66}$/.test(cleanHex)) {
+      // Already compressed format (33 bytes = 66 hex chars)
+      if (!cleanHex.startsWith('02') && !cleanHex.startsWith('03')) {
+        setError('Invalid compressed ECDSA public key. Must start with 02 or 03.');
+        return;
+      }
+      finalPubkeyHex = cleanHex;
+    } else if (/^[0-9a-fA-F]{130}$/.test(cleanHex)) {
+      // Uncompressed format (65 bytes = 130 hex chars), need to compress
+      if (!cleanHex.startsWith('04')) {
+        setError('Invalid uncompressed ECDSA public key. Must start with 04.');
+        return;
+      }
+      try {
+        finalPubkeyHex = compressPublicKey(cleanHex);
+      } catch (e) {
+        setError('Failed to compress public key: ' + (e as Error).message);
+        return;
+      }
+    } else {
+      setError('Invalid ECDSA public key format. Must be 66 hex characters (compressed) or 130 hex characters (uncompressed).');
       return;
     }
     
-    // Check if it's a valid compressed public key (starts with 02 or 03)
-    if (!cleanHex.startsWith('02') && !cleanHex.startsWith('03')) {
-      setError('Invalid compressed ECDSA public key. Must start with 02 or 03.');
-      return;
-    }
+    // Auto-assign next available UID
+    const nextUID = participants.length > 0 ? Math.max(...participants.map(p => p.uid)) + 1 : 1;
     
-    if (participants.some(p => p.uid === newParticipant.uid)) {
-      setError('UID already exists. Each participant must have a unique UID.');
-      return;
-    }
-    
-    if (participants.some(p => p.publicKey === cleanHex)) {
+    if (participants.some(p => p.publicKey === finalPubkeyHex)) {
       setError('Public key already exists. Each participant must have a unique public key.');
       return;
     }
     
     setParticipants(prev => [...prev, { 
-      ...newParticipant, 
-      publicKey: cleanHex // Store without 0x prefix
+      uid: nextUID,
+      publicKey: finalPubkeyHex, // Store compressed format without 0x prefix
+      nickname: newParticipant.nickname
     }]);
     
     setNewParticipant({
-      uid: Math.max(...participants.map(p => p.uid), 0) + 1,
+      uid: nextUID + 1, // This will be used for next auto-increment
       publicKey: '',
       nickname: ''
     });
@@ -355,56 +451,254 @@ export default function DKGManagementPage() {
 
   const requestChallenge = async () => {
     if (!wsConnection) return;
+    console.log('📩 Requesting challenge... Current auth state:', {
+      hasPrivateKey: !!authState.dkgPrivateKey,
+      hasPublicKey: !!authState.publicKeyHex,
+      derivationMethod: authState.derivationMethod
+    });
     const message = { type: 'RequestChallenge' };
     wsConnection.send(JSON.stringify(message));
   };
 
+  // Clear stored keys to force regeneration
+  const resetAuthState = () => {
+    setAuthState(prev => ({ 
+      ...prev, 
+      publicKeyHex: undefined,
+      dkgPrivateKey: undefined,
+      dkgPublicKey: undefined,
+      derivationMethod: undefined,
+      isAuthenticated: false,
+      challenge: undefined,
+      uuid: undefined
+    }));
+    console.log('🔄 Authentication state reset - will generate new DKG keypair');
+  };
+
+  // Generate a deterministic DKG keypair based on user's wallet
+  const generateDkgKeypair = async (): Promise<{ privateKey: string; publicKey: string } | null> => {
+    if (!address || !walletClient) return null;
+    
+    // Initialize elliptic.js if needed
+    const ellipticReady = await initializeElliptic();
+    if (!ellipticReady || !ec) {
+      console.error('Failed to initialize elliptic.js');
+      return null;
+    }
+
+    try {
+      // Create a deterministic seed by signing a fixed message with the wallet
+      const seedMessage = "DKG_KEYPAIR_SEED";
+      const seedSignature = await walletClient.signMessage({
+        account: address,
+        message: seedMessage
+      });
+
+      // Use the signature as entropy to derive a private key
+      const seedBytes = hexToBytes(seedSignature as `0x${string}`);
+      const seedHash = keccak256(seedBytes);
+      
+      // Create key pair from the hash
+      const keyPair = ec.keyFromPrivate(seedHash, 'hex');
+      
+      // Get compressed public key
+      const publicKeyHex = keyPair.getPublic(true, 'hex');
+      const privateKeyHex = keyPair.getPrivate('hex');
+
+      console.log('Generated DKG keypair:', {
+        seedMessage,
+        publicKey: publicKeyHex,
+        privateKeyLength: privateKeyHex.length,
+        publicKeyLength: publicKeyHex.length
+      });
+
+      return {
+        privateKey: privateKeyHex,
+        publicKey: publicKeyHex
+      };
+    } catch (error) {
+      console.error('Failed to generate DKG keypair:', error);
+      return null;
+    }
+  };
+
+  const getDeterministicPublicKey = async () => {
+    if (!address || !walletClient) {
+      console.log('❌ Missing address or walletClient:', { address: !!address, walletClient: !!walletClient });
+      return '';
+    }
+    
+    // Return cached keypair if available
+    if (authState.dkgPublicKey && authState.dkgPrivateKey) {
+      console.log('✅ Using cached DKG keypair:', authState.dkgPublicKey);
+      return authState.dkgPublicKey;
+    }
+    
+    console.log('🔄 Generating client-side DKG keypair...');
+    
+    // Generate deterministic DKG keypair
+    const keypair = await generateDkgKeypair();
+    if (!keypair) {
+      console.error('❌ Failed to generate DKG keypair');
+      return '';
+    }
+    
+    console.log('🔑 Generated keypair:', {
+      publicKey: keypair.publicKey,
+      privateKeyLength: keypair.privateKey.length,
+      hasPrivateKey: !!keypair.privateKey
+    });
+    
+    // Store the keypair in auth state
+    setAuthState(prev => {
+      const newState = {
+        ...prev,
+        publicKeyHex: keypair.publicKey,
+        dkgPrivateKey: keypair.privateKey,
+        dkgPublicKey: keypair.publicKey,
+        derivationMethod: 'client_keypair'
+      };
+      console.log('📝 Updating auth state with DKG keypair:', {
+        hadPrivateKey: !!prev.dkgPrivateKey,
+        nowHasPrivateKey: !!newState.dkgPrivateKey,
+        privateKeyLength: keypair.privateKey.length,
+        publicKey: keypair.publicKey
+      });
+      return newState;
+    });
+    
+    console.log('✅ Client-side DKG keypair stored and ready:', keypair.publicKey);
+    return keypair.publicKey;
+  };
+
 
   const authenticateWithServer = async () => {
-    if (!wsConnection || !authState.uuid || !address) return;
+    if (!wsConnection || !authState.uuid || !address || !walletClient) return;
+    
+    console.log('🔐 Starting authentication process...');
+    console.log('Auth state check:', {
+      hasUuid: !!authState.uuid,
+      hasPublicKey: !!authState.publicKeyHex,
+      hasPrivateKey: !!authState.dkgPrivateKey,
+      derivationMethod: authState.derivationMethod
+    });
     
     try {
-      // 1. Parse challenge UUID and get bytes
+      // 1. Use the stored public key from authState (consistent with session creation)
+      let pubkeyHex = authState.publicKeyHex;
+      let privateKeyHex = authState.dkgPrivateKey;
+      
+      if (!pubkeyHex || !privateKeyHex) {
+        console.log('⚠️ Missing cached keys, generating new ones...');
+        const keypair = await generateDkgKeypair();
+        if (!keypair) {
+          setError('Failed to generate DKG keypair for authentication');
+          return;
+        }
+        
+        pubkeyHex = keypair.publicKey;
+        privateKeyHex = keypair.privateKey;
+        
+        // Update auth state (async)
+        setAuthState(prev => ({
+          ...prev,
+          publicKeyHex: keypair.publicKey,
+          dkgPrivateKey: keypair.privateKey,
+          dkgPublicKey: keypair.publicKey,
+          derivationMethod: 'client_keypair'
+        }));
+        
+        console.log('✅ Generated fresh keypair for authentication:', pubkeyHex);
+      } else {
+        console.log('✅ Using cached keypair:', pubkeyHex);
+      }
+      
+      // 2. Parse challenge UUID and get bytes
       const uuidBytes = new Uint8Array(16);
       const uuid = authState.uuid.replace(/-/g, '');
       for (let i = 0; i < 16; i++) {
         uuidBytes[i] = parseInt(uuid.substring(i * 2, i * 2 + 2), 16);
       }
       
-      // 2. Compute Keccak256(challenge_bytes)
-      const digest = keccak256(uuidBytes);
+      console.log('Challenge UUID:', authState.uuid);
+      console.log('UUID bytes:', Array.from(uuidBytes).map(b => b.toString(16).padStart(2, '0')).join(''));
       
-      // 3. Sign the digest with the wallet
-      const signature = await signMessageAsync({
-        message: { raw: digest } as any
+      // 3. Compute Keccak256(challenge_bytes) using proper js-sha3 library
+      // This should match the server's Rust Keccak256 implementation
+      const properDigest = '0x' + keccak256(uuidBytes);
+      console.log('Proper Keccak256 digest:', properDigest);
+      
+      // Test with known values to verify correctness
+      const testBytes = new Uint8Array([0x01, 0x02, 0x03, 0x04]);
+      const testDigest = '0x' + keccak256(testBytes);
+      console.log('Test digest (0x01020304):', testDigest);
+      
+      const digest = properDigest;
+      
+      // 4. Sign using client-side DKG private key for raw signing
+      console.log('🔑 Using DKG private key for signing...');
+      console.log('Private key status:', {
+        exists: !!privateKeyHex,
+        length: privateKeyHex?.length,
+        type: typeof privateKeyHex
       });
       
-      // 4. Recover the public key from the signature
-      const publicKey = await recoverPublicKey({
-        hash: digest,
-        signature: signature as `0x${string}`
-      });
+      if (!privateKeyHex) {
+        console.error('❌ DKG private key not available after generation');
+        setError('Failed to get DKG private key for signing.');
+        return;
+      }
+
+      // Initialize elliptic.js if needed
+      const ellipticReady = await initializeElliptic();
+      if (!ellipticReady || !ec) {
+        setError('Failed to initialize elliptic.js library. Please try again.');
+        return;
+      }
+
+      console.log('✅ Signing with client-side DKG private key...');
       
-      // 5. Convert to compressed SEC1 format (33 bytes)
-      // Remove 0x prefix and ensure it's in compressed format
-      const pubkeyHex = publicKey.slice(2);
+      // Create key pair from private key
+      const keyPair = ec.keyFromPrivate(privateKeyHex, 'hex');
       
-      // 6. Convert Ethereum signature (65 bytes: r + s + v) to 64-byte compact format (r + s)
-      // Remove the recovery byte (v) from the end
-      const signatureBytes = hexToBytes(signature as `0x${string}`);
-      const compactSignature = signatureBytes.slice(0, 64); // Remove recovery byte
-      const signatureHex = Array.from(compactSignature)
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
+      // Sign the raw digest hash directly with elliptic.js
+      const digestBytes = hexToBytes(digest as `0x${string}`);
+      const signature = keyPair.sign(digestBytes);
+      
+      // Convert to compact format (r + s, 64 bytes)
+      const r = signature.r.toString(16).padStart(64, '0');
+      const s = signature.s.toString(16).padStart(64, '0');
+      const signatureHex = r + s;
+      
+      console.log('Raw signature created:', signatureHex);
+      
+      // Verify the signature matches our public key
+      const isValid = keyPair.verify(digestBytes, signature);
+      console.log('✅ Signature verification:', isValid ? 'VALID' : 'INVALID');
+      console.log('Final signature hex length:', signatureHex.length, 'signature:', signatureHex);
       
       const message = {
         type: 'Login',
-        challenge: authState.uuid,
-        pubkey_hex: pubkeyHex, // 33-byte compressed SEC1 format
-        signature_hex: signatureHex // 64-byte compact format (r||s)
+        payload: {
+          challenge: authState.uuid,
+          pubkey_hex: pubkeyHex, // 33-byte compressed SEC1 format
+          signature_hex: signatureHex // 64-byte compact format (r||s)
+        }
       };
       
-      setAuthState(prev => ({ ...prev, signature: signature }));
+      console.log('Sending login message:', {
+        challenge: authState.uuid,
+        pubkey_hex: pubkeyHex,
+        signature_hex: signatureHex,
+        signature_length: signatureHex.length,
+        method: 'client_keypair'
+      });
+      
+      setAuthState(prev => ({ 
+        ...prev, 
+        signature: signatureHex,
+        publicKeyHex: pubkeyHex // Store the deterministic public key
+      }));
       wsConnection.send(JSON.stringify(message));
       
     } catch (error) {
@@ -436,73 +730,49 @@ export default function DKGManagementPage() {
       return;
     }
     
-    // Server requires exactly maxSigners total participants (including creator)
-    // Creator is auto-added, so we need exactly (maxSigners - 1) additional participants
-    const additionalParticipantsNeeded = maxSigners - 1;
-    
-    if (participants.length !== additionalParticipantsNeeded) {
-      if (participants.length > additionalParticipantsNeeded) {
-        setError(`Too many participants. Need exactly ${additionalParticipantsNeeded} additional participants (creator auto-added). Remove ${participants.length - additionalParticipantsNeeded} participants.`);
+    // Server requires exactly maxSigners total participants
+    if (participants.length !== maxSigners) {
+      if (participants.length > maxSigners) {
+        setError(`Too many participants. Need exactly ${maxSigners} participants. Remove ${participants.length - maxSigners} participants.`);
       } else {
-        setError(`Need exactly ${additionalParticipantsNeeded} additional participants (creator auto-added). Add ${additionalParticipantsNeeded - participants.length} more participants with their ECDSA public keys.`);
+        setError(`Need exactly ${maxSigners} participants. Add ${maxSigners - participants.length} more participants (including yourself).`);
       }
       return;
     }
 
-    // Note: Authentication happens after session creation since we need to be in the roster first
 
     setIsCreatingSession(true);
 
     try {
-      // We need to convert Ethereum addresses to public keys for the current server implementation
-      // For now, we'll need to manually derive public keys from authentication 
-      // This is a simplified approach - in practice, users would need to provide their public keys
-
-      // Auto-include the creator (current user) in participants if not already included
-      let allParticipants = [...participants];
-      const creatorUID = 1; // Assign UID 1 to the creator
-      
-      // Get the creator's public key (we need to derive it like we do in authentication)
-      const dummyUuidBytes = new Uint8Array(16);
-      const dummyDigest = keccak256(dummyUuidBytes);
-      
-      let creatorPubkey = '';
-      try {
-        const dummySignature = await signMessageAsync({
-          message: { raw: dummyDigest } as any
-        });
-        const creatorPublicKey = await recoverPublicKey({
-          hash: dummyDigest,
-          signature: dummySignature as `0x${string}`
-        });
-        creatorPubkey = creatorPublicKey.slice(2); // Remove 0x prefix
-      } catch (e) {
-        setError('Failed to derive public key for session creation. Please make sure your wallet is connected.');
+      // Generate DKG keypair for the session creator (current user) before creating session
+      console.log('🔄 Generating DKG keypair for session creation...');
+      const creatorPublicKey = await getDeterministicPublicKey();
+      if (!creatorPublicKey) {
+        setError('Failed to generate DKG keypair for session creation');
         setIsCreatingSession(false);
         return;
       }
       
-      // Check if creator is already in participants, if not add them
-      const creatorExists = allParticipants.some(p => p.uid === creatorUID);
-      if (!creatorExists) {
-        allParticipants.unshift({ uid: creatorUID, publicKey: creatorPubkey, nickname: 'Creator (You)' });
-      }
-      
+      console.log('✅ Creator DKG keypair ready:', creatorPublicKey);
       const message = {
         type: 'AnnounceSession',
-        min_signers: minSigners,
-        max_signers: maxSigners,
-        group_id: groupId || `group_${Date.now()}`,
-        participants: allParticipants.map(p => p.uid),
-        participants_pubs: allParticipants.map(p => [p.uid, p.publicKey])
+        payload: {
+          min_signers: minSigners,
+          max_signers: maxSigners,
+          group_id: groupId || `group_${Date.now()}`,
+          participants: participants.map(p => p.uid),
+          participants_pubs: participants.map(p => [p.uid, p.publicKey])
+        }
       };
 
       if (wsConnection && connectionStatus === 'connected') {
         console.log('Creating DKG session:', message);
+        console.log('WebSocket readyState:', wsConnection.readyState);
         wsConnection.send(JSON.stringify(message));
         
         setTimeout(() => {
           if (isCreatingSession) {
+            console.log('Session creation timeout');
             setError('Server response timeout. Session creation may have failed.');
             setIsCreatingSession(false);
           }
@@ -653,8 +923,29 @@ export default function DKGManagementPage() {
                   <span className="ml-2">User ID: {authState.userId}</span>
                 )}
               </p>
+              {authState.publicKeyHex && (
+                <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                  <h4 className="font-medium text-green-800 dark:text-green-200 mb-2">Your ECDSA Public Key</h4>
+                  <div className="bg-white dark:bg-gray-800 p-2 rounded border">
+                    <span className="font-mono text-xs text-gray-800 dark:text-gray-200 break-all select-all cursor-pointer">{authState.publicKeyHex}</span>
+                  </div>
+                  <p className="text-xs text-green-600 dark:text-green-400 mt-1">Share this 33-byte compressed SEC1 public key with DKG session creators</p>
+                </div>
+              )}
             </div>
             <div className="flex gap-2">
+              {!authState.publicKeyHex && walletClient && (
+                <Button 
+                  onClick={async () => {
+                    const pubKey = await getDeterministicPublicKey();
+                    setAuthState(prev => ({ ...prev, publicKeyHex: pubKey }));
+                  }}
+                  variant="outline"
+                  size="sm"
+                >
+                  Get My Public Key
+                </Button>
+              )}
               {!authState.isAuthenticated && (
                 <>
                   <Button 
@@ -671,6 +962,18 @@ export default function DKGManagementPage() {
                     >
                       Authenticate
                     </Button>
+                  )}
+                  <Button
+                    onClick={resetAuthState}
+                    variant="ghost"
+                    size="sm"
+                  >
+                    Reset Auth
+                  </Button>
+                  {authState.derivationMethod && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Method: {authState.derivationMethod === 'client_keypair' ? 'Client Keypair ✅' : authState.derivationMethod}
+                    </div>
                   )}
                 </>
               )}
@@ -690,6 +993,17 @@ export default function DKGManagementPage() {
                   <p>• Send Login with challenge, pubkey_hex (SEC1), signature_hex (DER)</p>
                   <p>• Server verifies ECDSA signature and roster membership</p>
                 </div>
+                {authState.publicKeyHex && (
+                  <div className="border-t border-blue-200 dark:border-blue-700 pt-2">
+                    <div className="mb-1">
+                      <span className="font-mono text-green-700 dark:text-green-300 font-semibold">Authenticating with Public Key: </span>
+                    </div>
+                    <div className="bg-green-50 dark:bg-green-900/20 p-2 rounded border">
+                      <span className="font-mono text-xs text-green-800 dark:text-green-200 break-all select-all cursor-pointer">{authState.publicKeyHex}</span>
+                    </div>
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-1">This key must be registered in the session roster by the creator</p>
+                  </div>
+                )}
                 {authState.signature && (
                   <div>
                     <span className="font-mono text-blue-700 dark:text-blue-300">Signature: </span>
@@ -948,22 +1262,12 @@ export default function DKGManagementPage() {
               </Badge>
             </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Each participant needs a unique UID and ECDSA public key for the authenticated channel. 
-              DKG messages will be exchanged through this secure channel.
+              Add all participants (including yourself as the creator) with their ECDSA public keys. 
+              UIDs are assigned automatically. DKG messages will be exchanged through this secure authenticated channel.
             </p>
             
             {/* Add New Participant Form */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <div>
-                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">UID</label>
-                <Input
-                  type="number"
-                  value={newParticipant.uid}
-                  onChange={(e) => setNewParticipant(prev => ({ ...prev, uid: parseInt(e.target.value) || 1 }))}
-                  min={1}
-                  placeholder="1"
-                />
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
               <div>
                 <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Nickname (Optional)</label>
                 <Input
@@ -979,7 +1283,7 @@ export default function DKGManagementPage() {
                 <Input
                   value={newParticipant.publicKey}
                   onChange={(e) => setNewParticipant(prev => ({ ...prev, publicKey: e.target.value }))}
-                  placeholder="0x02... (33 bytes compressed SEC1 format)"
+                  placeholder="02... (compressed) or 04... (uncompressed)"
                   className="font-mono text-xs"
                 />
               </div>
