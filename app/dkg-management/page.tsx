@@ -132,7 +132,9 @@ export default function DKGManagementPage() {
   const [sessionToJoin, setSessionToJoin] = useState('');
   const [participants, setParticipants] = useState<DKGParticipant[]>([]);
   const [error, setError] = useState<string>('');
+  const [successMessage, setSuccessMessage] = useState<string>('');
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [isJoiningSession, setIsJoiningSession] = useState(false);
   
   // Current participant being added
   const [newParticipant, setNewParticipant] = useState<DKGParticipant>({
@@ -191,6 +193,24 @@ export default function DKGManagementPage() {
       }
     }
   }, []);
+
+  // Update session roles when address changes (for proper role detection)
+  useEffect(() => {
+    if (address && sessions.length > 0) {
+      const sessionsNeedingRoleUpdate = sessions.filter(session => !session.myRole);
+      if (sessionsNeedingRoleUpdate.length > 0) {
+        console.log(`🔧 Updating myRole for ${sessionsNeedingRoleUpdate.length} sessions`);
+        const updatedSessions = sessions.map(session => ({
+          ...session,
+          // Set myRole if missing based on creator field
+          myRole: session.myRole || (session.creator === address ? 'creator' : 'participant')
+        }));
+        setSessions(updatedSessions);
+        // Save the updated sessions to localStorage
+        localStorage.setItem('dkg-sessions', JSON.stringify(updatedSessions));
+      }
+    }
+  }, [address]);
 
   const connectToServer = async () => {
     if (wsConnection) {
@@ -331,48 +351,218 @@ export default function DKGManagementPage() {
       case 'Error':
         setError(`Server error: ${message.payload?.message || 'Unknown error'}`);
         setIsCreatingSession(false);
+        setIsJoiningSession(false);
+        setSuccessMessage('');
         break;
       
       case 'Info':
-        console.log('Server info:', message.payload?.message);
+        // Handle join session success and participant count updates
+        if (message.payload?.message) {
+          const infoMessage = message.payload.message;
+          console.log('Server info:', infoMessage);
+          
+          // Check if it's a join progress message (various formats: "joined 2/3", "participant 2 of 3", etc.)
+          const joinMatch = infoMessage.match(/(?:joined|participant)\s*(\d+)(?:\s*of\s*|\s*\/\s*)(\d+)|(\d+)\/(\d+)/);
+          if (joinMatch) {
+            const current = joinMatch[1] || joinMatch[3];
+            const total = joinMatch[2] || joinMatch[4];
+            console.log(`🎉 Participant join update: ${current}/${total}`);
+            
+            // For users who just joined, show success notification
+            if (isJoiningSession) {
+              setError('');
+              setSuccessMessage(`🎉 Successfully joined session! Waiting for ${parseInt(total) - parseInt(current)} more participant(s) to join before starting DKG rounds.`);
+              setIsJoiningSession(false);
+            }
+            
+            // Update ALL sessions with this participant count if we can determine the session ID
+            // For now, update the session we're trying to join or any session with matching participant counts
+            if (sessionToJoin) {
+              setSessions(prev => {
+                const existing = prev.find(s => s.id === sessionToJoin);
+                let updatedSessions;
+                if (existing) {
+                  // Update existing session
+                  updatedSessions = prev.map(s => s.id === sessionToJoin ? 
+                    { 
+                      ...s, 
+                      currentParticipants: parseInt(current), 
+                      status: current === total ? 'round1' as const : 'waiting' as const, 
+                      maxSigners: parseInt(total), 
+                      myRole: s.myRole || ('participant' as const) 
+                    } : s
+                  );
+                } else {
+                  // Create new session entry for joined session
+                  const joinedSession: DKGSession = {
+                    id: sessionToJoin,
+                    creator: 'Unknown', // We don't know who created it
+                    minSigners: Math.max(2, parseInt(total) - 1), // Reasonable default
+                    maxSigners: parseInt(total),
+                    currentParticipants: parseInt(current),
+                    status: current === total ? 'round1' as const : 'waiting' as const,
+                    groupId: `joined_group_${Date.now()}`,
+                    topic: `joined_topic_${Date.now()}`,
+                    createdAt: new Date(),
+                    myRole: 'participant' as const,
+                    description: 'Joined DKG Session',
+                    participants: [],
+                    roster: []
+                  };
+                  updatedSessions = [...prev, joinedSession];
+                }
+                // Save to localStorage
+                localStorage.setItem('dkg-sessions', JSON.stringify(updatedSessions));
+                return updatedSessions;
+              });
+              
+              if (current === total) {
+                setActiveTab('active'); // Switch to active sessions tab when full
+              }
+              setSessionToJoin(''); // Clear the input after successful join
+            }
+          } else {
+            // Other info messages - might contain session updates for creators
+            console.log('Server info (other):', infoMessage);
+            
+            // Check for other participant update patterns that might include session IDs
+            if (infoMessage.includes('participant') || infoMessage.includes('joined') || infoMessage.includes('user')) {
+              console.log('📊 Participant activity detected:', infoMessage);
+              
+              // Try to extract session ID from message if present
+              const sessionIdMatch = infoMessage.match(/session[:\s]+([a-f0-9-]{36})/i) || 
+                                   infoMessage.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
+              
+              if (sessionIdMatch) {
+                const possibleSessionId = sessionIdMatch[1];
+                console.log(`🔍 Detected session update for ID: ${possibleSessionId}`);
+                
+                // Try to extract participant count from the message
+                const countMatch = infoMessage.match(/(\d+)(?:\s*of\s*|\s*\/\s*)(\d+)/);
+                if (countMatch) {
+                  const current = countMatch[1];
+                  const total = countMatch[2];
+                  console.log(`📊 Updating session ${possibleSessionId}: ${current}/${total} participants`);
+                  
+                  setSessions(prev => {
+                    const updatedSessions = prev.map(s => s.id === possibleSessionId ? 
+                      { ...s, currentParticipants: parseInt(current), maxSigners: parseInt(total) } : s
+                    );
+                    localStorage.setItem('dkg-sessions', JSON.stringify(updatedSessions));
+                    return updatedSessions;
+                  });
+                }
+              }
+            }
+          }
+        }
         break;
 
       case 'ReadyRound1':
-        if (selectedSession) {
-          setSelectedSession(prev => prev ? { ...prev, status: 'round1' } : null);
-          const roster = message.payload.roster;
-          const participantsData = roster.map((item: any) => ({
-            uid: item[0],
-            address: '', // We don't have address from roster
-            status: 'joined' as const,
-            idHex: item[1],
-            ecdsaPubHex: item[2]
-          }));
-          setSessionParticipants(participantsData);
+        // ReadyRound1 is sent when all participants have joined and DKG is starting
+        const sessionId = message.payload.session;
+        const roster = message.payload.roster;
+        const participantCount = roster.length;
+        
+        // Update the session in our sessions list
+        setSessions(prev => {
+          const updatedSessions = prev.map(session => 
+            session.id === sessionId ? {
+              ...session,
+              status: 'round1' as const,
+              currentParticipants: participantCount,
+              minSigners: message.payload.min_signers,
+              maxSigners: message.payload.max_signers,
+              groupId: message.payload.group_id,
+              roster: roster
+            } : session
+          );
+          // Save to localStorage
+          localStorage.setItem('dkg-sessions', JSON.stringify(updatedSessions));
+          return updatedSessions;
+        });
+        
+        // Update selected session if it matches
+        if (selectedSession && selectedSession.id === sessionId) {
+          setSelectedSession(prev => prev ? { 
+            ...prev, 
+            status: 'round1' as const,
+            currentParticipants: participantCount,
+            minSigners: message.payload.min_signers,
+            maxSigners: message.payload.max_signers,
+            groupId: message.payload.group_id,
+            roster: roster
+          } : null);
         }
+        
+        const participantsData = roster.map((item: any) => ({
+          uid: item[0],
+          address: '', // We don't have address from roster
+          status: 'joined' as const,
+          idHex: item[1],
+          ecdsaPubHex: item[2]
+        }));
+        setSessionParticipants(participantsData);
+        
+        // Show success notification for round start
+        console.log(`🚀 All ${participantCount} participants joined! Starting Round 1...`);
+        setSuccessMessage(`🚀 All ${participantCount} participants have joined! DKG Round 1 (Commitments) is now starting...`);
+        setError('');
         break;
 
       case 'Round1All':
         if (selectedSession) {
-          setSelectedSession(prev => prev ? { ...prev, status: 'round2' } : null);
+          const sessionId = selectedSession.id;
+          setSessions(prev => {
+            const updatedSessions = prev.map(session => 
+              session.id === sessionId ? { ...session, status: 'round2' as const } : session
+            );
+            localStorage.setItem('dkg-sessions', JSON.stringify(updatedSessions));
+            return updatedSessions;
+          });
+          setSelectedSession(prev => prev ? { ...prev, status: 'round2' as const } : null);
         }
         break;
 
       case 'ReadyRound2':
         if (selectedSession) {
-          setSelectedSession(prev => prev ? { ...prev, status: 'round2' } : null);
+          const sessionId = selectedSession.id;
+          setSessions(prev => {
+            const updatedSessions = prev.map(session => 
+              session.id === sessionId ? { ...session, status: 'round2' as const } : session
+            );
+            localStorage.setItem('dkg-sessions', JSON.stringify(updatedSessions));
+            return updatedSessions;
+          });
+          setSelectedSession(prev => prev ? { ...prev, status: 'round2' as const } : null);
         }
         break;
 
       case 'Round2All':
         if (selectedSession) {
-          setSelectedSession(prev => prev ? { ...prev, status: 'finalizing' } : null);
+          const sessionId = selectedSession.id;
+          setSessions(prev => {
+            const updatedSessions = prev.map(session => 
+              session.id === sessionId ? { ...session, status: 'finalizing' as const } : session
+            );
+            localStorage.setItem('dkg-sessions', JSON.stringify(updatedSessions));
+            return updatedSessions;
+          });
+          setSelectedSession(prev => prev ? { ...prev, status: 'finalizing' as const } : null);
         }
         break;
 
       case 'Finalized':
         if (selectedSession) {
-          setSelectedSession(prev => prev ? { ...prev, status: 'completed' } : null);
+          const sessionId = selectedSession.id;
+          setSessions(prev => {
+            const updatedSessions = prev.map(session => 
+              session.id === sessionId ? { ...session, status: 'completed' as const } : session
+            );
+            localStorage.setItem('dkg-sessions', JSON.stringify(updatedSessions));
+            return updatedSessions;
+          });
+          setSelectedSession(prev => prev ? { ...prev, status: 'completed' as const } : null);
         }
         break;
     }
@@ -849,6 +1039,10 @@ export default function DKGManagementPage() {
       return;
     }
 
+    setIsJoiningSession(true);
+    setError('');
+    setSuccessMessage('');
+
     const message = {
       type: 'JoinSession',
       payload: {
@@ -856,6 +1050,7 @@ export default function DKGManagementPage() {
       }
     };
 
+    console.log('🔗 Attempting to join session:', sessionToJoin);
     wsConnection.send(JSON.stringify(message));
   };
 
@@ -920,6 +1115,8 @@ export default function DKGManagementPage() {
         <div className="flex items-center gap-4">
           <div className="text-sm text-gray-600 dark:text-gray-400">
             {sessions.length} DKG Session(s) • {sessions.filter(s => s.status === 'waiting').length} Active
+            <br />
+            Created: {sessions.filter(s => s.myRole === 'creator').length} • Joined: {sessions.filter(s => s.myRole === 'participant').length}
           </div>
           {sessions.length > 0 && (
             <Button
@@ -1093,6 +1290,24 @@ export default function DKGManagementPage() {
         )}
       </Card>
 
+      {/* Success Message */}
+      {successMessage && (
+        <Card className="p-4 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
+          <div className="flex items-center gap-2">
+            <span className="text-green-600 dark:text-green-400 font-medium">✅ Success:</span>
+            <p className="text-green-700 dark:text-green-300 text-sm">{successMessage}</p>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setSuccessMessage('')}
+              className="ml-auto text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30"
+            >
+              ✕
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {/* Error Message */}
       {error && (
         <Card className="p-4 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800">
@@ -1113,79 +1328,167 @@ export default function DKGManagementPage() {
 
       {/* Tab Content */}
       {activeTab === 'active' && (
-        <Card className="p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Active DKG Sessions</h3>
-            <div className="text-sm text-gray-600 dark:text-gray-400">
-              {sessions.filter(s => ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status)).length} active sessions
+        <div className="space-y-6">
+          {/* Sessions Created by Me */}
+          <Card className="p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                <span className="mr-2">👑</span>
+                Sessions Created by Me
+              </h3>
+              <div className="text-sm text-gray-600 dark:text-gray-400">
+                {sessions.filter(s => s.myRole === 'creator' && ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status)).length} active sessions
+              </div>
             </div>
-          </div>
-          
-          {sessions.filter(s => ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status)).length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-gray-600 dark:text-gray-400">No active DKG sessions</p>
-              <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
-                Create or join a session to get started
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {sessions.filter(s => ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status)).map((session) => (
-                <div key={session.id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h4 className="font-medium text-gray-900 dark:text-gray-100">Session {session.id.slice(0, 8)}...</h4>
-                        <Badge className={getStatusColor(session.status)}>
-                          {getStatusText(session.status)}
-                        </Badge>
-                        <Badge variant="outline">{session.myRole}</Badge>
-                        {session.creator === address && (
-                          <Badge variant="outline">Creator</Badge>
+            
+            {sessions.filter(s => s.myRole === 'creator' && ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status)).length === 0 ? (
+              <div className="text-center py-6">
+                <p className="text-gray-600 dark:text-gray-400">No active sessions created by you</p>
+                <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
+                  Create a session to start coordinating DKG ceremonies
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {sessions.filter(s => s.myRole === 'creator' && ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status)).map((session) => (
+                  <div key={session.id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 hover:from-blue-100 hover:to-indigo-100 dark:hover:from-blue-900/30 dark:hover:to-indigo-900/30">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h4 className="font-medium text-gray-900 dark:text-gray-100">Session {session.id.slice(0, 8)}...</h4>
+                          <Badge className={getStatusColor(session.status)}>
+                            {getStatusText(session.status)}
+                          </Badge>
+                          <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">Creator</Badge>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 dark:text-gray-400">
+                          <div>
+                            <span className="font-medium">Signers:</span><br />
+                            {session.minSigners}/{session.maxSigners}
+                          </div>
+                          <div>
+                            <span className="font-medium">Participants:</span><br />
+                            {session.currentParticipants}/{session.maxSigners}
+                          </div>
+                          <div>
+                            <span className="font-medium">Description:</span><br />
+                            {session.description || 'DKG Ceremony'}
+                          </div>
+                          <div>
+                            <span className="font-medium">Created:</span><br />
+                            {session.createdAt.toLocaleDateString()}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedSession(session)}
+                        >
+                          View Details
+                        </Button>
+                        {session.status === 'waiting' && (
+                          <div className="text-sm text-gray-600 dark:text-gray-400 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 rounded">
+                            {session.currentParticipants < session.maxSigners ? (
+                              <span>🔄 Waiting for {session.maxSigners - session.currentParticipants} more participant(s)</span>
+                            ) : (
+                              <span>🚀 DKG will start automatically when all join</span>
+                            )}
+                          </div>
                         )}
                       </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 dark:text-gray-400">
-                        <div>
-                          <span className="font-medium">Signers:</span><br />
-                          {session.minSigners}/{session.maxSigners}
-                        </div>
-                        <div>
-                          <span className="font-medium">Participants:</span><br />
-                          {session.currentParticipants}/{session.maxSigners}
-                        </div>
-                        <div>
-                          <span className="font-medium">Description:</span><br />
-                          {session.description || 'DKG Ceremony'}
-                        </div>
-                        <div>
-                          <span className="font-medium">Created:</span><br />
-                          {session.createdAt.toLocaleDateString()}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedSession(session)}
-                      >
-                        View Details
-                      </Button>
-                      {session.creator === address && session.status === 'waiting' && (
-                        <Button
-                          size="sm"
-                          disabled={session.currentParticipants < session.maxSigners}
-                        >
-                          Start DKG
-                        </Button>
-                      )}
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* Sessions Joined as Participant */}
+          <Card className="p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                <span className="mr-2">🤝</span>
+                Sessions Joined as Participant
+              </h3>
+              <div className="text-sm text-gray-600 dark:text-gray-400">
+                {sessions.filter(s => s.myRole === 'participant' && ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status)).length} joined sessions
+              </div>
             </div>
-          )}
-        </Card>
+            
+            {sessions.filter(s => s.myRole === 'participant' && ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status)).length === 0 ? (
+              <div className="text-center py-6">
+                <p className="text-gray-600 dark:text-gray-400">No sessions joined as participant</p>
+                <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
+                  Join an existing session to participate in DKG ceremonies
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {sessions.filter(s => s.myRole === 'participant' && ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status)).map((session) => (
+                  <div key={session.id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 hover:from-green-100 hover:to-emerald-100 dark:hover:from-green-900/30 dark:hover:to-emerald-900/30">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h4 className="font-medium text-gray-900 dark:text-gray-100">Session {session.id.slice(0, 8)}...</h4>
+                          <Badge className={getStatusColor(session.status)}>
+                            {getStatusText(session.status)}
+                          </Badge>
+                          <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">Participant</Badge>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 dark:text-gray-400">
+                          <div>
+                            <span className="font-medium">Signers:</span><br />
+                            {session.minSigners}/{session.maxSigners}
+                          </div>
+                          <div>
+                            <span className="font-medium">Participants:</span><br />
+                            {session.currentParticipants}/{session.maxSigners}
+                          </div>
+                          <div>
+                            <span className="font-medium">Description:</span><br />
+                            {session.description || 'DKG Ceremony'}
+                          </div>
+                          <div>
+                            <span className="font-medium">Joined:</span><br />
+                            {session.createdAt.toLocaleDateString()}
+                          </div>
+                        </div>
+                        
+                        {/* Additional info for joined sessions */}
+                        {session.status === 'waiting' && (
+                          <div className="mt-3 p-2 bg-amber-100 dark:bg-amber-900/30 rounded text-sm">
+                            <span className="text-amber-800 dark:text-amber-300">
+                              ⏳ Waiting for {session.maxSigners - session.currentParticipants} more participant(s) before DKG rounds can begin
+                            </span>
+                          </div>
+                        )}
+                        
+                        {['round1', 'round2', 'finalizing'].includes(session.status) && (
+                          <div className="mt-3 p-2 bg-blue-100 dark:bg-blue-900/30 rounded text-sm">
+                            <span className="text-blue-800 dark:text-blue-300">
+                              🔄 DKG ceremony in progress - follow prompts from the coordinator
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedSession(session)}
+                        >
+                          View Details
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
       )}
 
       {/* Create Session Tab */}
@@ -1398,28 +1701,56 @@ export default function DKGManagementPage() {
             </div>
           ) : (
             <>
-              <div className="flex gap-4 mb-4">
+              <div className="flex gap-4 mb-6">
                 <Input
-                  placeholder="Session ID provided by creator"
+                  placeholder="Session ID provided by creator (e.g., e2bb7be0-f196-4ce5-8a48-f9e892b6d88b)"
                   value={sessionToJoin}
                   onChange={(e) => setSessionToJoin(e.target.value)}
-                  className="flex-1"
+                  className="flex-1 font-mono text-sm"
+                  disabled={isJoiningSession}
                 />
                 <Button 
                   onClick={joinDKGSession}
-                  disabled={!sessionToJoin}
+                  disabled={!sessionToJoin || isJoiningSession || !authState.isAuthenticated}
+                  className="min-w-[140px]"
                 >
-                  Join Session
+                  {isJoiningSession ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Joining...
+                    </div>
+                  ) : (
+                    'Join Session'
+                  )}
                 </Button>
               </div>
-              
-              <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg">
-                <h4 className="font-medium mb-2 text-amber-800 dark:text-amber-200">Before Joining</h4>
+
+              {/* Prerequisites Section */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg mb-4">
+                <h4 className="font-medium mb-2 text-blue-800 dark:text-blue-200">✅ Prerequisites</h4>
                 <div className="text-sm space-y-1 text-gray-700 dark:text-gray-300">
-                  <p>• Ensure you have the correct session ID from the creator</p>
-                  <p>• Verify you are connected to the correct DKG server</p>
-                  <p>• Have your ECDSA keypair ready for authentication</p>
-                  <p>• Understand your role and responsibilities in this session</p>
+                  <p className={authState.isAuthenticated ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                    {authState.isAuthenticated ? '✅' : '❌'} Authentication: {authState.isAuthenticated ? 'Completed' : 'Required'}
+                  </p>
+                  <p className={connectionStatus === 'connected' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                    {connectionStatus === 'connected' ? '✅' : '❌'} Server Connection: {connectionStatus === 'connected' ? 'Connected' : 'Disconnected'}
+                  </p>
+                  <p>• Your public key must be registered in the session by the creator</p>
+                  <p>• You must be one of the designated participants</p>
+                </div>
+              </div>
+              
+              {/* What Happens After Joining */}
+              <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg">
+                <h4 className="font-medium mb-2 text-amber-800 dark:text-amber-200">🔄 What Happens After Joining</h4>
+                <div className="text-sm space-y-1 text-gray-700 dark:text-gray-300">
+                  <p>1. <strong>Waiting Phase:</strong> You'll wait for all other participants to join</p>
+                  <p>2. <strong>Round 1:</strong> DKG starts automatically when everyone is present</p>
+                  <p>3. <strong>Round 2:</strong> Secret sharing phase (encrypted)</p>
+                  <p>4. <strong>Finalization:</strong> Key generation completes</p>
+                  <p className="text-amber-700 dark:text-amber-300 font-medium">
+                    ⚠️ <strong>Important:</strong> DKG rounds cannot start until ALL participants have joined the session
+                  </p>
                 </div>
               </div>
             </>
@@ -1429,8 +1760,8 @@ export default function DKGManagementPage() {
 
       {/* History Tab */}
       {activeTab === 'history' && (
-        <Card className="p-6">
-          <div className="flex justify-between items-center mb-4">
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">DKG Session History</h2>
             <div className="flex gap-2">
               <Select value={sessionFilter} onValueChange={(value: any) => setSessionFilter(value)}>
@@ -1448,67 +1779,156 @@ export default function DKGManagementPage() {
           </div>
           
           {sessions.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-gray-600 dark:text-gray-400">No DKG sessions yet</p>
-              <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
-                Create or join a session to get started
-              </p>
-            </div>
+            <Card className="p-6">
+              <div className="text-center py-8">
+                <p className="text-gray-600 dark:text-gray-400">No DKG sessions yet</p>
+                <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
+                  Create or join a session to get started
+                </p>
+              </div>
+            </Card>
           ) : (
-            <div className="space-y-4">
-              {sessions.map((session) => (
-                <div key={session.id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-medium text-gray-900 dark:text-gray-100">Session {session.id.slice(0, 8)}...</h3>
-                        <Badge className={getStatusColor(session.status)}>
-                          {getStatusText(session.status)}
-                        </Badge>
-                        <Badge variant="outline">{session.myRole}</Badge>
-                        {session.creator === address && (
-                          <Badge variant="outline">Creator</Badge>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 dark:text-gray-400">
-                        <div>
-                          <span className="font-medium">Description:</span><br />
-                          {session.description || 'DKG Ceremony'}
-                        </div>
-                        <div>
-                          <span className="font-medium">Signers:</span><br />
-                          {session.minSigners}/{session.maxSigners}
-                        </div>
-                        <div>
-                          <span className="font-medium">Group ID:</span><br />
-                          {session.groupId.slice(0, 12)}...
-                        </div>
-                        <div>
-                          <span className="font-medium">Created:</span><br />
-                          {session.createdAt.toLocaleDateString()}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedSession(session)}
-                      >
-                        View Details
-                      </Button>
-                      {session.status === 'completed' && (
-                        <Button variant="outline" size="sm">
-                          Download Keys
-                        </Button>
-                      )}
-                    </div>
+            <div className="space-y-6">
+              {/* Sessions Created by Me - History */}
+              <Card className="p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    <span className="mr-2">👑</span>
+                    Sessions Created by Me
+                  </h3>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    {sessions.filter(s => s.myRole === 'creator').length} total sessions
                   </div>
                 </div>
-              ))}
+                
+                {sessions.filter(s => s.myRole === 'creator').length === 0 ? (
+                  <div className="text-center py-6">
+                    <p className="text-gray-600 dark:text-gray-400">No sessions created by you</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {sessions.filter(s => s.myRole === 'creator').map((session) => (
+                      <div key={session.id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 hover:from-blue-100 hover:to-indigo-100 dark:hover:from-blue-900/30 dark:hover:to-indigo-900/30">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h4 className="font-medium text-gray-900 dark:text-gray-100">Session {session.id.slice(0, 8)}...</h4>
+                              <Badge className={getStatusColor(session.status)}>
+                                {getStatusText(session.status)}
+                              </Badge>
+                              <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">Creator</Badge>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 dark:text-gray-400">
+                              <div>
+                                <span className="font-medium">Description:</span><br />
+                                {session.description || 'DKG Ceremony'}
+                              </div>
+                              <div>
+                                <span className="font-medium">Signers:</span><br />
+                                {session.minSigners}/{session.maxSigners}
+                              </div>
+                              <div>
+                                <span className="font-medium">Group ID:</span><br />
+                                {session.groupId.slice(0, 12)}...
+                              </div>
+                              <div>
+                                <span className="font-medium">Created:</span><br />
+                                {session.createdAt.toLocaleDateString()}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelectedSession(session)}
+                            >
+                              View Details
+                            </Button>
+                            {session.status === 'completed' && (
+                              <Button variant="outline" size="sm">
+                                Download Keys
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+
+              {/* Sessions Joined as Participant - History */}
+              <Card className="p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    <span className="mr-2">🤝</span>
+                    Sessions Joined as Participant
+                  </h3>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    {sessions.filter(s => s.myRole === 'participant').length} total sessions
+                  </div>
+                </div>
+                
+                {sessions.filter(s => s.myRole === 'participant').length === 0 ? (
+                  <div className="text-center py-6">
+                    <p className="text-gray-600 dark:text-gray-400">No sessions joined as participant</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {sessions.filter(s => s.myRole === 'participant').map((session) => (
+                      <div key={session.id} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 hover:from-green-100 hover:to-emerald-100 dark:hover:from-green-900/30 dark:hover:to-emerald-900/30">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h4 className="font-medium text-gray-900 dark:text-gray-100">Session {session.id.slice(0, 8)}...</h4>
+                              <Badge className={getStatusColor(session.status)}>
+                                {getStatusText(session.status)}
+                              </Badge>
+                              <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">Participant</Badge>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 dark:text-gray-400">
+                              <div>
+                                <span className="font-medium">Description:</span><br />
+                                {session.description || 'DKG Ceremony'}
+                              </div>
+                              <div>
+                                <span className="font-medium">Signers:</span><br />
+                                {session.minSigners}/{session.maxSigners}
+                              </div>
+                              <div>
+                                <span className="font-medium">Group ID:</span><br />
+                                {session.groupId.slice(0, 12)}...
+                              </div>
+                              <div>
+                                <span className="font-medium">Joined:</span><br />
+                                {session.createdAt.toLocaleDateString()}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelectedSession(session)}
+                            >
+                              View Details
+                            </Button>
+                            {session.status === 'completed' && (
+                              <Button variant="outline" size="sm">
+                                Download Keys
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
             </div>
           )}
-        </Card>
+        </div>
       )}
 
 
