@@ -223,7 +223,7 @@ export default function DeleteChannelPage() {
             <div className="flex items-center justify-between">
               <div className="hidden lg:flex items-center gap-4">
                 <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-red-600 to-red-700 flex items-center justify-center">
-                  <span className="text-white text-sm font-bold">🗑️</span>
+                  <span className="text-white text-sm font-bold">✕</span>
                 </div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Delete Channel</h1>
               </div>
@@ -308,7 +308,7 @@ export default function DeleteChannelPage() {
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
                   <div className="flex items-center gap-4 mb-6">
                     <div className="h-12 w-12 bg-gradient-to-r from-red-500 to-red-600 rounded-xl flex items-center justify-center">
-                      <span className="text-white text-xl">🗑️</span>
+                      <span className="text-white text-xl">✕</span>
                     </div>
                     <div>
                       <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Delete Channel</h2>
@@ -342,7 +342,7 @@ export default function DeleteChannelPage() {
                     <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
                       <div className="text-sm text-gray-600 dark:text-gray-400">Your Access</div>
                       <div className="text-lg font-semibold text-blue-600 dark:text-blue-400">
-                        {isOwner ? '👑 Owner' : '📋 Leader'}
+                        {isOwner ? '⛂ Owner' : '▣ Leader'}
                       </div>
                     </div>
                   </div>

@@ -198,7 +198,7 @@ export default function CreateChannelPage() {
               <div className="flex items-center justify-between">
                 <div className="hidden lg:flex items-center gap-4">
                   <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-center">
-                    <span className="text-white text-sm font-bold">⚒</span>
+                    <span className="text-white text-sm font-bold">+</span>
                   </div>
                   <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Create Channel</h1>
                 </div>
