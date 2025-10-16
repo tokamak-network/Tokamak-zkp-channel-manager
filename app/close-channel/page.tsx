@@ -177,7 +177,7 @@ export default function CloseChannelPage() {
             <div className="flex items-center justify-between">
               <div className="hidden lg:flex items-center gap-4">
                 <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-orange-600 to-orange-700 flex items-center justify-center">
-                  <span className="text-white text-sm font-bold">🔐</span>
+                  <span className="text-white text-sm font-bold">⊗</span>
                 </div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Close Channel</h1>
               </div>
@@ -231,7 +231,7 @@ export default function CloseChannelPage() {
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
                 <div className="flex items-center gap-4 mb-6">
                   <div className="h-12 w-12 bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl flex items-center justify-center">
-                    <span className="text-white text-xl">🔐</span>
+                    <span className="text-white text-xl">⊗</span>
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Close Channel</h2>
@@ -286,7 +286,7 @@ export default function CloseChannelPage() {
                   {/* Pre-closure Checklist */}
                   <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 border border-blue-200 dark:border-blue-700">
                     <h4 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
-                      <span className="text-xl">📋</span>
+                      <span className="text-xl">▣</span>
                       Pre-Closure Checklist
                     </h4>
                     <div className="space-y-3">

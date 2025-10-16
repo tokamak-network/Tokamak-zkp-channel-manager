@@ -950,7 +950,7 @@ export default function DepositTokensPage() {
             <div className="flex items-center justify-between">
               <div className="hidden lg:flex items-center gap-4">
                 <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-center">
-                  <span className="text-white text-sm font-bold">💰</span>
+                  <span className="text-white text-sm font-bold">↓</span>
                 </div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Deposit Tokens</h1>
               </div>
@@ -1298,7 +1298,7 @@ disabled={
 
               <div className="mt-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg">
                 <p className="text-sm text-green-800 dark:text-green-300">
-                  <span className="font-medium">💰 Deposit Details:</span> {successDepositInfo.amount} {successDepositInfo.tokenSymbol} deposited to Channel {successDepositInfo.channelId}
+                  <span className="font-medium">↓ Deposit Details:</span> {successDepositInfo.amount} {successDepositInfo.tokenSymbol} deposited to Channel {successDepositInfo.channelId}
                 </p>
                 {successDepositInfo.txHash && (
                   <p className="text-xs text-green-600 dark:text-green-400 mt-1 font-mono break-all">

@@ -53,7 +53,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
     {
       name: 'Home',
       href: '/',
-      icon: '🏠',
+      icon: '⌂',
       description: 'Dashboard and overview',
       requiresConnection: false
     },
@@ -67,7 +67,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       userActions.push({
         name: 'Create Channel',
         href: '/create-channel',
-        icon: '⚒',
+        icon: '+',
         description: 'Create multi-party bridge channel',
         requiresConnection: true
       });
@@ -77,7 +77,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
     userActions.push({
       name: 'DKG Management',
       href: '/dkg-management',
-      icon: '🔑',
+      icon: '◆',
       description: 'Distributed Key Generation',
       requiresConnection: true
     });
@@ -88,19 +88,31 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
         {
           name: 'Deposit Tokens',
           href: '/deposit-tokens',
-          icon: '💰',
+          icon: '↓',
           description: '',
           requiresConnection: true
         },
         {
           name: 'Withdraw Tokens',
           href: '/withdraw-tokens',
-          icon: '💳',
+          icon: '↑',
           description: '',
           requiresConnection: true
         }
       );
     }
+  }
+
+  // Channel explorer actions - shown only when user has channels or is a participant
+  const channelActions = [];
+  if (isConnected && (hasChannels || isParticipant)) {
+    channelActions.push({
+      name: 'Channel Explorer',
+      href: '/channel-explorer',
+      icon: '🔍',
+      description: 'View all channels and activity',
+      requiresConnection: true
+    });
   }
 
   // Channel leader actions
@@ -110,42 +122,42 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       {
         name: 'Initialize State',
         href: '/initialize-state',
-        icon: '⚡',
+        icon: '⚙',
         description: '',
         requiresConnection: true
       },
       {
         name: 'Submit Proof',
         href: '/submit-proof',
-        icon: '📋',
+        icon: '▣',
         description: '',
         requiresConnection: true
       },
       {
         name: 'Sign Proof',
         href: '/sign-proof',
-        icon: '✍️',
+        icon: '✎',
         description: '',
         requiresConnection: true
       },
       {
         name: 'Close Channel',
         href: '/close-channel',
-        icon: '🔐',
+        icon: '⊗',
         description: '',
         requiresConnection: true
       },
       {
         name: 'Delete Channel',
         href: '/delete-channel',
-        icon: '🗑️',
+        icon: '✕',
         description: '',
         requiresConnection: true
       }
     );
   }
 
-  const navigation = [...baseNavigation, ...userActions, ...leaderActions];
+  const navigation = [...baseNavigation, ...userActions, ...channelActions, ...leaderActions];
 
   const handleNavigation = (item: any) => {
     if (item.requiresConnection && !isConnected) {

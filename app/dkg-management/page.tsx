@@ -57,6 +57,7 @@ interface DKGSession {
   description?: string;
   participants: DKGParticipant[];
   roster: Array<[number, string, string]>; // [uid, id_hex, ecdsa_pub_hex]
+  groupVerifyingKey?: string; // Group verification key (SEC1 hex) when completed
 }
 
 interface ParticipantStatus {
@@ -135,6 +136,39 @@ export default function DKGManagementPage() {
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [isJoiningSession, setIsJoiningSession] = useState(false);
+  
+  // DKG Round States
+  const [round1Packages, setRound1Packages] = useState<any[]>([]);
+  const [round2Packages, setRound2Packages] = useState<any[]>([]);
+  const [isSubmittingRound1, setIsSubmittingRound1] = useState(false);
+  const [isSubmittingRound2, setIsSubmittingRound2] = useState(false);
+  const [isSubmittingFinalize, setIsSubmittingFinalize] = useState(false);
+  
+  // Store FROST identifiers assigned by server
+  const [frostIdMap, setFrostIdMap] = useState<{[sessionId: string]: string}>({});
+  
+  // Commitment Modal State
+  const [showCommitmentModal, setShowCommitmentModal] = useState(false);
+  const [commitmentInput, setCommitmentInput] = useState('');
+  const [selectedSessionForCommitment, setSelectedSessionForCommitment] = useState<DKGSession | null>(null);
+
+  // Generate placeholder for commitment input
+  const generateMockCommitment = () => {
+    // Real FROST packages cannot be generated in the browser
+    // This is just a placeholder to show the UI works
+    return "// Real FROST Round1 package required\n// Use: cargo run -p dkg\n// Then copy the generated hex data here";
+  };
+  
+  // Debug effect to track FROST ID changes
+  useEffect(() => {
+    console.log('🔄 FROST ID map updated:', frostIdMap);
+    console.log('🔄 Available sessions:', Object.keys(frostIdMap));
+  }, [frostIdMap]);
+  
+  // Notification system
+  const [hasNotifiedRound1, setHasNotifiedRound1] = useState(new Set<string>());
+  const [hasNotifiedRound2, setHasNotifiedRound2] = useState(new Set<string>());
+  const [hasNotifiedFinalize, setHasNotifiedFinalize] = useState(new Set<string>());
   
   // Current participant being added
   const [newParticipant, setNewParticipant] = useState<DKGParticipant>({
@@ -287,6 +321,13 @@ export default function DKGManagementPage() {
   const handleServerMessage = (message: any) => {
     console.log('Received server message:', message);
     console.log('Message type:', typeof message, 'Content:', JSON.stringify(message));
+    console.log('🔍 Message type specifically:', message.type);
+    
+    // Track all message types for debugging
+    if (message.type === 'ReadyRound1') {
+      console.log('🎯🎯🎯 ReadyRound1 MESSAGE RECEIVED 🎯🎯🎯');
+      console.log('📋 Full ReadyRound1 payload:', JSON.stringify(message.payload, null, 2));
+    }
     
     switch (message.type) {
       case 'Challenge':
@@ -463,6 +504,27 @@ export default function DKGManagementPage() {
         const sessionId = message.payload.session;
         const roster = message.payload.roster;
         const participantCount = roster.length;
+        const myIdHex = message.payload.id_hex; // This is our FROST identifier for this session
+        
+        console.log('🎯 ReadyRound1 received for session:', sessionId);
+        console.log('📋 My FROST ID:', myIdHex);
+        console.log('👥 Roster:', roster);
+        console.log('🔍 FROST ID type:', typeof myIdHex, 'length:', myIdHex?.length);
+        
+        // Validate FROST ID before storing
+        if (!myIdHex || typeof myIdHex !== 'string' || myIdHex.length === 0) {
+          console.error('❌ Invalid FROST ID received:', myIdHex);
+          setError(`Invalid FROST identifier received: ${myIdHex}`);
+          break;
+        }
+        
+        // Store our FROST ID for this session
+        setFrostIdMap(prev => {
+          const updated: {[sessionId: string]: string} = { ...prev, [sessionId]: myIdHex };
+          console.log('🗂️ Updated FROST ID map:', updated);
+          console.log('🔍 Verifying storage - session:', sessionId, 'stored ID:', updated[sessionId]);
+          return updated;
+        });
         
         // Update the session in our sessions list
         setSessions(prev => {
@@ -508,19 +570,49 @@ export default function DKGManagementPage() {
         console.log(`🚀 All ${participantCount} participants joined! Starting Round 1...`);
         setSuccessMessage(`🚀 All ${participantCount} participants have joined! DKG Round 1 (Commitments) is now starting...`);
         setError('');
+
+        // Show notification for Round 1 if not already shown for this session
+        if (!hasNotifiedRound1.has(sessionId)) {
+          showBrowserNotification(
+            '🎯 DKG Round 1 Started',
+            `Session ${sessionId.slice(0, 8)}... requires your commitment submission`
+          );
+          playNotificationSound();
+          setHasNotifiedRound1(prev => new Set(Array.from(prev).concat(sessionId)));
+        }
         break;
 
       case 'Round1All':
-        if (selectedSession) {
-          const sessionId = selectedSession.id;
-          setSessions(prev => {
-            const updatedSessions = prev.map(session => 
-              session.id === sessionId ? { ...session, status: 'round2' as const } : session
-            );
-            localStorage.setItem('dkg-sessions', JSON.stringify(updatedSessions));
-            return updatedSessions;
-          });
+        // All Round 1 packages collected, now participants can proceed to Round 2
+        const round1SessionId = message.payload.session;
+        const packages = message.payload.packages;
+        
+        console.log(`📦 Round1All received for session ${round1SessionId}: ${packages.length} packages`);
+        setRound1Packages(packages);
+        
+        // Update session status to round2
+        setSessions(prev => {
+          const updatedSessions = prev.map(session => 
+            session.id === round1SessionId ? { ...session, status: 'round2' as const } : session
+          );
+          localStorage.setItem('dkg-sessions', JSON.stringify(updatedSessions));
+          return updatedSessions;
+        });
+        
+        if (selectedSession && selectedSession.id === round1SessionId) {
           setSelectedSession(prev => prev ? { ...prev, status: 'round2' as const } : null);
+        }
+        
+        setSuccessMessage(`📦 Round 1 complete! All ${packages.length} commitment packages collected. Ready for Round 2 (Secret Shares).`);
+
+        // Show notification for Round 2 if not already shown for this session
+        if (!hasNotifiedRound2.has(round1SessionId)) {
+          showBrowserNotification(
+            '🔒 DKG Round 2 Ready',
+            `Session ${round1SessionId.slice(0, 8)}... requires your encrypted secret shares`
+          );
+          playNotificationSound();
+          setHasNotifiedRound2(prev => new Set(Array.from(prev).concat(round1SessionId)));
         }
         break;
 
@@ -539,31 +631,69 @@ export default function DKGManagementPage() {
         break;
 
       case 'Round2All':
-        if (selectedSession) {
-          const sessionId = selectedSession.id;
-          setSessions(prev => {
-            const updatedSessions = prev.map(session => 
-              session.id === sessionId ? { ...session, status: 'finalizing' as const } : session
-            );
-            localStorage.setItem('dkg-sessions', JSON.stringify(updatedSessions));
-            return updatedSessions;
-          });
+        // All Round 2 packages collected, now participants can finalize
+        const round2SessionId = message.payload.session;
+        const encryptedPackages = message.payload.packages;
+        
+        console.log(`🔒 Round2All received for session ${round2SessionId}: ${encryptedPackages.length} encrypted packages`);
+        setRound2Packages(encryptedPackages);
+        
+        // Update session status to finalizing
+        setSessions(prev => {
+          const updatedSessions = prev.map(session => 
+            session.id === round2SessionId ? { ...session, status: 'finalizing' as const } : session
+          );
+          localStorage.setItem('dkg-sessions', JSON.stringify(updatedSessions));
+          return updatedSessions;
+        });
+        
+        if (selectedSession && selectedSession.id === round2SessionId) {
           setSelectedSession(prev => prev ? { ...prev, status: 'finalizing' as const } : null);
+        }
+        
+        setSuccessMessage(`🔒 Round 2 complete! All ${encryptedPackages.length} encrypted secret share packages collected. Ready for Finalization.`);
+
+        // Show notification for Finalization if not already shown for this session
+        if (!hasNotifiedFinalize.has(round2SessionId)) {
+          showBrowserNotification(
+            '🎯 DKG Finalization Ready',
+            `Session ${round2SessionId.slice(0, 8)}... requires your final group key submission`
+          );
+          playNotificationSound();
+          setHasNotifiedFinalize(prev => new Set(Array.from(prev).concat(round2SessionId)));
         }
         break;
 
       case 'Finalized':
-        if (selectedSession) {
-          const sessionId = selectedSession.id;
-          setSessions(prev => {
-            const updatedSessions = prev.map(session => 
-              session.id === sessionId ? { ...session, status: 'completed' as const } : session
-            );
-            localStorage.setItem('dkg-sessions', JSON.stringify(updatedSessions));
-            return updatedSessions;
-          });
-          setSelectedSession(prev => prev ? { ...prev, status: 'completed' as const } : null);
+        // DKG ceremony completed successfully
+        const finalizedSessionId = message.payload.session;
+        const groupVk = message.payload.group_vk_sec1_hex;
+        
+        console.log(`🎉 DKG Finalized for session ${finalizedSessionId}! Group VK: ${groupVk}`);
+        
+        setSessions(prev => {
+          const updatedSessions = prev.map(session => 
+            session.id === finalizedSessionId ? { 
+              ...session, 
+              status: 'completed' as const,
+              // Store the group verification key
+              groupVerifyingKey: groupVk
+            } : session
+          );
+          localStorage.setItem('dkg-sessions', JSON.stringify(updatedSessions));
+          return updatedSessions;
+        });
+        
+        if (selectedSession && selectedSession.id === finalizedSessionId) {
+          setSelectedSession(prev => prev ? { 
+            ...prev, 
+            status: 'completed' as const,
+            groupVerifyingKey: groupVk
+          } : null);
         }
+        
+        setSuccessMessage(`🎉 DKG Ceremony Complete! Distributed keys generated successfully. Group verification key available for download.`);
+        setError('');
         break;
     }
   };
@@ -1054,11 +1184,306 @@ export default function DKGManagementPage() {
     wsConnection.send(JSON.stringify(message));
   };
 
+  // Open commitment modal
+  const openCommitmentModal = (session: DKGSession) => {
+    setSelectedSessionForCommitment(session);
+    setCommitmentInput('');
+    setShowCommitmentModal(true);
+  };
+
+  // Submit commitment from modal
+  const submitCommitment = async () => {
+    if (!selectedSessionForCommitment || !wsConnection || !authState.isAuthenticated) {
+      setError('Invalid session or not authenticated.');
+      return;
+    }
+
+    if (!commitmentInput.trim()) {
+      setError('Please provide the commitment package.');
+      return;
+    }
+
+    setIsSubmittingRound1(true);
+    setError('');
+
+    try {
+      // Get the FROST identifier assigned by the server for this session
+      const myIdHex = frostIdMap[selectedSessionForCommitment.id];
+      
+      if (!myIdHex) {
+        throw new Error(`FROST identifier not available for session ${selectedSessionForCommitment.id}. Make sure ReadyRound1 message was received.`);
+      }
+
+      // Create the authentication payload for Round 1
+      // Use a simplified format since we don't have access to FROST library structures
+      // The server will need to verify this differently for frontend submissions
+      const authPayloadText = `TOKAMAK_FROST_DKG_R1|${selectedSessionForCommitment.id}|${myIdHex}|${commitmentInput.trim()}`;
+      
+      // Sign the payload using MetaMask
+      const signature = await signMessageAsync({
+        message: authPayloadText
+      });
+
+      const message = {
+        type: 'Round1Submit',
+        payload: {
+          session: selectedSessionForCommitment.id,
+          id_hex: myIdHex,
+          pkg_bincode_hex: commitmentInput.trim(),
+          sig_ecdsa_hex: signature.slice(2) // Remove '0x' prefix
+        }
+      };
+
+      console.log('📤 Submitting Round 1 commitment for session:', selectedSessionForCommitment.id);
+      console.log('📋 Auth payload signed:', authPayloadText);
+      wsConnection.send(JSON.stringify(message));
+      setSuccessMessage('🔐 Round 1 commitment submitted successfully!');
+      setShowCommitmentModal(false);
+      
+    } catch (error) {
+      console.error('Round 1 submission error:', error);
+      setError('Failed to submit Round 1 package: ' + (error as Error).message);
+    } finally {
+      setIsSubmittingRound1(false);
+    }
+  };
+
+  // DKG Round Submission Functions (legacy function - now redirects to modal)
+  const submitRound1 = async (session: DKGSession) => {
+    openCommitmentModal(session);
+  };
+
+  const submitRound2 = async (session: DKGSession) => {
+    if (!wsConnection || !authState.isAuthenticated || !authState.dkgPrivateKey) {
+      setError('Must be authenticated with DKG keypair to submit Round 2.');
+      return;
+    }
+
+    setIsSubmittingRound2(true);
+    setError('');
+
+    try {
+      // Get the FROST identifier assigned by the server for this session
+      const myIdHex = frostIdMap[session.id];
+      if (!myIdHex) {
+        throw new Error('FROST identifier not available. Make sure ReadyRound1 message was received.');
+      }
+      
+      // In a real implementation, this would generate encrypted per-recipient packages
+      // For demo purposes, create properly formatted hex values
+      
+      // Create mock encrypted packages for each participant
+      const mockEncryptedPackages: [string, string, string, string, string][] = [];
+      
+      if (session.roster) {
+        session.roster.forEach(([uid, recipientIdHex, ecdsaPubHex]) => {
+          // Create mock encrypted data
+          const ephPubHex = Array.from(new Uint8Array(33).fill(170)).map(b => b.toString(16).padStart(2, '0')).join('');
+          const nonceHex = Array.from(new Uint8Array(12).fill(187)).map(b => b.toString(16).padStart(2, '0')).join('');
+          const ciphertextHex = Array.from(new Uint8Array(32).fill(204)).map(b => b.toString(16).padStart(2, '0')).join('');
+          const signatureHex = Array.from(new Uint8Array(64).fill(221)).map(b => b.toString(16).padStart(2, '0')).join('');
+          
+          mockEncryptedPackages.push([recipientIdHex, ephPubHex, nonceHex, ciphertextHex, signatureHex]);
+        });
+      }
+
+      const message = {
+        type: 'Round2Submit',
+        payload: {
+          session: session.id,
+          id_hex: myIdHex,
+          pkgs_cipher_hex: mockEncryptedPackages
+        }
+      };
+
+      console.log('📤 Submitting Round 2 encrypted packages for session:', session.id);
+      console.log('📋 Created', mockEncryptedPackages.length, 'encrypted packages');
+      wsConnection.send(JSON.stringify(message));
+      setSuccessMessage('🔒 Round 2 encrypted secret shares submitted! Waiting for other participants...');
+    } catch (error) {
+      console.error('Round 2 submission error:', error);
+      setError('Failed to submit Round 2 packages: ' + (error as Error).message);
+    } finally {
+      setIsSubmittingRound2(false);
+    }
+  };
+
+  const submitFinalize = async (session: DKGSession) => {
+    if (!wsConnection || !authState.isAuthenticated || !authState.dkgPrivateKey) {
+      setError('Must be authenticated with DKG keypair to finalize.');
+      return;
+    }
+
+    setIsSubmittingFinalize(true);
+    setError('');
+
+    try {
+      // Get the FROST identifier assigned by the server for this session
+      const myIdHex = frostIdMap[session.id];
+      if (!myIdHex) {
+        throw new Error('FROST identifier not available. Make sure ReadyRound1 message was received.');
+      }
+      
+      // In a real implementation, this would compute the group verification key
+      // For demo purposes, create a properly formatted mock group verification key
+      const mockGroupVk = new Uint8Array(33); // 33-byte compressed SEC1 public key
+      mockGroupVk.fill(3); // Start with 0x03 for compressed point
+      mockGroupVk[0] = 3; // Set proper compression prefix
+      const groupVkHex = Array.from(mockGroupVk).map(b => b.toString(16).padStart(2, '0')).join('');
+      
+      // Create mock ECDSA signature
+      const mockSignature = new Uint8Array(64);
+      mockSignature.fill(255); // Simple mock data
+      const sigHex = Array.from(mockSignature).map(b => b.toString(16).padStart(2, '0')).join('');
+
+      const message = {
+        type: 'FinalizeSubmit',
+        payload: {
+          session: session.id,
+          id_hex: myIdHex,
+          group_vk_sec1_hex: groupVkHex,
+          sig_ecdsa_hex: sigHex
+        }
+      };
+
+      console.log('📤 Submitting finalization for session:', session.id);
+      console.log('📋 Mock group VK:', groupVkHex.slice(0, 16) + '...');
+      wsConnection.send(JSON.stringify(message));
+      setSuccessMessage('🎯 Finalization submitted! Computing final group verification key...');
+    } catch (error) {
+      console.error('Finalization submission error:', error);
+      setError('Failed to submit finalization: ' + (error as Error).message);
+    } finally {
+      setIsSubmittingFinalize(false);
+    }
+  };
+
   const clearAllSessions = () => {
     localStorage.removeItem('dkg-sessions');
     setSessions([]);
     setSelectedSession(null);
     setError('');
+  };
+
+  // Notification functions
+  const showBrowserNotification = (title: string, body: string) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, {
+        body,
+        icon: '/favicon.ico',
+        badge: '/favicon.ico'
+      });
+    }
+  };
+
+  const playNotificationSound = () => {
+    try {
+      // Create a simple notification sound using Web Audio API
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+      
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+      oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.2);
+      
+      gain.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.3);
+    } catch (error) {
+      console.log('Audio notification not available:', error);
+    }
+  };
+
+  const requestNotificationPermission = () => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  };
+
+  // Request notification permission on component mount
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
+
+  // Update page title when there are active ceremonies
+  useEffect(() => {
+    const activeCeremonies = sessions.filter(s => ['round1', 'round2', 'finalizing'].includes(s.status));
+    if (activeCeremonies.length > 0) {
+      document.title = `(${activeCeremonies.length}) DKG Management - Action Required`;
+    } else {
+      document.title = 'DKG Management - Tokamak zkEVM';
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      document.title = 'DKG Management - Tokamak zkEVM';
+    };
+  }, [sessions]);
+
+  const downloadGroupInfo = (session: DKGSession) => {
+    if (!session.groupVerifyingKey) {
+      setError('Group verification key not available yet.');
+      return;
+    }
+
+    const groupInfo = {
+      session_id: session.id,
+      group_id: session.groupId,
+      min_signers: session.minSigners,
+      max_signers: session.maxSigners,
+      group_verification_key: session.groupVerifyingKey,
+      participants: session.roster.map(([uid, id_hex, ecdsa_pub_hex]) => ({
+        uid,
+        id_hex,
+        ecdsa_pub_hex
+      })),
+      created_at: session.createdAt.toISOString()
+    };
+
+    const blob = new Blob([JSON.stringify(groupInfo, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `group_${session.id.slice(0, 8)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadKeyShare = (session: DKGSession) => {
+    if (!session.groupVerifyingKey) {
+      setError('Key share not available yet.');
+      return;
+    }
+
+    // In a real implementation, this would contain the actual key share
+    // For demo purposes, we'll create a placeholder structure
+    const keyShare = {
+      session_id: session.id,
+      group_id: session.groupId,
+      participant_uid: authState.userId || 'unknown',
+      key_share: 'placeholder_key_share_data',
+      verification_key: session.groupVerifyingKey,
+      created_at: session.createdAt.toISOString(),
+      warning: 'This is a placeholder key share for UI demonstration only'
+    };
+
+    const blob = new Blob([JSON.stringify(keyShare, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `share_${session.id.slice(0, 8)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const getStatusColor = (status: string) => {
@@ -1076,10 +1501,10 @@ export default function DKGManagementPage() {
   const getStatusText = (status: string) => {
     switch (status) {
       case 'waiting': return 'Waiting for Participants';
-      case 'round1': return 'Round 1: Commitments';
-      case 'round2': return 'Round 2: Secret Shares';
-      case 'finalizing': return 'Finalizing Keys';
-      case 'completed': return 'Completed';
+      case 'round1': return 'Round 1: Submit Commitments';
+      case 'round2': return 'Round 2: Submit Secret Shares';
+      case 'finalizing': return 'Finalizing: Generate Group Key';
+      case 'completed': return 'Completed Successfully';
       case 'failed': return 'Failed';
       default: return 'Unknown';
     }
@@ -1130,6 +1555,54 @@ export default function DKGManagementPage() {
           )}
         </div>
       </div>
+
+      {/* Connection Status */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100">DKG Server Connection</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Status: <Badge className={connectionStatus === 'connected' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300'}>
+                {connectionStatus}
+              </Badge>
+            </p>
+            {connectionStatus === 'disconnected' && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Connect to DKG server to create or join sessions
+              </p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              placeholder="Server URL (e.g., ws://127.0.0.1:9000/ws)"
+              value={serverUrl}
+              onChange={(e) => setServerUrl(e.target.value)}
+              className="w-80"
+            />
+            <Button 
+              onClick={connectToServer}
+              disabled={connectionStatus === 'connecting'}
+            >
+              {connectionStatus === 'connecting' ? 'Connecting...' : 'Connect'}
+            </Button>
+          </div>
+        </div>
+        
+        {/* Demo Mode Notice */}
+        {connectionStatus === 'disconnected' && (
+          <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-700">
+            <div className="flex items-start gap-2">
+              <div className="text-amber-600 dark:text-amber-400 mt-0.5">⚠️</div>
+              <div>
+                <h4 className="font-medium text-amber-800 dark:text-amber-200">Demo Mode Active</h4>
+                <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                  Working offline with simulated sessions. Connect to a real DKG server for actual cryptographic ceremonies.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* Authentication Status */}
       {connectionStatus === 'connected' && (
@@ -1247,48 +1720,217 @@ export default function DKGManagementPage() {
         </nav>
       </div>
 
-      {/* Connection Status */}
-      <Card className="p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100">DKG Server Connection</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Status: <Badge className={connectionStatus === 'connected' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300'}>
-                {connectionStatus}
-              </Badge>
-            </p>
-            {connectionStatus === 'disconnected' && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Connect to DKG server to create or join sessions
-              </p>
-            )}
+
+      {/* Active DKG Ceremony Dashboard */}
+      {activeTab === 'active' && sessions.filter(s => ['round1', 'round2', 'finalizing'].includes(s.status)).length > 0 && (
+        <Card className="mb-6 border-2 border-blue-500 dark:border-blue-400 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20">
+          <div className="p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+              <h2 className="text-xl font-bold text-blue-900 dark:text-blue-100">🔄 Active DKG Ceremonies</h2>
+              <div className="text-sm text-blue-700 dark:text-blue-300">
+                {sessions.filter(s => ['round1', 'round2', 'finalizing'].includes(s.status)).length} ceremony(ies) in progress
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              {sessions.filter(s => ['round1', 'round2', 'finalizing'].includes(s.status)).map((session) => (
+                <div key={session.id} className="bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-600 rounded-lg p-4 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                          Session {session.id}
+                        </h3>
+                        <Badge className={getStatusColor(session.status)}>
+                          {getStatusText(session.status)}
+                        </Badge>
+
+                      </div>
+                      
+                      {/* Action Required Message */}
+                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                        {session.status === 'round1' && (
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                            <span className="font-medium">Action Required:</span> Generate and submit your commitment package for Round 1
+                          </div>
+                        )}
+                        {session.status === 'round2' && (
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
+                            <span className="font-medium">Action Required:</span> Generate encrypted secret shares for other participants
+                          </div>
+                        )}
+                        {session.status === 'finalizing' && (
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></span>
+                            <span className="font-medium">Action Required:</span> Compute and submit the final group verification key
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="text-xs text-gray-500 dark:text-gray-500">
+                        {session.description || 'DKG Ceremony'} • {session.currentParticipants}/{session.maxSigners} participants
+                      </div>
+                      
+                      {/* Session and FROST ID info */}
+                      <div className="text-xs mt-1 p-2 bg-gray-100 dark:bg-gray-700 rounded border">
+                        <div className="font-mono">
+                          Session ID: {session.id}
+                        </div>
+                        <div className="font-mono">
+                          FROST ID: {frostIdMap[session.id] ? frostIdMap[session.id] : '❌ Not available'}
+                        </div>
+                        <div className="font-mono text-xs text-gray-500">
+                          Available IDs: {Object.keys(frostIdMap).length}
+                        </div>
+                        {!frostIdMap[session.id] && (
+                          <div className="mt-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                console.log('🔄 Requesting ReadyRound1 by rejoining session...');
+                                // Try to rejoin the session to trigger ReadyRound1 if all participants are present
+                                if (wsConnection && authState.isAuthenticated) {
+                                  const message = {
+                                    type: 'JoinSession',
+                                    payload: { session: session.id }
+                                  };
+                                  console.log('📤 Sending JoinSession to refresh state:', message);
+                                  wsConnection.send(JSON.stringify(message));
+                                }
+                              }}
+                              className="text-xs"
+                            >
+                              🔄 Refresh Session
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Action Button */}
+                    <div className="ml-4 flex gap-2">
+                      {session.status === 'round1' && !frostIdMap[session.id] && (
+                        <Button
+                          onClick={() => {
+                            console.log('🔄 Requesting ReadyRound1 by rejoining session...');
+                            if (wsConnection && authState.isAuthenticated) {
+                              const message = {
+                                type: 'JoinSession',
+                                payload: { session: session.id }
+                              };
+                              console.log('📤 Sending JoinSession to refresh state:', message);
+                              wsConnection.send(JSON.stringify(message));
+                            }
+                          }}
+                          className="bg-orange-600 hover:bg-orange-700 text-white font-medium px-6 py-2"
+                        >
+                          🔄 Refresh Session
+                        </Button>
+                      )}
+                      
+                      {session.status === 'round1' && frostIdMap[session.id] && (
+                        <Button
+                          onClick={() => submitRound1(session)}
+                          disabled={isSubmittingRound1 || !authState.isAuthenticated}
+                          className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 disabled:opacity-50"
+                        >
+                          {isSubmittingRound1 ? (
+                            <div className="flex items-center gap-2">
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                              Submitting...
+                            </div>
+                          ) : (
+                            <>🔐 Submit Commitment</>
+                          )}
+                        </Button>
+                      )}
+                      
+                      {session.status === 'round2' && (
+                        <Button
+                          onClick={() => submitRound2(session)}
+                          disabled={isSubmittingRound2 || !authState.isAuthenticated}
+                          className="bg-purple-600 hover:bg-purple-700 text-white font-medium px-6 py-2"
+                        >
+                          {isSubmittingRound2 ? (
+                            <div className="flex items-center gap-2">
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                              Submitting...
+                            </div>
+                          ) : (
+                            <>🔒 Submit Encrypted Share</>
+                          )}
+                        </Button>
+                      )}
+                      
+                      {session.status === 'finalizing' && (
+                        <Button
+                          onClick={() => submitFinalize(session)}
+                          disabled={isSubmittingFinalize || !authState.isAuthenticated}
+                          className="bg-orange-600 hover:bg-orange-700 text-white font-medium px-6 py-2"
+                        >
+                          {isSubmittingFinalize ? (
+                            <div className="flex items-center gap-2">
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                              Finalizing...
+                            </div>
+                          ) : (
+                            <>🎯 Finalize Submit</>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="mt-4 space-y-3">
+              <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-blue-800 dark:text-blue-200">
+                  <span>💡</span>
+                  <span><strong>Important:</strong> Complete your submissions promptly to avoid delaying other participants. The ceremony requires all participants to submit before proceeding to the next round.</span>
+                </div>
+              </div>
+              
+              <details className="text-sm">
+                <summary className="cursor-pointer text-blue-700 dark:text-blue-300 font-medium hover:text-blue-900 dark:hover:text-blue-100">
+                  📖 How DKG Ceremony Works (3 rounds)
+                </summary>
+                <div className="mt-2 pl-4 space-y-2 text-gray-600 dark:text-gray-400">
+                  <div className="flex items-start gap-2">
+                    <span className="text-blue-500 font-bold">1.</span>
+                    <div>
+                      <strong className="text-blue-600 dark:text-blue-400">Round 1 - Commitments:</strong>
+                      <p>Each participant generates secret commitments and shares them with everyone. This establishes the foundation for the distributed key.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-purple-500 font-bold">2.</span>
+                    <div>
+                      <strong className="text-purple-600 dark:text-purple-400">Round 2 - Secret Shares:</strong>
+                      <p>Each participant creates encrypted secret shares for every other participant. These shares are essential for threshold signing.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-orange-500 font-bold">3.</span>
+                    <div>
+                      <strong className="text-orange-600 dark:text-orange-400">Finalization - Group Key:</strong>
+                      <p>All participants combine their shares to compute the final group verification key. This completes the distributed key generation.</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 p-2 bg-green-50 dark:bg-green-900/20 rounded text-green-700 dark:text-green-300">
+                    <strong>Result:</strong> A distributed threshold signature scheme where any {sessions.find(s => ['round1', 'round2', 'finalizing'].includes(s.status))?.minSigners || 'M'} out of {sessions.find(s => ['round1', 'round2', 'finalizing'].includes(s.status))?.maxSigners || 'N'} participants can create valid signatures.
+                  </div>
+                </div>
+              </details>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Server URL (e.g., ws://127.0.0.1:9000/ws)"
-              value={serverUrl}
-              onChange={(e) => setServerUrl(e.target.value)}
-              className="w-80"
-            />
-            <Button 
-              onClick={connectToServer}
-              disabled={connectionStatus === 'connecting'}
-            >
-              {connectionStatus === 'connecting' ? 'Connecting...' : 'Connect'}
-            </Button>
-          </div>
-        </div>
-        
-        {/* Demo Mode Notice */}
-        {connectionStatus === 'disconnected' && (
-          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-            <h4 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">Demo Mode Available</h4>
-            <p className="text-xs text-blue-700 dark:text-blue-300">
-              You can test the DKG interface without a server connection. Session creation will work in demo mode.
-            </p>
-          </div>
-        )}
-      </Card>
+        </Card>
+      )}
 
       {/* Success Message */}
       {successMessage && (
@@ -1355,7 +1997,7 @@ export default function DKGManagementPage() {
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                          <h4 className="font-medium text-gray-900 dark:text-gray-100">Session {session.id.slice(0, 8)}...</h4>
+                          <h4 className="font-medium text-gray-900 dark:text-gray-100">Session {session.id}</h4>
                           <Badge className={getStatusColor(session.status)}>
                             {getStatusText(session.status)}
                           </Badge>
@@ -1431,7 +2073,7 @@ export default function DKGManagementPage() {
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                          <h4 className="font-medium text-gray-900 dark:text-gray-100">Session {session.id.slice(0, 8)}...</h4>
+                          <h4 className="font-medium text-gray-900 dark:text-gray-100">Session {session.id}</h4>
                           <Badge className={getStatusColor(session.status)}>
                             {getStatusText(session.status)}
                           </Badge>
@@ -1465,11 +2107,120 @@ export default function DKGManagementPage() {
                           </div>
                         )}
                         
-                        {['round1', 'round2', 'finalizing'].includes(session.status) && (
-                          <div className="mt-3 p-2 bg-blue-100 dark:bg-blue-900/30 rounded text-sm">
-                            <span className="text-blue-800 dark:text-blue-300">
-                              🔄 DKG ceremony in progress - follow prompts from the coordinator
-                            </span>
+                        {/* DKG Round Action Buttons */}
+                        {session.status === 'round1' && (
+                          <div className="mt-3 p-3 bg-blue-100 dark:bg-blue-900/30 rounded">
+                            <div className="flex items-center justify-between">
+                              <div className="text-sm text-blue-800 dark:text-blue-300">
+                                <span className="font-medium">🎯 Round 1: Submit Commitments</span>
+                                <p className="text-xs mt-1">Generate and submit your commitment package for the DKG ceremony</p>
+                                <p className="text-xs mt-1 text-amber-600 dark:text-amber-400 font-medium">
+                                  ⚠️ Frontend UI is for monitoring only. Use Rust CLI for actual participation.
+                                </p>
+                                {!frostIdMap[session.id] && (
+                                  <p className="text-xs mt-1 text-orange-600 dark:text-orange-400 font-medium">
+                                    ⚠️ FROST ID missing - Click refresh to sync with server
+                                  </p>
+                                )}
+                              </div>
+                              <div className="flex gap-2">
+                                {!frostIdMap[session.id] && (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      console.log('🔄 Requesting ReadyRound1 by rejoining session...');
+                                      if (wsConnection && authState.isAuthenticated) {
+                                        const message = {
+                                          type: 'JoinSession',
+                                          payload: { session: session.id }
+                                        };
+                                        console.log('📤 Sending JoinSession to refresh state:', message);
+                                        wsConnection.send(JSON.stringify(message));
+                                      }
+                                    }}
+                                    className="bg-orange-600 hover:bg-orange-700"
+                                  >
+                                    🔄 Refresh
+                                  </Button>
+                                )}
+                                <Button
+                                  size="sm"
+                                  onClick={() => submitRound1(session)}
+                                  disabled={isSubmittingRound1 || !authState.isAuthenticated || !frostIdMap[session.id]}
+                                  className="bg-gray-600 hover:bg-gray-700 disabled:opacity-50"
+                                >
+                                  {isSubmittingRound1 ? (
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                      Checking...
+                                    </div>
+                                  ) : (
+                                    'View Requirements'
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {session.status === 'round2' && (
+                          <div className="mt-3 p-3 bg-purple-100 dark:bg-purple-900/30 rounded">
+                            <div className="flex items-center justify-between">
+                              <div className="text-sm text-purple-800 dark:text-purple-300">
+                                <span className="font-medium">🔒 Round 2: Submit Secret Shares</span>
+                                <p className="text-xs mt-1">Generate encrypted secret shares for each participant</p>
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() => submitRound2(session)}
+                                disabled={isSubmittingRound2 || !authState.isAuthenticated}
+                                className="bg-purple-600 hover:bg-purple-700"
+                              >
+                                {isSubmittingRound2 ? (
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    Submitting...
+                                  </div>
+                                ) : (
+                                  'Submit Round 2'
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {session.status === 'finalizing' && (
+                          <div className="mt-3 p-3 bg-orange-100 dark:bg-orange-900/30 rounded">
+                            <div className="flex items-center justify-between">
+                              <div className="text-sm text-orange-800 dark:text-orange-300">
+                                <span className="font-medium">🎯 Finalize: Generate Group Key</span>
+                                <p className="text-xs mt-1">Compute and submit the final group verification key</p>
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() => submitFinalize(session)}
+                                disabled={isSubmittingFinalize || !authState.isAuthenticated}
+                                className="bg-orange-600 hover:bg-orange-700"
+                              >
+                                {isSubmittingFinalize ? (
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    Finalizing...
+                                  </div>
+                                ) : (
+                                  'Submit Finalize'
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {session.status === 'completed' && (
+                          <div className="mt-3 p-3 bg-green-100 dark:bg-green-900/30 rounded">
+                            <div className="text-sm text-green-800 dark:text-green-300">
+                              <span className="font-medium">✅ DKG Complete!</span>
+                              <p className="text-xs mt-1">Distributed keys generated successfully. Download your key shares below.</p>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1812,7 +2563,7 @@ export default function DKGManagementPage() {
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
-                              <h4 className="font-medium text-gray-900 dark:text-gray-100">Session {session.id.slice(0, 8)}...</h4>
+                              <h4 className="font-medium text-gray-900 dark:text-gray-100">Session {session.id}</h4>
                               <Badge className={getStatusColor(session.status)}>
                                 {getStatusText(session.status)}
                               </Badge>
@@ -1846,9 +2597,26 @@ export default function DKGManagementPage() {
                               View Details
                             </Button>
                             {session.status === 'completed' && (
-                              <Button variant="outline" size="sm">
-                                Download Keys
-                              </Button>
+                              <div className="flex gap-1">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => downloadGroupInfo(session)}
+                                  disabled={!session.groupVerifyingKey}
+                                  title="Download group verification key"
+                                >
+                                  📁 Group
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => downloadKeyShare(session)}
+                                  disabled={!session.groupVerifyingKey}
+                                  title="Download your key share"
+                                >
+                                  🔑 Share
+                                </Button>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -1881,7 +2649,7 @@ export default function DKGManagementPage() {
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
-                              <h4 className="font-medium text-gray-900 dark:text-gray-100">Session {session.id.slice(0, 8)}...</h4>
+                              <h4 className="font-medium text-gray-900 dark:text-gray-100">Session {session.id}</h4>
                               <Badge className={getStatusColor(session.status)}>
                                 {getStatusText(session.status)}
                               </Badge>
@@ -1915,9 +2683,26 @@ export default function DKGManagementPage() {
                               View Details
                             </Button>
                             {session.status === 'completed' && (
-                              <Button variant="outline" size="sm">
-                                Download Keys
-                              </Button>
+                              <div className="flex gap-1">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => downloadGroupInfo(session)}
+                                  disabled={!session.groupVerifyingKey}
+                                  title="Download group verification key"
+                                >
+                                  📁 Group
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => downloadKeyShare(session)}
+                                  disabled={!session.groupVerifyingKey}
+                                  title="Download your key share"
+                                >
+                                  🔑 Share
+                                </Button>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -1979,12 +2764,35 @@ export default function DKGManagementPage() {
                 <div>
                   <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Generated Artifacts</label>
                   <div className="space-y-2">
-                    <Button variant="outline" className="w-full">
-                      Download Group Info (group.json)
+                    <Button 
+                      variant="outline" 
+                      className="w-full"
+                      onClick={() => downloadGroupInfo(selectedSession)}
+                      disabled={!selectedSession.groupVerifyingKey}
+                    >
+                      📁 Download Group Info (group.json)
                     </Button>
-                    <Button variant="outline" className="w-full">
-                      Download Key Share (share_{selectedSession.id.slice(0, 8)}.json)
+                    <Button 
+                      variant="outline" 
+                      className="w-full"
+                      onClick={() => downloadKeyShare(selectedSession)}
+                      disabled={!selectedSession.groupVerifyingKey}
+                    >
+                      🔑 Download Key Share (share_{selectedSession.id.slice(0, 8)}.json)
                     </Button>
+                    {selectedSession.groupVerifyingKey && (
+                      <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                        <h4 className="font-medium text-green-800 dark:text-green-200 mb-2">Group Verification Key</h4>
+                        <div className="bg-white dark:bg-gray-800 p-2 rounded border">
+                          <span className="font-mono text-xs text-gray-800 dark:text-gray-200 break-all select-all cursor-pointer">
+                            {selectedSession.groupVerifyingKey}
+                          </span>
+                        </div>
+                        <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                          Use this key for FROST threshold signature verification
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -2052,6 +2860,109 @@ export default function DKGManagementPage() {
           </div>
         </div>
       </Card>
+
+      {/* Commitment Modal */}
+      <Dialog open={showCommitmentModal} onOpenChange={setShowCommitmentModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Submit Round 1 Commitment</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                {selectedSessionForCommitment && (
+                  <>Session ID: <span className="font-mono">{selectedSessionForCommitment.id}</span></>
+                )}
+              </p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                {selectedSessionForCommitment && frostIdMap[selectedSessionForCommitment.id] && (
+                  <>FROST ID: <span className="font-mono">{frostIdMap[selectedSessionForCommitment.id]}</span></>
+                )}
+              </p>
+            </div>
+            
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-sm font-medium">
+                  Commitment Package (pkg_bincode_hex)
+                </label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCommitmentInput(generateMockCommitment())}
+                  className="text-xs"
+                >
+                  Show Placeholder
+                </Button>
+              </div>
+              <textarea
+                value={commitmentInput}
+                onChange={(e) => setCommitmentInput(e.target.value)}
+                placeholder="Paste your FROST Round 1 package hex data here..."
+                className="w-full h-32 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono text-sm"
+              />
+              <div className="text-xs text-gray-500 mt-1 space-y-1">
+                <p>This requires a real FROST Round 1 package generated by the cryptographic library</p>
+                <p><strong>To generate real commitment:</strong> Use <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">cargo run -p dkg</code> in the frost-dkg directory</p>
+                <p><strong>Browser limitation:</strong> FROST cryptography cannot be performed in JavaScript</p>
+              </div>
+            </div>
+            
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-600 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <span className="text-amber-600 dark:text-amber-400 text-lg">⚠️</span>
+                <div className="text-sm text-amber-800 dark:text-amber-200">
+                  <p className="font-medium mb-1">Real DKG Participation Required</p>
+                  <p>This UI is for monitoring only. To actually participate in DKG:</p>
+                  <ol className="list-decimal list-inside mt-1 space-y-1 text-xs">
+                    <li>Navigate to the <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">frost-dkg</code> directory</li>
+                    <li>Run <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">cargo run -p dkg</code></li>
+                    <li>Follow the CLI prompts to generate real commitment packages</li>
+                    <li>Copy the generated hex data to this field for testing the submission flow</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+              <p className="text-sm text-blue-800 dark:text-blue-200">
+                <strong>Note:</strong> The commitment will be automatically signed using your connected MetaMask wallet when you submit.
+              </p>
+            </div>
+
+            {error && (
+              <div className="text-red-600 dark:text-red-400 text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-4">
+              <Button
+                onClick={() => setShowCommitmentModal(false)}
+                variant="outline"
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={submitCommitment}
+                disabled={isSubmittingRound1 || !commitmentInput.trim()}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+              >
+                {isSubmittingRound1 ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Submitting...
+                  </div>
+                ) : (
+                  'Submit Commitment'
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       </div>
     </Layout>
   );

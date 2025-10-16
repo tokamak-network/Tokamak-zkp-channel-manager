@@ -205,7 +205,7 @@ export default function InitializeStatePage() {
             <div className="flex items-center justify-between">
               <div className="hidden lg:flex items-center gap-4">
                 <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-orange-600 to-orange-700 flex items-center justify-center">
-                  <span className="text-white text-sm font-bold">⚡</span>
+                  <span className="text-white text-sm font-bold">⚙</span>
                 </div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Initialize Channel State</h1>
               </div>
@@ -258,7 +258,7 @@ export default function InitializeStatePage() {
           ) : !hookLeaderChannel ? (
             <div className="text-center py-12">
               <div className="h-16 w-16 bg-orange-100 dark:bg-orange-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">⚡</span>
+                <span className="text-2xl">⚙</span>
               </div>
               <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">No Channel to Initialize</h3>
               <p className="text-gray-600 dark:text-gray-400 mb-4">
@@ -275,7 +275,7 @@ export default function InitializeStatePage() {
                 animateCards ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
               }`}>
                 <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4 flex items-center gap-2">
-                  <span className="text-lg">⚡</span>
+                  <span className="text-lg">⚙</span>
                   Channel {hookLeaderChannel.id} - Ready to Initialize
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
