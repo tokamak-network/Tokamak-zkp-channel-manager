@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAccount, useSignMessage } from 'wagmi';
 import { recoverPublicKey, hexToBytes, toBytes } from 'viem';
 import { keccak256 } from 'js-sha3';
@@ -131,6 +131,8 @@ export default function DKGManagementPage() {
   const [description, setDescription] = useState('');
   const [serverUrl, setServerUrl] = useState('ws://127.0.0.1:9000/ws');
   const [sessionToJoin, setSessionToJoin] = useState('');
+  const [justJoinedSession, setJustJoinedSession] = useState(''); // Track the session we just joined
+  const joinSessionRef = useRef(''); // Ref to track join state that won't be cleared by re-renders
   const [participants, setParticipants] = useState<DKGParticipant[]>([]);
   const [error, setError] = useState<string>('');
   const [successMessage, setSuccessMessage] = useState<string>('');
@@ -181,6 +183,7 @@ export default function DKGManagementPage() {
   // Joining requires connection for real coordination
   const canCreateSessions = true;
   const canJoinSessions = isConnected;
+
 
   useEffect(() => {
     // Load existing sessions from localStorage and migrate old format
@@ -245,6 +248,11 @@ export default function DKGManagementPage() {
       }
     }
   }, [address]);
+
+  // Debug effect to track justJoinedSession changes
+  useEffect(() => {
+    console.log(`🔍 justJoinedSession changed to: "${justJoinedSession}"`);
+  }, [justJoinedSession]);
 
   const connectToServer = async () => {
     if (wsConnection) {
@@ -390,6 +398,7 @@ export default function DKGManagementPage() {
         break;
         
       case 'Error':
+        console.log('❌ Error case - clearing join state');
         setError(`Server error: ${message.payload?.message || 'Unknown error'}`);
         setIsCreatingSession(false);
         setIsJoiningSession(false);
@@ -410,10 +419,32 @@ export default function DKGManagementPage() {
             console.log(`🎉 Participant join update: ${current}/${total}`);
             
             // For users who just joined, show success notification
-            if (isJoiningSession) {
+            console.log(`🔍 Checking if should show success - isJoiningSession: ${isJoiningSession}`);
+            console.log(`🔍 Current sessionToJoin: "${sessionToJoin}"`);
+            
+            // Check if this is a join response for the session we're trying to join
+            const isJoinResponse = isJoiningSession || (sessionToJoin && sessionToJoin.length > 0) || (justJoinedSession && justJoinedSession.length > 0) || (joinSessionRef.current && joinSessionRef.current.length > 0);
+            console.log(`🔍 justJoinedSession: "${justJoinedSession}"`);
+            console.log(`🔍 joinSessionRef.current: "${joinSessionRef.current}"`);
+            console.log(`🔍 isJoinResponse: ${isJoinResponse}`);
+            
+            if (isJoinResponse) {
+              console.log('✅ Setting success message and clearing joining state');
               setError('');
               setSuccessMessage(`🎉 Successfully joined session! Waiting for ${parseInt(total) - parseInt(current)} more participant(s) to join before starting DKG rounds.`);
+              console.log('🔄 Setting isJoiningSession to false in join success logic');
               setIsJoiningSession(false);
+              // Clear join tracking after showing success message
+              if (isJoiningSession) {
+                console.log('🧹 Clearing all join tracking since this was the initial join response');
+                setSessionToJoin('');
+                setJustJoinedSession(''); // Clear the join tracking
+                joinSessionRef.current = ''; // Clear the ref too
+              } else {
+                console.log('📝 Keeping join tracking for potential additional updates');
+              }
+            } else {
+              console.log('❌ Not showing success - not a join response');
             }
             
             // Update ALL sessions with this participant count if we can determine the session ID
@@ -460,7 +491,6 @@ export default function DKGManagementPage() {
               if (current === total) {
                 setActiveTab('active'); // Switch to active sessions tab when full
               }
-              setSessionToJoin(''); // Clear the input after successful join
             }
           } else {
             // Other info messages - might contain session updates for creators
@@ -1170,8 +1200,12 @@ export default function DKGManagementPage() {
     }
 
     setIsJoiningSession(true);
+    setJustJoinedSession(sessionToJoin); // Store which session we're joining
+    joinSessionRef.current = sessionToJoin; // Also store in ref for reliability
     setError('');
     setSuccessMessage('');
+    console.log(`🔗 Starting join - sessionToJoin preserved: "${sessionToJoin}"`);
+    console.log(`🔗 Also stored in joinSessionRef: "${joinSessionRef.current}"`);
 
     const message = {
       type: 'JoinSession',
@@ -1359,10 +1393,18 @@ export default function DKGManagementPage() {
   };
 
   const clearAllSessions = () => {
+    // Clear local storage and UI state
     localStorage.removeItem('dkg-sessions');
     setSessions([]);
     setSelectedSession(null);
     setError('');
+    
+    // Send message to server to clear roster and all sessions
+    if (wsConnection) {
+      const message = { type: 'ClearAllSessions', payload: null };
+      wsConnection.send(JSON.stringify(message));
+      console.log('📤 Sent ClearAllSessions message to server');
+    }
   };
 
   // Notification functions
@@ -1587,21 +1629,6 @@ export default function DKGManagementPage() {
             </Button>
           </div>
         </div>
-        
-        {/* Demo Mode Notice */}
-        {connectionStatus === 'disconnected' && (
-          <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-700">
-            <div className="flex items-start gap-2">
-              <div className="text-amber-600 dark:text-amber-400 mt-0.5">⚠️</div>
-              <div>
-                <h4 className="font-medium text-amber-800 dark:text-amber-200">Demo Mode Active</h4>
-                <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                  Working offline with simulated sessions. Connect to a real DKG server for actual cryptographic ceremonies.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
       </Card>
 
       {/* Authentication Status */}
@@ -2304,18 +2331,6 @@ export default function DKGManagementPage() {
             </div>
           </div>
           
-          <div className="mb-6">
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Topic (Optional)</label>
-            <Input
-              placeholder="Unique topic string for this DKG ceremony"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-            />
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Unique identifier for the DKG topic. Auto-generated if empty.
-            </p>
-          </div>
-          
           {/* Participant Registration Section */}
           <div className="mb-6 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
             <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
@@ -2428,7 +2443,6 @@ export default function DKGManagementPage() {
             <div className="text-sm space-y-1 text-gray-700 dark:text-gray-300">
               <p>• Min/Max Signers: {minSigners} of {maxSigners} signatures required</p>
               <p>• Description: {description || 'DKG Key Generation Ceremony'}</p>
-              <p>• Topic: {topic || 'Auto-generated'}</p>
               <p>• Group ID: {groupId || 'Auto-generated'}</p>
               <p>• Registered Participants: {participants.length}/{maxSigners}</p>
               <p>• Role: You will be the session creator and coordinator</p>
@@ -2456,7 +2470,10 @@ export default function DKGManagementPage() {
                 <Input
                   placeholder="Session ID provided by creator (e.g., e2bb7be0-f196-4ce5-8a48-f9e892b6d88b)"
                   value={sessionToJoin}
-                  onChange={(e) => setSessionToJoin(e.target.value)}
+                  onChange={(e) => {
+                    console.log(`📝 SessionToJoin changed to: "${e.target.value}"`);
+                    setSessionToJoin(e.target.value);
+                  }}
                   className="flex-1 font-mono text-sm"
                   disabled={isJoiningSession}
                 />
@@ -2475,6 +2492,24 @@ export default function DKGManagementPage() {
                   )}
                 </Button>
               </div>
+
+              {/* Success Message for Join */}
+              {successMessage && (
+                <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="text-green-600 dark:text-green-400 font-medium">✅ Success:</span>
+                    <p className="text-green-700 dark:text-green-300 text-sm">{successMessage}</p>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setSuccessMessage('')}
+                      className="ml-auto text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30"
+                    >
+                      ✕
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {/* Prerequisites Section */}
               <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg mb-4">
