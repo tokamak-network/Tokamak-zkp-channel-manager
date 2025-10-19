@@ -373,8 +373,8 @@ export function useDKGWebSocket(
         return;
       }
 
-      // 2. Parse challenge UUID and get bytes
-      const uuidBytes = new Uint8Array(16);
+      // 2. Parse challenge UUID and get bytes (match server's UUID parsing exactly)
+      // The server uses Rust's Uuid::as_bytes() which returns bytes in RFC 4122 order
       const uuid = authState.uuid.replace(/-/g, '');
       
       // Validate UUID format
@@ -383,6 +383,8 @@ export function useDKGWebSocket(
         return;
       }
       
+      // Parse UUID bytes in the same order as Rust's Uuid::as_bytes()
+      const uuidBytes = new Uint8Array(16);
       for (let i = 0; i < 16; i++) {
         uuidBytes[i] = parseInt(uuid.substring(i * 2, i * 2 + 2), 16);
       }
@@ -412,16 +414,17 @@ export function useDKGWebSocket(
       
       // Sign the raw digest hash directly
       const digestBytes = hexToBytes(properDigest as `0x${string}`);
-      const signature = keyPair.sign(digestBytes);
+      const signature = keyPair.sign(digestBytes, { canonical: true });
       
-      // Ensure canonical signature (low-s form)
+      // Ensure canonical signature (low-s form) - this is critical for server verification
       const n = ec.curve.n;
       let s = signature.s;
       if (s.gt(n.shln(1))) {
         s = n.sub(s);
       }
       
-      // Convert to compact format (r + s, 64 bytes)
+      // Convert to compact format (r + s, 64 bytes total)
+      // The server expects exactly 64 bytes: 32 bytes r + 32 bytes s
       const r = signature.r.toString(16).padStart(64, '0');
       const sHex = s.toString(16).padStart(64, '0');
       const signatureHex = r + sHex;
@@ -430,9 +433,21 @@ export function useDKGWebSocket(
       const normalizedSig = { r: signature.r, s: s };
       const isValid = keyPair.verify(digestBytes, normalizedSig);
       console.log('✅ Local signature verification:', isValid ? 'VALID' : 'INVALID');
+      console.log('🔍 Signature format check:', {
+        rLength: r.length,
+        sLength: sHex.length,
+        totalLength: signatureHex.length,
+        expectedLength: 128 // 64 bytes = 128 hex chars
+      });
       
       if (!isValid) {
         setError('Local signature verification failed. Please try again.');
+        return;
+      }
+      
+      // Additional validation: ensure signature is exactly 64 bytes (128 hex chars)
+      if (signatureHex.length !== 128) {
+        setError(`Invalid signature length: ${signatureHex.length}, expected 128`);
         return;
       }
       
@@ -452,9 +467,14 @@ export function useDKGWebSocket(
         pubkey_length: pubkeyHex.length,
         signature_hex: signatureHex,
         signature_length: signatureHex.length,
-        digest: properDigest
+        digest: properDigest,
+        digestLength: properDigest.length,
+        uuidBytesHex: Array.from(uuidBytes).map(b => b.toString(16).padStart(2, '0')).join(''),
+        signatureR: r,
+        signatureS: sHex
       });
 
+      console.log('📤 Sending authentication request...');
       wsConnection.send(JSON.stringify(message));
     } catch (error) {
       console.error('Authentication failed:', error);
