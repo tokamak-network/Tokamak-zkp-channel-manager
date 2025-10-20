@@ -10,6 +10,7 @@ import { publicProvider } from 'wagmi/providers/public';
 import { jsonRpcProvider } from 'wagmi/providers/jsonRpc';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import ConsoleErrorFilter from '@/components/ConsoleErrorFilter';
 
 import '@rainbow-me/rainbowkit/styles.css';
 
@@ -75,6 +76,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           initialChain={sepolia}
         >
           <ThemeProvider>
+            <ConsoleErrorFilter enabled={true} />
             {children}
           </ThemeProvider>
         </RainbowKitProvider>

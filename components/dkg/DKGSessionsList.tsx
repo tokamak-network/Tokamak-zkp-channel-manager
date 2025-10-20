@@ -14,7 +14,7 @@ interface DKGSession {
   groupId: string;
   topic: string;
   createdAt: Date;
-  myRole: 'creator' | 'participant';
+  myRole?: 'creator' | 'participant';
   description?: string;
   participants: any[];
   roster: Array<[number, string, string]>;
@@ -26,7 +26,9 @@ interface DKGSessionsListProps {
   address: string | undefined;
   activeTab: string;
   frostIdMap: Record<string, string>;
+  joinedSessions: Set<string>;
   onSelectSession: (session: DKGSession) => void;
+  onViewMore: (session: DKGSession) => void;
   onRefreshSession: (sessionId: string) => void;
   onSubmitRound1: (session: DKGSession) => void;
   onSubmitRound2: (session: DKGSession) => void;
@@ -45,7 +47,9 @@ export function DKGSessionsList({
   address,
   activeTab,
   frostIdMap,
+  joinedSessions,
   onSelectSession,
+  onViewMore,
   onRefreshSession,
   onSubmitRound1,
   onSubmitRound2,
@@ -202,6 +206,14 @@ export function DKGSessionsList({
         </div>
 
         <div className="ml-4 flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onViewMore(session)}
+            className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
+          >
+            👁️ View More
+          </Button>
           {getActionButton(session)}
         </div>
       </div>
@@ -242,14 +254,14 @@ export function DKGSessionsList({
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               <span className="mr-2">🤝</span>
-              Sessions Joined as Participant
+              Sessions as Participant
             </h3>
             <div className="text-sm text-gray-600 dark:text-gray-400">
-              {sessions.filter(s => s.myRole === 'participant' && ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status)).length} joined sessions
+              {sessions.filter(s => s.myRole === 'participant' && ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status) && joinedSessions.has(s.id)).length} joined sessions
             </div>
           </div>
           
-          {sessions.filter(s => s.myRole === 'participant' && ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status)).length === 0 ? (
+          {sessions.filter(s => s.myRole === 'participant' && ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status) && joinedSessions.has(s.id)).length === 0 ? (
             <div className="text-center py-6">
               <p className="text-gray-600 dark:text-gray-400">No sessions joined as participant</p>
               <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
@@ -258,7 +270,7 @@ export function DKGSessionsList({
             </div>
           ) : (
             <div className="space-y-3">
-              {sessions.filter(s => s.myRole === 'participant' && ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status)).map(renderSessionCard)}
+              {sessions.filter(s => s.myRole === 'participant' && ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status) && joinedSessions.has(s.id)).map(renderSessionCard)}
             </div>
           )}
         </Card>
@@ -300,17 +312,17 @@ export function DKGSessionsList({
             Sessions Joined as Participant
           </h3>
           <div className="text-sm text-gray-600 dark:text-gray-400">
-            {sessions.filter(s => s.myRole === 'participant').length} total sessions
+            {sessions.filter(s => s.myRole === 'participant' && joinedSessions.has(s.id)).length} total sessions
           </div>
         </div>
         
-        {sessions.filter(s => s.myRole === 'participant').length === 0 ? (
+        {sessions.filter(s => s.myRole === 'participant' && joinedSessions.has(s.id)).length === 0 ? (
           <div className="text-center py-6">
             <p className="text-gray-600 dark:text-gray-400">No sessions joined as participant</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {sessions.filter(s => s.myRole === 'participant').map(renderSessionCard)}
+            {sessions.filter(s => s.myRole === 'participant' && joinedSessions.has(s.id)).map(renderSessionCard)}
           </div>
         )}
       </Card>

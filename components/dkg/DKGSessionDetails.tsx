@@ -14,7 +14,7 @@ interface DKGSession {
   groupId: string;
   topic: string;
   createdAt: Date;
-  myRole: 'creator' | 'participant';
+  myRole?: 'creator' | 'participant';
   description?: string;
   participants: any[];
   roster: Array<[number, string, string]>;

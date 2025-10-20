@@ -15,10 +15,15 @@ import { DKGSessionJoiner } from '@/components/dkg/DKGSessionJoiner';
 import { DKGSessionsList } from '@/components/dkg/DKGSessionsList';
 import { DKGCommitmentModal } from '@/components/dkg/DKGCommitmentModal';
 import { DKGSessionDetails } from '@/components/dkg/DKGSessionDetails';
+import { DKGSessionDetailsModal } from '@/components/dkg/DKGSessionDetailsModal';
+import { DKGAutomationStatus } from '@/components/dkg/DKGAutomationStatus';
+import { DKGErrorDisplay } from '@/components/dkg/DKGErrorDisplay';
+import { DKGConsoleSettings } from '@/components/dkg/DKGConsoleSettings';
 
 // Import our custom hooks
 import { useDKGWebSocket } from '@/hooks/useDKGWebSocket';
 import { useDKGRounds } from '@/hooks/useDKGRounds';
+import { useAutomatedDKG } from '@/hooks/useAutomatedDKG';
 
 // Types
 interface DKGSession {
@@ -31,7 +36,7 @@ interface DKGSession {
   groupId: string;
   topic: string;
   createdAt: Date;
-  myRole: 'creator' | 'participant';
+  myRole?: 'creator' | 'participant';
   description?: string;
   participants: any[];
   roster: Array<[number, string, string]>;
@@ -53,6 +58,9 @@ export default function DKGManagementPage() {
   const [showSessionDetails, setShowSessionDetails] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [newlyCreatedSession, setNewlyCreatedSession] = useState<DKGSession | null>(null);
+  const [showConsoleSettings, setShowConsoleSettings] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [selectedSessionForModal, setSelectedSessionForModal] = useState<DKGSession | null>(null);
 
   // Use our custom hooks
   const {
@@ -65,6 +73,7 @@ export default function DKGManagementPage() {
     clearAuth,
     sessions,
     frostIdMap,
+    joinedSessions,
     isJoiningSession,
     joinSession,
     error,
@@ -73,7 +82,9 @@ export default function DKGManagementPage() {
     setSuccessMessage,
     connectToServer,
     clearAllSessions,
-    setPendingCreateSessionParams
+    setPendingCreateSessionParams,
+    sessionTimeouts,
+    formatRemainingTime
   } = useDKGWebSocket(address, setIsCreatingSession, setNewlyCreatedSession);
 
   const {
@@ -88,6 +99,22 @@ export default function DKGManagementPage() {
     openCommitmentModal,
     closeCommitmentModal
   } = useDKGRounds(wsConnection, authState, frostIdMap, setSuccessMessage, setError);
+
+  // Automated DKG ceremony flow
+  const {
+    isAutomationEnabled,
+    activeAutomations,
+    manualSubmitRound1,
+    manualSubmitRound2,
+    manualSubmitFinalization
+  } = useAutomatedDKG(
+    wsConnection,
+    authState,
+    sessions,
+    frostIdMap,
+    setSuccessMessage,
+    setError
+  );
 
   // Handler functions
   const handleConnectToServer = () => {
@@ -172,6 +199,11 @@ export default function DKGManagementPage() {
     }
   };
 
+  const handleViewMore = (session: DKGSession) => {
+    setSelectedSessionForModal(session);
+    setShowDetailsModal(true);
+  };
+
   const handleDownloadKeyShare = () => {
     if (selectedSession) {
       // Create a downloadable key share
@@ -189,6 +221,32 @@ export default function DKGManagementPage() {
       const a = document.createElement('a');
       a.href = url;
       a.download = `share_${selectedSession.id.slice(0, 8)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      setSuccessMessage('🔑 Key share downloaded successfully!');
+    }
+  };
+
+  const handleDownloadKeyShareFromModal = () => {
+    if (selectedSessionForModal) {
+      // Create a downloadable key share
+      const keyShare = {
+        session_id: selectedSessionForModal.id,
+        group_verifying_key: selectedSessionForModal.groupVerifyingKey,
+        my_role: selectedSessionForModal.myRole,
+        participants: selectedSessionForModal.roster?.length || 0,
+        threshold: `${selectedSessionForModal.minSigners}-of-${selectedSessionForModal.maxSigners}`,
+        created_at: selectedSessionForModal.createdAt.toISOString()
+      };
+
+      const blob = new Blob([JSON.stringify(keyShare, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `share_${selectedSessionForModal.id.slice(0, 8)}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -234,6 +292,10 @@ export default function DKGManagementPage() {
             {sessions.some(s => s.creator === address) && (
               <Badge variant="default">Session Creator</Badge>
             )}
+            {/* Console settings toggle (development or debug mode) */}
+            {(process.env.NODE_ENV === 'development' || showConsoleSettings) && (
+              <DKGConsoleSettings />
+            )}
           </div>
         </div>
 
@@ -271,6 +333,16 @@ export default function DKGManagementPage() {
           onClearAuth={clearAuth}
         />
 
+        {/* Automation Status */}
+        {connectionStatus === 'connected' && authState.isAuthenticated && (
+          <DKGAutomationStatus
+            isAutomationEnabled={isAutomationEnabled}
+            activeAutomations={activeAutomations}
+            sessionTimeouts={sessionTimeouts}
+            formatRemainingTime={formatRemainingTime}
+          />
+        )}
+
         {/* Global Messages */}
         {successMessage && (
           <Card className="p-4 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
@@ -290,20 +362,18 @@ export default function DKGManagementPage() {
         )}
 
         {error && (
-          <Card className="p-4 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800">
-            <div className="flex items-center gap-2">
-              <span className="text-red-600 dark:text-red-400 font-medium">❌ Error:</span>
-              <p className="text-red-700 dark:text-red-300 text-sm">{error}</p>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setError('')}
-                className="ml-auto text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30"
-              >
-                ✕
-              </Button>
-            </div>
-          </Card>
+          <DKGErrorDisplay
+            error={error}
+            onDismiss={() => setError('')}
+            onRetry={() => {
+              // Add retry logic based on the current connection state
+              if (connectionStatus === 'disconnected') {
+                handleConnectToServer();
+              } else if (!authState.isAuthenticated) {
+                requestChallenge();
+              }
+            }}
+          />
         )}
 
         {/* Tab Navigation */}
@@ -333,7 +403,9 @@ export default function DKGManagementPage() {
             address={address}
             activeTab={activeTab}
             frostIdMap={frostIdMap}
+            joinedSessions={joinedSessions}
             onSelectSession={setSelectedSession}
+            onViewMore={handleViewMore}
             onRefreshSession={handleRefreshSession}
             onSubmitRound1={openCommitmentModal}
             onSubmitRound2={submitRound2}
@@ -372,10 +444,12 @@ export default function DKGManagementPage() {
             address={address}
             activeTab={activeTab}
             frostIdMap={frostIdMap}
+            joinedSessions={joinedSessions}
             onSelectSession={(session) => {
               setSelectedSession(session);
               setShowSessionDetails(true);
             }}
+            onViewMore={handleViewMore}
             onRefreshSession={handleRefreshSession}
             onSubmitRound1={openCommitmentModal}
             onSubmitRound2={submitRound2}
@@ -409,76 +483,26 @@ export default function DKGManagementPage() {
         )}
 
         {/* Session Creation Success Modal */}
-        {newlyCreatedSession && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-lg mx-4 shadow-xl">
-              <div className="text-center">
-                <div className="mb-4">
-                  <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/30">
-                    <span className="text-2xl">🎉</span>
-                  </div>
-                </div>
-                
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                  Session Created Successfully!
-                </h3>
-                
-                <div className="mb-4">
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                    Your DKG session has been created. Share this Session ID with participants:
-                  </p>
-                  
-                  <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg border">
-                    <div className="flex items-center justify-between">
-                      <code className="text-sm font-mono text-gray-900 dark:text-gray-100 select-all">
-                        {newlyCreatedSession.id}
-                      </code>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          navigator.clipboard.writeText(newlyCreatedSession.id);
-                          setSuccessMessage('Session ID copied to clipboard!');
-                        }}
-                        className="ml-2"
-                      >
-                        Copy
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+        <DKGSessionDetailsModal
+          session={newlyCreatedSession}
+          isOpen={!!newlyCreatedSession}
+          onClose={() => setNewlyCreatedSession(null)}
+          frostIdMap={frostIdMap}
+          isNewlyCreated={true}
+        />
 
-                <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg mb-4">
-                  <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                    <p><strong>Status:</strong> Waiting for participants</p>
-                    <p><strong>Threshold:</strong> {newlyCreatedSession.minSigners} of {newlyCreatedSession.maxSigners} signatures</p>
-                    <p><strong>Your Role:</strong> Session Creator</p>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => setNewlyCreatedSession(null)}
-                    className="flex-1"
-                  >
-                    Close
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setSelectedSession(newlyCreatedSession);
-                      setShowSessionDetails(true);
-                      setNewlyCreatedSession(null);
-                    }}
-                    className="flex-1"
-                  >
-                    View Details
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Session Details Modal */}
+        <DKGSessionDetailsModal
+          session={selectedSessionForModal}
+          isOpen={showDetailsModal}
+          onClose={() => {
+            setShowDetailsModal(false);
+            setSelectedSessionForModal(null);
+          }}
+          onDownloadKeyShare={handleDownloadKeyShareFromModal}
+          frostIdMap={frostIdMap}
+          isNewlyCreated={false}
+        />
       </div>
     </Layout>
   );

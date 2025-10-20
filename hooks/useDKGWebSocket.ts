@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSignMessage } from 'wagmi';
 import { hexToBytes } from 'viem';
 import { keccak256 } from 'js-sha3';
+import { DKGTimeoutManager, formatRemainingTime } from '@/lib/dkg-timeouts';
+import { DKGErrorHandler, DKGErrorType } from '@/lib/dkg-error-handler';
 
 interface DKGSession {
   id: string;
@@ -15,7 +17,7 @@ interface DKGSession {
   groupId: string;
   topic: string;
   createdAt: Date;
-  myRole: 'creator' | 'participant';
+  myRole?: 'creator' | 'participant';
   description?: string;
   participants: any[];
   roster: Array<[number, string, string]>;
@@ -48,6 +50,7 @@ export function useDKGWebSocket(
     userId: null
   });
   const [frostIdMap, setFrostIdMap] = useState<Record<string, string>>({});
+  const [joinedSessions, setJoinedSessions] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string>('');
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [isJoiningSession, setIsJoiningSession] = useState(false);
@@ -56,6 +59,10 @@ export function useDKGWebSocket(
   const joinSessionRef = useRef('');
   const [pendingSessionParams, setPendingSessionParams] = useState<{minSigners: number; maxSigners: number; participants: any[]} | null>(null);
 
+  // Timeout management
+  const timeoutManagerRef = useRef<DKGTimeoutManager>(new DKGTimeoutManager());
+  const [sessionTimeouts, setSessionTimeouts] = useState<Record<string, { phase: string; remainingMs: number }>>({});
+
   const { signMessageAsync } = useSignMessage();
 
   // Helper function to save sessions to localStorage
@@ -63,7 +70,21 @@ export function useDKGWebSocket(
     localStorage.setItem('dkg-sessions', JSON.stringify(sessionsToSave));
   }, []);
 
-  // Load sessions from localStorage
+  // Helper functions for joined sessions
+  const saveJoinedSessionsToStorage = useCallback((joinedSessionsSet: Set<string>) => {
+    localStorage.setItem('dkg-joined-sessions', JSON.stringify(Array.from(joinedSessionsSet)));
+  }, []);
+
+  const addJoinedSession = useCallback((sessionId: string) => {
+    setJoinedSessions(prev => {
+      const newSet = new Set(prev);
+      newSet.add(sessionId);
+      saveJoinedSessionsToStorage(newSet);
+      return newSet;
+    });
+  }, [saveJoinedSessionsToStorage]);
+
+  // Load sessions and joined sessions from localStorage
   useEffect(() => {
     const savedSessions = localStorage.getItem('dkg-sessions');
     if (savedSessions) {
@@ -83,22 +104,112 @@ export function useDKGWebSocket(
         setSessions([]);
       }
     }
+
+    // Load joined sessions
+    const savedJoinedSessions = localStorage.getItem('dkg-joined-sessions');
+    if (savedJoinedSessions) {
+      try {
+        const parsedJoinedSessions = JSON.parse(savedJoinedSessions);
+        setJoinedSessions(new Set(parsedJoinedSessions));
+      } catch (error) {
+        console.error('Error loading joined sessions from localStorage:', error);
+        localStorage.removeItem('dkg-joined-sessions');
+        setJoinedSessions(new Set());
+      }
+    }
   }, []);
 
-  // Update session roles when address changes
+  // Track if we've refreshed sessions after authentication
+  const hasRefreshedRef = useRef(false);
+
+  // Refresh session states after authentication
+  useEffect(() => {
+    if (wsConnection && authState.isAuthenticated && sessions.length > 0 && !hasRefreshedRef.current) {
+      console.log('🔄 Refreshing session states after authentication...');
+      hasRefreshedRef.current = true;
+      
+      // Refresh each active session to get current server state
+      sessions.forEach(session => {
+        // Only refresh sessions that are not completed or failed
+        if (!['completed', 'failed'].includes(session.status)) {
+          console.log(`📡 Refreshing session ${session.id} status...`);
+          const message = {
+            type: 'JoinSession',
+            payload: { session: session.id }
+          };
+          wsConnection.send(JSON.stringify(message));
+        }
+      });
+    }
+    
+    // Reset refresh flag when connection is lost
+    if (!wsConnection || !authState.isAuthenticated) {
+      hasRefreshedRef.current = false;
+    }
+  }, [wsConnection, authState.isAuthenticated, sessions.length]);
+
+  // Update session roles when address or joined sessions change
   useEffect(() => {
     if (address && sessions.length > 0) {
-      const sessionsNeedingRoleUpdate = sessions.filter(session => !session.myRole);
-      if (sessionsNeedingRoleUpdate.length > 0) {
-        const updatedSessions = sessions.map(session => ({
-          ...session,
-          myRole: session.myRole || (session.creator === address ? 'creator' : 'participant')
-        }));
+      // Only assign myRole if user is creator OR has joined the session
+      const updatedSessions = sessions.map(session => {
+        if (session.creator === address) {
+          return { ...session, myRole: 'creator' as const };
+        } else if (joinedSessions.has(session.id)) {
+          return { ...session, myRole: 'participant' as const };
+        } else {
+          // User has no role in this session - remove myRole to hide it
+          const { myRole, ...sessionWithoutRole } = session;
+          return { ...sessionWithoutRole, myRole: undefined };
+        }
+      });
+      
+      // Only update if roles actually changed
+      const rolesChanged = updatedSessions.some((session, index) => 
+        session.myRole !== sessions[index].myRole
+      );
+      
+      if (rolesChanged) {
+        console.log(`🔄 Updated session roles for wallet ${address}`);
         setSessions(updatedSessions);
         saveSessionsToStorage(updatedSessions);
       }
     }
-  }, [address, sessions, saveSessionsToStorage]);
+  }, [address, sessions, joinedSessions, saveSessionsToStorage]);
+
+  // Save sessions to localStorage whenever sessions change (with debouncing to avoid excessive saves)
+  useEffect(() => {
+    if (sessions.length > 0) {
+      const timeoutId = setTimeout(() => {
+        saveSessionsToStorage(sessions);
+      }, 500); // Debounce saves by 500ms
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [sessions, saveSessionsToStorage]);
+
+  // Handle timeout events
+  const handleSessionTimeout = useCallback((sessionId: string, phase: string) => {
+    console.warn(`⏰ Session ${sessionId} timed out in ${phase} phase`);
+    
+    // Update session status to failed
+    setSessions(prev => prev.map(session => 
+      session.id === sessionId ? {
+        ...session,
+        status: 'failed' as const
+      } : session
+    ));
+    
+    // Show error message
+    setError(`Session ${sessionId.slice(0, 8)}... timed out during ${phase} phase. Unresponsive participants may have dropped out.`);
+    
+    // Remove from timeout tracking
+    setSessionTimeouts(prev => {
+      const updated = { ...prev };
+      delete updated[sessionId];
+      return updated;
+    });
+  }, []);
 
   // WebSocket message handler
   const handleServerMessage = useCallback((message: any) => {
@@ -144,12 +255,41 @@ export function useDKGWebSocket(
         setSessions(prev => [...prev, newSession]);
         saveSessionsToStorage([...sessions, newSession]);
         setPendingSessionParams(null); // Clear pending params
+        
+        // Creator automatically joins their own session
+        console.log(`📝 Adding created session ${newSession.id} to joined sessions list`);
+        addJoinedSession(newSession.id);
+        
+        // Start timeout for participant joining phase
+        timeoutManagerRef.current.startTimeout(
+          newSession.id,
+          'joining',
+          handleSessionTimeout
+        );
+        
+        setSessionTimeouts(prev => ({
+          ...prev,
+          [newSession.id]: {
+            phase: 'joining',
+            remainingMs: timeoutManagerRef.current.getRemainingTime(newSession.id)
+          }
+        }));
+        
         if (setIsCreatingSession) setIsCreatingSession(false);
         if (setNewlyCreatedSession) setNewlyCreatedSession(newSession);
         break;
         
       case 'Error':
-        setError(`Server error: ${message.payload?.message || 'Unknown error'}`);
+        const serverError = message.payload?.message || 'Unknown server error';
+        const parsedError = DKGErrorHandler.parseError(serverError, {
+          sessionId: justJoinedSession || 'unknown',
+          phase: 'server_response'
+        });
+        
+        DKGErrorHandler.logError(parsedError, 'Server Message');
+        const formattedError = DKGErrorHandler.formatErrorForUser(parsedError);
+        
+        setError(`${formattedError.title}: ${formattedError.message}`);
         setIsJoiningSession(false);
         setSuccessMessage('');
         break;
@@ -159,10 +299,28 @@ export function useDKGWebSocket(
           const infoMessage = message.payload.message;
           console.log('📢 Info message received:', infoMessage);
           
+          // Check for session status updates in info messages
+          if (infoMessage.includes('ready for round 1') || infoMessage.includes('starting round 1')) {
+            const sessionIdMatch = infoMessage.match(/session[:\s]+([a-f0-9-]+)/i);
+            if (sessionIdMatch) {
+              const sessionId = sessionIdMatch[1];
+              setSessions(prev => prev.map(session => 
+                session.id === sessionId ? {
+                  ...session,
+                  status: 'round1' as const
+                } : session
+              ));
+            }
+          }
+          
           const joinMatch = infoMessage.match(/(?:joined|participant)\s*(\d+)(?:\s*of\s*|\s*\/\s*)(\d+)|(\d+)\/(\d+)/);
           
           if (joinMatch) {
-            console.log('📊 Participant count match found:', joinMatch);
+            console.log('📊 Participant count match found:', {
+              fullMessage: infoMessage,
+              match: joinMatch,
+              extracted: `${joinMatch[1] || joinMatch[3]}/${joinMatch[2] || joinMatch[4]}`
+            });
             const current = parseInt(joinMatch[1] || joinMatch[3]);
             const total = parseInt(joinMatch[2] || joinMatch[4]);
             
@@ -185,6 +343,16 @@ export function useDKGWebSocket(
                   maxSigners: total // Update maxSigners in case it was wrong
                 } : session
               ));
+              
+              // Save updated sessions to localStorage
+              const updatedSessions = sessions.map(session => 
+                session.id === targetSessionId ? {
+                  ...session,
+                  currentParticipants: current,
+                  maxSigners: total
+                } : session
+              );
+              saveSessionsToStorage(updatedSessions);
             } else {
               console.log('⚠️ Could not determine session ID for participant count update');
             }
@@ -196,6 +364,12 @@ export function useDKGWebSocket(
               setSuccessMessage(`🎉 Successfully joined session! Waiting for ${total - current} more participant(s) to join before starting DKG rounds.`);
               setIsJoiningSession(false);
               setHasShownJoinSuccess(true);
+              
+              // Track that user has joined this session
+              if (targetSessionId) {
+                console.log(`📝 Adding session ${targetSessionId} to joined sessions list`);
+                addJoinedSession(targetSessionId);
+              }
               
               if (isJoiningSession) {
                 setJustJoinedSession('');
@@ -210,28 +384,117 @@ export function useDKGWebSocket(
         const sessionId = message.payload.session;
         const myIdHex = message.payload.id_hex;
         
+        console.log('🚀 ReadyRound1 received:', {
+          sessionId,
+          myIdHex,
+          rosterLength: message.payload.roster ? message.payload.roster.length : 'no roster',
+          roster: message.payload.roster
+        });
+        
         if (myIdHex && typeof myIdHex === 'string' && myIdHex.length > 0) {
+          // Clear joining timeout and start Round 1 timeout
+          timeoutManagerRef.current.clearTimeout(sessionId);
+          timeoutManagerRef.current.startTimeout(
+            sessionId,
+            'round1',
+            handleSessionTimeout
+          );
+          
           setFrostIdMap(prev => ({
             ...prev,
             [sessionId]: myIdHex
           }));
           
+          setSessions(prev => prev.map(session => {
+            if (session.id !== sessionId) return session;
+            
+            const rosterLength = message.payload.roster ? message.payload.roster.length : session.currentParticipants;
+            const shouldStartRound1 = rosterLength >= session.maxSigners;
+            
+            console.log(`🔍 Session ${sessionId} readiness check:`, {
+              rosterLength,
+              maxSigners: session.maxSigners,
+              currentParticipants: session.currentParticipants,
+              shouldStartRound1
+            });
+            
+            return {
+              ...session,
+              status: shouldStartRound1 ? 'round1' as const : session.status,
+              roster: message.payload.roster || session.roster,
+              currentParticipants: message.payload.roster ? message.payload.roster.length : session.currentParticipants
+            };
+          }));
+          
+          setSessionTimeouts(prev => ({
+            ...prev,
+            [sessionId]: {
+              phase: 'round1',
+              remainingMs: timeoutManagerRef.current.getRemainingTime(sessionId)
+            }
+          }));
+          
+          setSuccessMessage(`🚀 All participants have joined! DKG Round 1 (Commitments) is now starting...`);
+        }
+        break;
+
+      case 'ReadyRound2':
+        if (message.payload?.session) {
+          const sessionId = message.payload.session;
           setSessions(prev => prev.map(session => 
             session.id === sessionId ? {
               ...session,
-              status: 'round1' as const,
-              roster: message.payload.roster || session.roster
+              status: 'round2' as const
             } : session
           ));
-          
-          setSuccessMessage(`🚀 All participants have joined! DKG Round 1 (Commitments) is now starting...`);
+          console.log(`🔄 Session ${sessionId} moved to Round 2`);
+        }
+        break;
+
+      case 'ReadyFinalize':
+        if (message.payload?.session) {
+          const sessionId = message.payload.session;
+          setSessions(prev => prev.map(session => 
+            session.id === sessionId ? {
+              ...session,
+              status: 'finalizing' as const
+            } : session
+          ));
+          console.log(`🔄 Session ${sessionId} moved to Finalization`);
+        }
+        break;
+
+      case 'SessionComplete':
+        if (message.payload?.session) {
+          const sessionId = message.payload.session;
+          setSessions(prev => prev.map(session => 
+            session.id === sessionId ? {
+              ...session,
+              status: 'completed' as const,
+              groupVerifyingKey: message.payload.group_verifying_key || session.groupVerifyingKey
+            } : session
+          ));
+          console.log(`✅ Session ${sessionId} completed successfully`);
+        }
+        break;
+
+      case 'SessionFailed':
+        if (message.payload?.session) {
+          const sessionId = message.payload.session;
+          setSessions(prev => prev.map(session => 
+            session.id === sessionId ? {
+              ...session,
+              status: 'failed' as const
+            } : session
+          ));
+          console.log(`❌ Session ${sessionId} failed`);
         }
         break;
         
       default:
         break;
     }
-  }, [address, isJoiningSession, justJoinedSession, sessions, saveSessionsToStorage]);
+  }, [address, isJoiningSession, justJoinedSession, sessions, saveSessionsToStorage, handleSessionTimeout]);
 
   // Connect to WebSocket server
   const connectToServer = useCallback(async (serverUrl: string) => {
@@ -267,14 +530,32 @@ export function useDKGWebSocket(
       ws.onerror = (error) => {
         console.error('WebSocket error:', error);
         setConnectionStatus('disconnected');
-        setError('Failed to connect to DKG server');
+        
+        const parsedError = DKGErrorHandler.parseError('WebSocket connection failed', {
+          serverUrl,
+          timestamp: new Date().toISOString()
+        });
+        
+        DKGErrorHandler.logError(parsedError, 'WebSocket Connection');
+        const formattedError = DKGErrorHandler.formatErrorForUser(parsedError);
+        
+        setError(`${formattedError.title}: ${formattedError.message}`);
       };
       
       setWsConnection(ws);
     } catch (error) {
       console.error('Failed to connect to DKG server:', error);
       setConnectionStatus('disconnected');
-      setError('Failed to connect to DKG server');
+      
+      const parsedError = DKGErrorHandler.parseError(error as Error, {
+        serverUrl,
+        action: 'connect_to_server'
+      });
+      
+      DKGErrorHandler.logError(parsedError, 'Server Connection');
+      const formattedError = DKGErrorHandler.formatErrorForUser(parsedError);
+      
+      setError(`${formattedError.title}: ${formattedError.message}`);
     }
   }, [wsConnection, handleServerMessage]);
 
@@ -478,7 +759,17 @@ export function useDKGWebSocket(
       wsConnection.send(JSON.stringify(message));
     } catch (error) {
       console.error('Authentication failed:', error);
-      setError('Authentication failed. Please try again.');
+      
+      const parsedError = DKGErrorHandler.parseError(error as Error, {
+        challenge: authState.uuid,
+        publicKey: authState.publicKeyHex?.slice(0, 16) + '...',
+        action: 'authenticate'
+      });
+      
+      DKGErrorHandler.logError(parsedError, 'Authentication');
+      const formattedError = DKGErrorHandler.formatErrorForUser(parsedError);
+      
+      setError(`${formattedError.title}: ${formattedError.message}`);
     }
   }, [wsConnection, authState.uuid, authState.publicKeyHex, authState.dkgPrivateKey, address, getDeterministicKeypair]);
 
@@ -515,7 +806,9 @@ export function useDKGWebSocket(
   // Clear all sessions
   const clearAllSessions = useCallback(() => {
     localStorage.removeItem('dkg-sessions');
+    localStorage.removeItem('dkg-joined-sessions');
     setSessions([]);
+    setJoinedSessions(new Set());
     setError('');
     
     if (wsConnection) {
@@ -527,6 +820,35 @@ export function useDKGWebSocket(
   // Set pending session parameters for creation
   const setPendingCreateSessionParams = useCallback((params: {minSigners: number; maxSigners: number; participants: any[]}) => {
     setPendingSessionParams(params);
+  }, []);
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      timeoutManagerRef.current.clearAllTimeouts();
+    };
+  }, []);
+
+  // Update timeout countdown every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSessionTimeouts(prev => {
+        const updated = { ...prev };
+        let hasChanges = false;
+
+        for (const [sessionId, timeout] of Object.entries(updated)) {
+          const remainingMs = timeoutManagerRef.current.getRemainingTime(sessionId);
+          if (remainingMs !== timeout.remainingMs) {
+            updated[sessionId] = { ...timeout, remainingMs };
+            hasChanges = true;
+          }
+        }
+
+        return hasChanges ? updated : prev;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
   }, []);
 
   return {
@@ -546,6 +868,7 @@ export function useDKGWebSocket(
     setSessions,
     frostIdMap,
     setFrostIdMap,
+    joinedSessions,
     
     // Join state
     isJoiningSession,
@@ -561,6 +884,10 @@ export function useDKGWebSocket(
     connectToServer,
     clearAllSessions,
     saveSessionsToStorage,
-    setPendingCreateSessionParams
+    setPendingCreateSessionParams,
+    
+    // Timeout management
+    sessionTimeouts,
+    formatRemainingTime
   };
 }
