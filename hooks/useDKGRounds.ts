@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useSignMessage } from 'wagmi';
+import { eciesEncrypt, generateMockSecretShare, signEncryptedPackage } from '@/lib/ecies';
 
 interface DKGSession {
   id: string;
@@ -13,7 +14,7 @@ interface DKGSession {
   groupId: string;
   topic: string;
   createdAt: Date;
-  myRole: 'creator' | 'participant';
+  myRole?: 'creator' | 'participant';
   description?: string;
   participants: any[];
   roster: Array<[number, string, string]>;
@@ -101,32 +102,61 @@ export function useDKGRounds(
         throw new Error('FROST identifier not available. Make sure ReadyRound1 message was received.');
       }
 
-      // Create mock encrypted packages for demo
-      const mockEncryptedPackages: [string, string, string, string, string][] = [];
-      
-      if (session.roster) {
-        session.roster.forEach(([uid, recipientIdHex, ecdsaPubHex]) => {
-          const mockPackage: [string, string, string, string, string] = [
-            recipientIdHex,
-            '0x' + Array(64).fill('0').map(() => Math.floor(Math.random() * 16).toString(16)).join(''),
-            '0x' + Array(64).fill('0').map(() => Math.floor(Math.random() * 16).toString(16)).join(''),
-            '0x' + Array(64).fill('0').map(() => Math.floor(Math.random() * 16).toString(16)).join(''),
-            '0x' + Array(64).fill('0').map(() => Math.floor(Math.random() * 16).toString(16)).join('')
-          ];
-          mockEncryptedPackages.push(mockPackage);
-        });
+      if (!authState.dkgPrivateKey) {
+        throw new Error('DKG private key not available for encryption.');
       }
 
-      const authPayloadText = `TOKAMAK_FROST_DKG_R2|${session.id}|${myIdHex}|${mockEncryptedPackages.length}`;
-      const signature = await signMessageAsync({ message: authPayloadText });
+      // Create real ECIES encrypted packages for each participant
+      const encryptedPackages: [string, string, string, string, string][] = [];
+      
+      if (session.roster) {
+        console.log('🔐 Creating ECIES encrypted secret shares for', session.roster.length, 'participants');
+        
+        for (const [uid, recipientIdHex, ecdsaPubHex] of session.roster) {
+          try {
+            // Generate a secret share for this recipient (mock for now - in real DKG this comes from FROST library)
+            const secretShare = generateMockSecretShare();
+            
+            // Encrypt the secret share using ECIES
+            const encryptedData = await eciesEncrypt(secretShare, ecdsaPubHex);
+            
+            // Create ECDSA signature for the encrypted envelope
+            const signature = await signEncryptedPackage(
+              session.id,
+              myIdHex,
+              recipientIdHex,
+              encryptedData.ephemeralPublicKey,
+              encryptedData.nonce,
+              encryptedData.ciphertext,
+              authState.dkgPrivateKey
+            );
+            
+            const encryptedPackage: [string, string, string, string, string] = [
+              recipientIdHex,                          // recipient_id_hex
+              encryptedData.ephemeralPublicKey,        // eph_pub_sec1_hex  
+              encryptedData.nonce,                     // nonce_hex
+              encryptedData.ciphertext,                // ct_hex
+              signature                                // sig_hex
+            ];
+            
+            encryptedPackages.push(encryptedPackage);
+            
+            console.log(`✅ Created encrypted package for participant ${uid} (${recipientIdHex.slice(0, 8)}...)`);
+          } catch (error) {
+            console.error(`❌ Failed to create encrypted package for participant ${uid}:`, error);
+            throw new Error(`Failed to encrypt secret share for participant ${uid}: ${error}`);
+          }
+        }
+      }
+
+      console.log('📤 Sending', encryptedPackages.length, 'encrypted packages to server');
 
       const message = {
         type: 'Round2Submit',
         payload: {
           session: session.id,
           id_hex: myIdHex,
-          round2_encrypted_packages: mockEncryptedPackages,
-          signature
+          pkgs_cipher_hex: encryptedPackages
         }
       };
 
