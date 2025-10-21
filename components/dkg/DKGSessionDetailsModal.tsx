@@ -19,6 +19,7 @@ interface DKGSession {
   participants: any[];
   roster: Array<[number, string, string]>;
   groupVerifyingKey?: string;
+  automationMode?: 'manual' | 'automatic';
 }
 
 interface DKGSessionDetailsModalProps {

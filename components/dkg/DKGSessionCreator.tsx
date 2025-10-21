@@ -21,6 +21,7 @@ interface DKGSessionCreatorProps {
     minSigners: number;
     maxSigners: number;
     participants: DKGParticipant[];
+    automationMode: 'manual' | 'automatic';
   }) => void;
 }
 
@@ -34,6 +35,7 @@ export function DKGSessionCreator({
   const [maxSigners, setMaxSigners] = useState(3);
   const [participants, setParticipants] = useState<DKGParticipant[]>([]);
   const [newParticipantPublicKey, setNewParticipantPublicKey] = useState('');
+  const [automationMode, setAutomationMode] = useState<'manual' | 'automatic'>('automatic');
 
   const handleAddParticipant = () => {
     if (!newParticipantPublicKey || participants.length >= maxSigners) {
@@ -66,7 +68,8 @@ export function DKGSessionCreator({
     onCreateSession({
       minSigners,
       maxSigners,
-      participants
+      participants,
+      automationMode
     });
     
     // Reset form after successful creation
@@ -125,6 +128,60 @@ export function DKGSessionCreator({
                 }}
                 placeholder="Maximum participants"
               />
+            </div>
+          </div>
+
+          {/* Automation Mode Selection */}
+          <div>
+            <label className="block text-sm font-medium mb-3 text-gray-700 dark:text-gray-300">
+              DKG Ceremony Mode
+            </label>
+            <div className="grid grid-cols-2 gap-4">
+              <div
+                className={`border-2 rounded-lg p-4 cursor-pointer transition-all ${
+                  automationMode === 'automatic'
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                }`}
+                onClick={() => setAutomationMode('automatic')}
+              >
+                <div className="flex items-center mb-2">
+                  <div className={`w-4 h-4 rounded-full border-2 mr-3 ${
+                    automationMode === 'automatic' ? 'border-blue-500 bg-blue-500' : 'border-gray-300'
+                  }`}>
+                    {automationMode === 'automatic' && (
+                      <div className="w-2 h-2 bg-white rounded-full mx-auto mt-0.5"></div>
+                    )}
+                  </div>
+                  <h4 className="font-medium text-gray-900 dark:text-gray-100">🤖 Automatic</h4>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 ml-7">
+                  All DKG rounds are handled automatically. Participants just need to join - the ceremony runs without manual intervention.
+                </p>
+              </div>
+              
+              <div
+                className={`border-2 rounded-lg p-4 cursor-pointer transition-all ${
+                  automationMode === 'manual'
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                }`}
+                onClick={() => setAutomationMode('manual')}
+              >
+                <div className="flex items-center mb-2">
+                  <div className={`w-4 h-4 rounded-full border-2 mr-3 ${
+                    automationMode === 'manual' ? 'border-blue-500 bg-blue-500' : 'border-gray-300'
+                  }`}>
+                    {automationMode === 'manual' && (
+                      <div className="w-2 h-2 bg-white rounded-full mx-auto mt-0.5"></div>
+                    )}
+                  </div>
+                  <h4 className="font-medium text-gray-900 dark:text-gray-100">👤 Manual</h4>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 ml-7">
+                  Participants manually submit each DKG round. Provides full control over the ceremony process.
+                </p>
+              </div>
             </div>
           </div>
 

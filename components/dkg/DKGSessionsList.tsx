@@ -1,8 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { DKGAutomatedCeremonyModal } from './DKGAutomatedCeremonyModal';
 
 interface DKGSession {
   id: string;
@@ -19,6 +21,7 @@ interface DKGSession {
   participants: any[];
   roster: Array<[number, string, string]>;
   groupVerifyingKey?: string;
+  automationMode?: 'manual' | 'automatic';
 }
 
 interface DKGSessionsListProps {
@@ -33,6 +36,7 @@ interface DKGSessionsListProps {
   onSubmitRound1: (session: DKGSession) => void;
   onSubmitRound2: (session: DKGSession) => void;
   onSubmitFinalization: (session: DKGSession) => void;
+  onStartAutomatedCeremony?: (sessionId: string) => Promise<boolean>;
   isSubmittingRound1: boolean;
   isSubmittingRound2: boolean;
   isSubmittingFinalize: boolean;
@@ -54,12 +58,15 @@ export function DKGSessionsList({
   onSubmitRound1,
   onSubmitRound2,
   onSubmitFinalization,
+  onStartAutomatedCeremony,
   isSubmittingRound1,
   isSubmittingRound2,
   isSubmittingFinalize,
   authState,
   wsConnection
 }: DKGSessionsListProps) {
+  const [showAutomatedModal, setShowAutomatedModal] = useState(false);
+  const [selectedAutomatedSession, setSelectedAutomatedSession] = useState<DKGSession | null>(null);
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'waiting': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
@@ -85,6 +92,58 @@ export function DKGSessionsList({
   };
 
   const getActionButton = (session: DKGSession) => {
+    console.log(`🔍 [DEBUG] getActionButton for session ${session.id}:`, {
+      automationMode: session.automationMode,
+      status: session.status,
+      myRole: session.myRole,
+      onStartAutomatedCeremony: !!onStartAutomatedCeremony
+    });
+    
+    // For automatic sessions, show "Run Automated Ceremony" button for creators in Round 1
+    if (session.automationMode === 'automatic') {
+      if (session.status === 'round1' && session.myRole === 'creator') {
+        console.log(`🎯 [DEBUG] Rendering Run Automated Ceremony button for session ${session.id}`);
+        return (
+          <Button
+            onClick={(e) => {
+              console.log(`🚀 [DEBUG] Run Automated Ceremony button clicked for session ${session.id}`);
+              e.preventDefault();
+              e.stopPropagation();
+              setSelectedAutomatedSession(session);
+              setShowAutomatedModal(true);
+            }}
+            className="bg-purple-600 hover:bg-purple-700 text-white font-medium px-6 py-2"
+            disabled={false}
+            type="button"
+          >
+            🚀 Run Automated Ceremony
+          </Button>
+        );
+      }
+      if (session.status === 'round1') {
+        return (
+          <div className="bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 font-medium px-6 py-2 rounded-md">
+            🤖 Waiting for creator to start...
+          </div>
+        );
+      }
+      if (session.status === 'round2') {
+        return (
+          <div className="bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 font-medium px-6 py-2 rounded-md">
+            🤖 Auto-processing Round 2...
+          </div>
+        );
+      }
+      if (session.status === 'finalizing') {
+        return (
+          <div className="bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 font-medium px-6 py-2 rounded-md">
+            🤖 Auto-finalizing...
+          </div>
+        );
+      }
+    }
+
+    // Manual session actions
     if (session.status === 'round1' && !frostIdMap[session.id]) {
       return (
         <Button
@@ -186,6 +245,14 @@ export function DKGSessionsList({
             }>
               {session.myRole === 'creator' ? 'Creator' : 'Participant'}
             </Badge>
+{session.automationMode && (
+              <Badge className={session.automationMode === 'automatic'
+                ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300"
+                : "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300"
+              }>
+                {session.automationMode === 'automatic' ? '🤖 Auto' : '👤 Manual'}
+              </Badge>
+            )}
           </div>
           
           <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
@@ -220,8 +287,10 @@ export function DKGSessionsList({
     </div>
   );
 
+  let content;
+
   if (activeTab === 'active') {
-    return (
+    content = (
       <div className="space-y-6">
         {/* Sessions Created by Me */}
         <Card className="p-6">
@@ -276,56 +345,74 @@ export function DKGSessionsList({
         </Card>
       </div>
     );
+  } else {
+    // History view
+    content = (
+      <div className="space-y-6">
+        {/* Sessions Created by Me - History */}
+        <Card className="p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              <span className="mr-2">👑</span>
+              Sessions Created by Me
+            </h3>
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              {sessions.filter(s => s.myRole === 'creator').length} total sessions
+            </div>
+          </div>
+          
+          {sessions.filter(s => s.myRole === 'creator').length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-gray-600 dark:text-gray-400">No sessions created by you</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {sessions.filter(s => s.myRole === 'creator').map(renderSessionCard)}
+            </div>
+          )}
+        </Card>
+
+        {/* Sessions Joined as Participant - History */}
+        <Card className="p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              <span className="mr-2">🤝</span>
+              Sessions Joined as Participant
+            </h3>
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              {sessions.filter(s => s.myRole === 'participant' && joinedSessions.has(s.id)).length} total sessions
+            </div>
+          </div>
+          
+          {sessions.filter(s => s.myRole === 'participant' && joinedSessions.has(s.id)).length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-gray-600 dark:text-gray-400">No sessions joined as participant</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {sessions.filter(s => s.myRole === 'participant' && joinedSessions.has(s.id)).map(renderSessionCard)}
+            </div>
+          )}
+        </Card>
+      </div>
+    );
   }
 
-  // History view
+  // Common return for both views with modal
   return (
-    <div className="space-y-6">
-      {/* Sessions Created by Me - History */}
-      <Card className="p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            <span className="mr-2">👑</span>
-            Sessions Created by Me
-          </h3>
-          <div className="text-sm text-gray-600 dark:text-gray-400">
-            {sessions.filter(s => s.myRole === 'creator').length} total sessions
-          </div>
-        </div>
-        
-        {sessions.filter(s => s.myRole === 'creator').length === 0 ? (
-          <div className="text-center py-6">
-            <p className="text-gray-600 dark:text-gray-400">No sessions created by you</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {sessions.filter(s => s.myRole === 'creator').map(renderSessionCard)}
-          </div>
-        )}
-      </Card>
-
-      {/* Sessions Joined as Participant - History */}
-      <Card className="p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            <span className="mr-2">🤝</span>
-            Sessions Joined as Participant
-          </h3>
-          <div className="text-sm text-gray-600 dark:text-gray-400">
-            {sessions.filter(s => s.myRole === 'participant' && joinedSessions.has(s.id)).length} total sessions
-          </div>
-        </div>
-        
-        {sessions.filter(s => s.myRole === 'participant' && joinedSessions.has(s.id)).length === 0 ? (
-          <div className="text-center py-6">
-            <p className="text-gray-600 dark:text-gray-400">No sessions joined as participant</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {sessions.filter(s => s.myRole === 'participant' && joinedSessions.has(s.id)).map(renderSessionCard)}
-          </div>
-        )}
-      </Card>
-    </div>
+    <>
+      {content}
+      
+      {/* Automated Ceremony Modal */}
+      <DKGAutomatedCeremonyModal
+        isOpen={showAutomatedModal}
+        session={selectedAutomatedSession}
+        onClose={() => {
+          setShowAutomatedModal(false);
+          setSelectedAutomatedSession(null);
+        }}
+        onStartCeremony={onStartAutomatedCeremony || (async () => false)}
+      />
+    </>
   );
 }

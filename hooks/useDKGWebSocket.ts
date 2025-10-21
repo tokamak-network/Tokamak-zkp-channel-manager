@@ -22,6 +22,7 @@ interface DKGSession {
   participants: any[];
   roster: Array<[number, string, string]>;
   groupVerifyingKey?: string;
+  automationMode?: 'manual' | 'automatic';
 }
 
 interface AuthState {
@@ -57,7 +58,9 @@ export function useDKGWebSocket(
   const [justJoinedSession, setJustJoinedSession] = useState('');
   const [hasShownJoinSuccess, setHasShownJoinSuccess] = useState(false);
   const joinSessionRef = useRef('');
-  const [pendingSessionParams, setPendingSessionParams] = useState<{minSigners: number; maxSigners: number; participants: any[]} | null>(null);
+  const [pendingSessionParams, setPendingSessionParams] = useState<{minSigners: number; maxSigners: number; participants: any[]; automationMode?: 'manual' | 'automatic'} | null>(null);
+  const pendingSessionParamsRef = useRef<{minSigners: number; maxSigners: number; participants: any[]; automationMode?: 'manual' | 'automatic'} | null>(null);
+
 
   // Timeout management
   const timeoutManagerRef = useRef<DKGTimeoutManager>(new DKGTimeoutManager());
@@ -93,7 +96,8 @@ export function useDKGWebSocket(
         const migratedSessions = parsedSessions
           .map((session: any) => ({
             ...session,
-            createdAt: new Date(session.createdAt)
+            createdAt: new Date(session.createdAt),
+            automationMode: session.automationMode || 'manual' // Ensure automation mode exists
           }))
           .filter((session: any) => session.minSigners && session.maxSigners);
         
@@ -122,25 +126,11 @@ export function useDKGWebSocket(
   // Track if we've refreshed sessions after authentication
   const hasRefreshedRef = useRef(false);
 
-  // Refresh session states after authentication
+  // DISABLED: Session refresh after authentication to prevent auto-joining
+  // The issue was that authentication was triggering JoinSession messages
+  // Users should only join sessions when they explicitly choose to join
   useEffect(() => {
-    if (wsConnection && authState.isAuthenticated && sessions.length > 0 && !hasRefreshedRef.current) {
-      console.log('🔄 Refreshing session states after authentication...');
-      hasRefreshedRef.current = true;
-      
-      // Refresh each active session to get current server state
-      sessions.forEach(session => {
-        // Only refresh sessions that are not completed or failed
-        if (!['completed', 'failed'].includes(session.status)) {
-          console.log(`📡 Refreshing session ${session.id} status...`);
-          const message = {
-            type: 'JoinSession',
-            payload: { session: session.id }
-          };
-          wsConnection.send(JSON.stringify(message));
-        }
-      });
-    }
+    console.log('🔄 Authentication state changed, but NOT auto-refreshing sessions');
     
     // Reset refresh flag when connection is lost
     if (!wsConnection || !authState.isAuthenticated) {
@@ -237,11 +227,14 @@ export function useDKGWebSocket(
         break;
         
       case 'SessionCreated':
+        // Use ref as fallback if state is null
+        const paramsToUse = pendingSessionParams || pendingSessionParamsRef.current;
+        
         const newSession: DKGSession = {
           id: message.payload.session,
           creator: address!,
-          minSigners: pendingSessionParams?.minSigners || 2,
-          maxSigners: pendingSessionParams?.maxSigners || 3,
+          minSigners: paramsToUse?.minSigners || 2,
+          maxSigners: paramsToUse?.maxSigners || 3,
           currentParticipants: 1, // Creator is the first participant
           status: 'waiting',
           groupId: `group_${Date.now()}`,
@@ -249,15 +242,16 @@ export function useDKGWebSocket(
           createdAt: new Date(),
           myRole: 'creator',
           description: 'DKG Key Generation Ceremony',
-          participants: pendingSessionParams?.participants || [],
-          roster: []
+          participants: paramsToUse?.participants || [],
+          roster: [],
+          automationMode: paramsToUse?.automationMode || 'manual'
         };
         setSessions(prev => [...prev, newSession]);
         saveSessionsToStorage([...sessions, newSession]);
         setPendingSessionParams(null); // Clear pending params
+        pendingSessionParamsRef.current = null; // Clear ref too
         
         // Creator automatically joins their own session
-        console.log(`📝 Adding created session ${newSession.id} to joined sessions list`);
         addJoinedSession(newSession.id);
         
         // Start timeout for participant joining phase
@@ -511,6 +505,7 @@ export function useDKGWebSocket(
         setConnectionStatus('connected');
         setError('');
       };
+
       
       ws.onmessage = (event) => {
         try {
@@ -818,8 +813,9 @@ export function useDKGWebSocket(
   }, [wsConnection]);
 
   // Set pending session parameters for creation
-  const setPendingCreateSessionParams = useCallback((params: {minSigners: number; maxSigners: number; participants: any[]}) => {
+  const setPendingCreateSessionParams = useCallback((params: {minSigners: number; maxSigners: number; participants: any[]; automationMode?: 'manual' | 'automatic'}) => {
     setPendingSessionParams(params);
+    pendingSessionParamsRef.current = params; // Also store in ref to prevent loss
   }, []);
 
   // Cleanup timeouts on unmount
