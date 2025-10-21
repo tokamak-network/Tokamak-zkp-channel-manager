@@ -41,6 +41,7 @@ interface DKGSession {
   participants: any[];
   roster: Array<[number, string, string]>;
   groupVerifyingKey?: string;
+  automationMode?: 'manual' | 'automatic';
 }
 
 interface DKGParticipant {
@@ -106,7 +107,8 @@ export default function DKGManagementPage() {
     activeAutomations,
     manualSubmitRound1,
     manualSubmitRound2,
-    manualSubmitFinalization
+    manualSubmitFinalization,
+    startAutomatedCeremony
   } = useAutomatedDKG(
     wsConnection,
     authState,
@@ -125,6 +127,7 @@ export default function DKGManagementPage() {
     minSigners: number;
     maxSigners: number;
     participants: DKGParticipant[];
+    automationMode: 'manual' | 'automatic';
   }) => {
     if (!wsConnection) {
       setError('Must be connected to server to create sessions');
@@ -151,22 +154,21 @@ export default function DKGManagementPage() {
       // Store parameters for when SessionCreated message is received
       setPendingCreateSessionParams(params);
 
-      const message = {
-        type: 'AnnounceSession',
-        payload: {
-          min_signers: params.minSigners,
-          max_signers: params.maxSigners,
-          group_id: `group_${Date.now()}`,
-          participants: params.participants.map(p => p.uid),
-          participants_pubs: params.participants.map(p => [p.uid, p.publicKey])
-        }
-      };
-
-      console.log('Creating session with:', message);
-      console.log('Participants UIDs:', params.participants.map(p => p.uid));
-      console.log('Participants Public Keys:', params.participants.map(p => p.publicKey));
-      
-      wsConnection.send(JSON.stringify(message));
+      // Use setTimeout to ensure the state update completes before sending the WebSocket message
+      setTimeout(() => {
+        const message = {
+          type: 'AnnounceSession',
+          payload: {
+            min_signers: params.minSigners,
+            max_signers: params.maxSigners,
+            group_id: `group_${Date.now()}`,
+            participants: params.participants.map(p => p.uid),
+            participants_pubs: params.participants.map(p => [p.uid, p.publicKey])
+          }
+        };
+        
+        wsConnection.send(JSON.stringify(message));
+      }, 0);
       
       // The session will be added when we receive the SessionCreated message
       
@@ -410,6 +412,7 @@ export default function DKGManagementPage() {
             onSubmitRound1={openCommitmentModal}
             onSubmitRound2={submitRound2}
             onSubmitFinalization={submitFinalization}
+            onStartAutomatedCeremony={startAutomatedCeremony}
             isSubmittingRound1={isSubmittingRound1}
             isSubmittingRound2={isSubmittingRound2}
             isSubmittingFinalize={isSubmittingFinalize}
@@ -454,6 +457,7 @@ export default function DKGManagementPage() {
             onSubmitRound1={openCommitmentModal}
             onSubmitRound2={submitRound2}
             onSubmitFinalization={submitFinalization}
+            onStartAutomatedCeremony={startAutomatedCeremony}
             isSubmittingRound1={isSubmittingRound1}
             isSubmittingRound2={isSubmittingRound2}
             isSubmittingFinalize={isSubmittingFinalize}

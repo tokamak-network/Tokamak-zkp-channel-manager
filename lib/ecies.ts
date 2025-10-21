@@ -1,18 +1,35 @@
 /**
  * ECIES (Elliptic Curve Integrated Encryption Scheme) Implementation
  * Used for encrypting DKG secret shares between participants
+ * 
+ * This implementation matches the Rust code in frost-dkg/keygen/dkg/src/helper.rs
+ * - Uses SHA-512 KDF with prefix "TOKAMAK_FROST_ECIES_v1"
+ * - Uses AES-256-GCM for authenticated encryption
+ * - Uses 12-byte nonces for GCM
  */
 
-import { randomBytes, createCipheriv, createDecipheriv } from 'crypto';
+import { randomBytes } from 'crypto';
 
 export interface ECIESEncryptedData {
   ephemeralPublicKey: string; // Compressed SEC1 format (33 bytes)
-  nonce: string;              // Random nonce (32 bytes)
-  ciphertext: string;         // Encrypted data
+  nonce: string;              // Random nonce (12 bytes for GCM)
+  ciphertext: string;         // AES-256-GCM encrypted data with auth tag
 }
 
 /**
- * Encrypt data using ECIES with secp256k1
+ * KDF function matching Rust implementation: SHA-512(prefix || shared_secret).first32
+ */
+async function eciesKdf32(prefix: string, sharedSecret: Uint8Array): Promise<Uint8Array> {
+  const crypto = await import('crypto');
+  const hash = crypto.createHash('sha512');
+  hash.update(Buffer.from(prefix, 'utf8'));
+  hash.update(sharedSecret);
+  const digest = hash.digest();
+  return new Uint8Array(digest.slice(0, 32)); // First 32 bytes
+}
+
+/**
+ * Encrypt data using ECIES with secp256k1 (matches Rust implementation)
  * @param data - The plaintext data to encrypt
  * @param recipientPublicKey - Recipient's public key in compressed SEC1 format (33 bytes)
  * @returns Promise<ECIESEncryptedData>
@@ -22,39 +39,44 @@ export async function eciesEncrypt(
   recipientPublicKey: string
 ): Promise<ECIESEncryptedData> {
   try {
-    // Import elliptic.js for ECDH
+    // Import required modules
     const elliptic = await import('elliptic');
     const EC = elliptic.ec;
     const ec = new EC('secp256k1');
-    
+    const crypto = await import('crypto');
     
     // Generate ephemeral keypair
     const ephemeralKeyPair = ec.genKeyPair();
-    const ephemeralPublicKey = ephemeralKeyPair.getPublic(true, 'hex'); // Compressed format
+    const ephemeralPublicKey = ephemeralKeyPair.getPublic(true, 'hex'); // Compressed SEC1 format
     
     // Parse recipient's public key
     const recipientKey = ec.keyFromPublic(recipientPublicKey, 'hex');
     
-    // Perform ECDH to get shared secret
+    // Perform ECDH to get shared secret (X coordinate only)
     const sharedPoint = ephemeralKeyPair.derive(recipientKey.getPublic());
-    const sharedSecret = sharedPoint.toString(16).padStart(64, '0');
+    const sharedSecret = Buffer.from(sharedPoint.toString(16).padStart(64, '0'), 'hex');
     
-    // Derive encryption key using SHA256(shared_secret)
-    const { keccak256 } = await import('js-sha3');
-    const encryptionKey = keccak256(Buffer.from(sharedSecret, 'hex'));
+    // Derive 32-byte encryption key using SHA-512 KDF (matches Rust)
+    const encryptionKey = await eciesKdf32('TOKAMAK_FROST_ECIES_v1', new Uint8Array(sharedSecret));
     
-    // Generate random nonce (16 bytes for AES-CTR)
-    const nonce = randomBytes(16);
+    // Generate 12-byte random nonce for AES-GCM
+    const nonce = randomBytes(12);
     
-    // Encrypt using AES-256-CTR with Node.js crypto
-    const cipher = createCipheriv('aes-256-ctr', Buffer.from(encryptionKey, 'hex'), nonce);
+    // Encrypt using AES-256-GCM
+    const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey, nonce);
     let ciphertext = cipher.update(data);
     ciphertext = Buffer.concat([ciphertext, cipher.final()]);
+    
+    // Get authentication tag
+    const authTag = cipher.getAuthTag();
+    
+    // Combine ciphertext + auth tag (matches Rust AES-GCM behavior)
+    const ciphertextWithTag = Buffer.concat([ciphertext, authTag]);
     
     return {
       ephemeralPublicKey,
       nonce: nonce.toString('hex'),
-      ciphertext: ciphertext.toString('hex')
+      ciphertext: ciphertextWithTag.toString('hex')
     };
   } catch (error) {
     throw new Error(`ECIES encryption failed: ${error}`);
@@ -62,7 +84,7 @@ export async function eciesEncrypt(
 }
 
 /**
- * Decrypt ECIES encrypted data
+ * Decrypt ECIES encrypted data (matches Rust implementation)
  * @param encryptedData - The encrypted data structure
  * @param privateKey - Recipient's private key in hex format
  * @returns Promise<Uint8Array> - Decrypted plaintext data
@@ -72,10 +94,11 @@ export async function eciesDecrypt(
   privateKey: string
 ): Promise<Uint8Array> {
   try {
-    // Import elliptic.js for ECDH
+    // Import required modules
     const elliptic = await import('elliptic');
     const EC = elliptic.ec;
     const ec = new EC('secp256k1');
+    const crypto = await import('crypto');
     
     // Create key pair from private key
     const keyPair = ec.keyFromPrivate(privateKey, 'hex');
@@ -83,20 +106,25 @@ export async function eciesDecrypt(
     // Parse ephemeral public key
     const ephemeralPublicKey = ec.keyFromPublic(encryptedData.ephemeralPublicKey, 'hex');
     
-    // Perform ECDH to get shared secret
+    // Perform ECDH to get shared secret (X coordinate only)
     const sharedPoint = keyPair.derive(ephemeralPublicKey.getPublic());
-    const sharedSecret = sharedPoint.toString(16).padStart(64, '0');
+    const sharedSecret = Buffer.from(sharedPoint.toString(16).padStart(64, '0'), 'hex');
     
-    // Derive decryption key using SHA256(shared_secret)
-    const { keccak256 } = await import('js-sha3');
-    const decryptionKey = keccak256(Buffer.from(sharedSecret, 'hex'));
+    // Derive 32-byte decryption key using SHA-512 KDF (matches Rust)
+    const decryptionKey = await eciesKdf32('TOKAMAK_FROST_ECIES_v1', new Uint8Array(sharedSecret));
     
-    // Parse nonce and ciphertext
+    // Parse nonce and ciphertext with auth tag
     const nonce = Buffer.from(encryptedData.nonce, 'hex');
-    const ciphertext = Buffer.from(encryptedData.ciphertext, 'hex');
+    const ciphertextWithTag = Buffer.from(encryptedData.ciphertext, 'hex');
     
-    // Decrypt using AES-256-CTR with Node.js crypto
-    const decipher = createDecipheriv('aes-256-ctr', Buffer.from(decryptionKey, 'hex'), nonce);
+    // Split ciphertext and auth tag (AES-GCM uses 16-byte auth tag)
+    const ciphertext = ciphertextWithTag.slice(0, -16);
+    const authTag = ciphertextWithTag.slice(-16);
+    
+    // Decrypt using AES-256-GCM
+    const decipher = crypto.createDecipheriv('aes-256-gcm', decryptionKey, nonce);
+    decipher.setAuthTag(authTag);
+    
     let decrypted = decipher.update(ciphertext);
     decrypted = Buffer.concat([decrypted, decipher.final()]);
     
