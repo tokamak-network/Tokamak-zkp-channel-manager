@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount, useContractWrite, usePrepareContractWrite, useContractRead, useWaitForTransaction } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { parseUnits } from 'ethers';
 import { ROLLUP_BRIDGE_ABI, ROLLUP_BRIDGE_ADDRESS } from '@/lib/contracts';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
@@ -119,14 +118,21 @@ export default function CreateChannelPage() {
     pky: BigInt(pky)
   } : undefined;
 
-  const { config } = usePrepareContractWrite({
+  const contractConfig = channelParams ? {
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'openChannel',
-    args: channelParams ? [channelParams] : undefined,
-    value: parseUnits('1', 18), // Required 1 ETH leader bond
+    args: [channelParams],
+    value: BigInt('1000000000000000000'), // Required 1 ETH leader bond (1e18 wei)
     enabled: isFormValid() && isConnected,
-  });
+  } : {
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'openChannel',
+    enabled: false,
+  };
+
+  const { config } = usePrepareContractWrite(contractConfig as any);
 
   const { write: createChannel, isLoading: isCreating, data: txData } = useContractWrite({
     ...config,
