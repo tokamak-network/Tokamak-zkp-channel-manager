@@ -18,14 +18,7 @@ export function ContractInfo() {
     enabled: isConnected,
   });
 
-  // Check if the current user is authorized to create channels
-  const { data: isAuthorized } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'isAuthorizedCreator',
-    args: address ? [address] : undefined,
-    enabled: isConnected && !!address,
-  });
+  // Anyone can create channels now - no authorization required
 
   // Use dynamic hook to check all channels for leadership and participation
   const { hasChannels, isParticipant, isLoading: rolesLoading, totalChannels, participatingChannels, leadingChannels, channelStatsData } = useUserRolesDynamic();
@@ -214,26 +207,7 @@ export function ContractInfo() {
       </div>
 
       {/* Quick Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-        {/* Authorization Status */}
-        <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <div className={`h-8 w-8 rounded-full flex items-center justify-center ${
-              isAuthorized ? 'bg-green-500' : 'bg-red-500'
-            }`}>
-              <span className="text-white text-sm">
-                {isAuthorized ? '✓' : '✗'}
-              </span>
-            </div>
-            <div>
-              <p className="font-medium text-gray-900 dark:text-gray-100">Creator Status</p>
-              <p className={`text-sm ${isAuthorized ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
-                {isAuthorized ? 'Authorized' : 'Not Authorized'}
-              </p>
-            </div>
-          </div>
-        </div>
-
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {/* Channel Participation */}
         <div className="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 border border-orange-200 dark:border-orange-700 rounded-lg p-4">
           <div className="flex items-center gap-3">
@@ -324,10 +298,10 @@ export function ContractInfo() {
               <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Your Status & Permissions</h4>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full ${isAuthorized ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                  <span className="h-2 w-2 rounded-full bg-green-500"></span>
                   <span className="text-gray-600 dark:text-gray-400">Create Channels: </span>
-                  <span className={`font-medium ${isAuthorized ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
-                    {isAuthorized ? 'Allowed' : 'Denied'}
+                  <span className="font-medium text-green-700 dark:text-green-300">
+                    Available (1 ETH bond required)
                   </span>
                 </div>
                 <div className="space-y-1">
@@ -534,20 +508,14 @@ export function ContractInfo() {
           <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
             <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Next Steps</h4>
             <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
-              {!isAuthorized && !isOwner && !isParticipant && (
-                <p>• Contact the project owner at <a href="mailto:hello@tokamak.network" className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">hello@tokamak.network</a> to request channel creation authorization</p>
-              )}
-              {isAuthorized && !hasChannels && !isParticipant && (
-                <p>• You can now create channels! Click "Create Channel" to start your first multi-party bridge channel</p>
+              {!hasChannels && !isParticipant && (
+                <p>• You can create channels! Click "Create Channel" to start your first multi-party bridge channel (1 ETH bond required)</p>
               )}
               {isParticipant && (
                 <p>• You're participating in a channel. Use "Manage Channel" to view and interact with your channel</p>
               )}
               {hasChannels && (
                 <p>• Manage your existing channel or create a new one using the navigation menu</p>
-              )}
-              {isOwner && (
-                <p>• As the contract owner, you can authorize other users to create channels using the form above</p>
               )}
               {!isParticipant && !hasChannels && (
                 <p>• You can deposit tokens and participate in a channel once invited by a channel creator</p>

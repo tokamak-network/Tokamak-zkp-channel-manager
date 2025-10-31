@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount, useContractWrite, usePrepareContractWrite, useContractRead, useWaitForTransaction } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { parseUnits } from 'ethers';
 import { ROLLUP_BRIDGE_ABI, ROLLUP_BRIDGE_ADDRESS } from '@/lib/contracts';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
@@ -46,14 +47,8 @@ export default function CreateChannelPage() {
     enabled: isConnected && !!totalChannels && Number(totalChannels) > 1,
   });
 
-  // Check if user is authorized to create channels
-  const { data: isAuthorized } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'isAuthorizedCreator',
-    args: address ? [address] : undefined,
-    enabled: isConnected && !!address,
-  });
+  // Anyone can create channels now - no authorization required
+  const isAuthorized = true;
 
   // Check if user is already a channel leader
   const isAlreadyLeader = address && (
@@ -68,7 +63,7 @@ export default function CreateChannelPage() {
     { address: '', l2PublicKey: '' },
     { address: '', l2PublicKey: '' }
   ]);
-  const [timeout, setTimeout] = useState(24); // in hours
+  const [timeout, setTimeout] = useState(1); // in days
   const [pkx, setPkx] = useState('');
   const [pky, setPky] = useState('');
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
@@ -108,7 +103,7 @@ export default function CreateChannelPage() {
         isValidEthereumAddress(p.address) && 
         isValidEthereumAddress(p.l2PublicKey)
       ) &&
-      timeout >= 1 && timeout <= 168 && // 1 hour to 7 days
+      timeout >= 1 && timeout <= 365 && // 1 day to 365 days
       isValidHex(pkx) &&
       isValidHex(pky)
     );
@@ -119,7 +114,7 @@ export default function CreateChannelPage() {
     targetContract: targetContract as `0x${string}`,
     participants: participants.map(p => p.address as `0x${string}`),
     l2PublicKeys: participants.map(p => p.l2PublicKey as `0x${string}`),
-    timeout: BigInt(timeout * 3600), // Convert hours to seconds
+    timeout: BigInt(timeout * 86400), // Convert days to seconds
     pkx: BigInt(pkx),
     pky: BigInt(pky)
   } : undefined;
@@ -129,6 +124,7 @@ export default function CreateChannelPage() {
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'openChannel',
     args: channelParams ? [channelParams] : undefined,
+    value: parseUnits('1', 18), // Required 1 ETH leader bond
     enabled: isFormValid() && isConnected,
   });
 
@@ -252,37 +248,19 @@ export default function CreateChannelPage() {
               )}
             </ClientOnly>
 
-            {/* Info message for authorized users who can create channels */}
+            {/* Info message about leader bond requirement */}
             <ClientOnly>
-              {!isAlreadyLeader && isAuthorized && address && (
-                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
+              {!isAlreadyLeader && address && (
+                <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="text-blue-600 dark:text-blue-400 text-lg">ℹ️</span>
-                    <h3 className="text-lg font-semibold text-blue-800 dark:text-blue-300">Channel Creation Available</h3>
+                    <span className="text-amber-600 dark:text-amber-400 text-lg">⚠️</span>
+                    <h3 className="text-lg font-semibold text-amber-800 dark:text-amber-300">Leader Bond Required</h3>
                   </div>
-                  <p className="text-blue-700 dark:text-blue-400 mb-3">
-                    As an authorized creator, you can create your own channel even while participating in other channels.
+                  <p className="text-amber-700 dark:text-amber-400 mb-3">
+                    Creating a channel requires a 1 ETH leader bond deposit. This bond will be returned when the channel is successfully closed.
                   </p>
-                  <p className="text-sm text-blue-600 dark:text-blue-500">
-                    You can lead one channel while participating in others. Fill out the form below to create your channel.
-                  </p>
-                </div>
-              )}
-            </ClientOnly>
-
-            {/* Warning for unauthorized users */}
-            <ClientOnly>
-              {!isAlreadyLeader && !isAuthorized && address && (
-                <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="text-red-600 dark:text-red-400 text-lg">🚫</span>
-                    <h3 className="text-lg font-semibold text-red-800 dark:text-red-300">Not Authorized</h3>
-                  </div>
-                  <p className="text-red-700 dark:text-red-400 mb-3">
-                    You are not authorized to create channels. Only authorized creators can create new bridge channels.
-                  </p>
-                  <p className="text-sm text-red-600 dark:text-red-500">
-                    Please contact the system administrator to request channel creation permissions.
+                  <p className="text-sm text-amber-600 dark:text-amber-500">
+                    If you fail to submit proof within 7 days after the channel timeout, your bond may be slashed. Fill out the form below to create your channel.
                   </p>
                 </div>
               )}
@@ -414,18 +392,18 @@ export default function CreateChannelPage() {
               {/* Timeout */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Channel Timeout (hours)
+                  Channel Timeout (days)
                 </label>
                 <input
                   type="number"
                   min="1"
-                  max="168"
+                  max="365"
                   value={timeout}
                   onChange={(e) => setTimeout(parseInt(e.target.value) || 1)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
                 <p className="text-sm text-gray-500 mt-1">
-                  Channel timeout period (1 hour to 7 days)
+                  Channel timeout period (1 day to 365 days)
                 </p>
               </div>
 
@@ -476,11 +454,9 @@ export default function CreateChannelPage() {
                     ? 'Submitting Transaction...' 
                     : isConfirming
                     ? 'Waiting for Confirmation...'
-                    : !isAuthorized 
-                    ? 'Not Authorized' 
                     : isAlreadyLeader 
                     ? 'Already Leading a Channel' 
-                    : 'Create Channel'}
+                    : 'Create Channel (1 ETH bond)'}
                 </button>
               </div>
             </form>
@@ -493,7 +469,7 @@ export default function CreateChannelPage() {
               <li>• Target contract must be a valid Ethereum address</li>
               <li>• Between 3-50 participants required</li>
               <li>• Each participant needs L1 address and L2 public key</li>
-              <li>• Timeout must be between 1 hour and 7 days</li>
+              <li>• Timeout must be between 1 day and 365 days</li>
               <li>• Group public key coordinates are required for FROST signatures</li>
               <li>• Preprocess data JSON file is required with part1 and part2 entries</li>
               <li>• All addresses must be valid Ethereum format (0x...)</li>
