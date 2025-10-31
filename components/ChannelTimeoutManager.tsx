@@ -57,39 +57,39 @@ export function ChannelTimeoutManager({
     watch: true
   });
 
-  // Prepare contract calls
-  const { config: handleTimeoutConfig } = usePrepareContractWrite({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'handleProofTimeout',
-    args: [channelId],
-    enabled: isProofDeadlineExpired && isUserParticipant && !isUserLeader
-  });
+  // Prepare contract calls - this function doesn't exist in the contract, removing it
+  // const { config: handleTimeoutConfig } = usePrepareContractWrite({
+  //   address: ROLLUP_BRIDGE_ADDRESS,
+  //   abi: ROLLUP_BRIDGE_ABI,
+  //   functionName: 'handleProofTimeout',
+  //   args: [channelId],
+  //   enabled: isProofDeadlineExpired && isUserParticipant && !isUserLeader
+  // });
 
-  const { config: emergencyCloseConfig } = usePrepareContractWrite({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'emergencyCloseExpiredChannel',
-    args: [channelId],
-    enabled: isProofDeadlineExpired
-  });
+  // const { config: emergencyCloseConfig } = usePrepareContractWrite({
+  //   address: ROLLUP_BRIDGE_ADDRESS,
+  //   abi: ROLLUP_BRIDGE_ABI,
+  //   functionName: 'emergencyCloseExpiredChannel',
+  //   args: [channelId],
+  //   enabled: isProofDeadlineExpired
+  // });
 
-  const { write: handleTimeout, data: handleTimeoutData } = useContractWrite(handleTimeoutConfig);
-  const { write: emergencyClose, data: emergencyCloseData } = useContractWrite(emergencyCloseConfig);
+  // const { write: handleTimeout, data: handleTimeoutData } = useContractWrite(handleTimeoutConfig);
+  // const { write: emergencyClose, data: emergencyCloseData } = useContractWrite(emergencyCloseConfig);
 
-  const { isLoading: isHandlingTimeout } = useWaitForTransaction({
-    hash: handleTimeoutData?.hash,
-    onSuccess: () => {
-      onSuccess?.();
-    }
-  });
+  // const { isLoading: isHandlingTimeout } = useWaitForTransaction({
+  //   hash: handleTimeoutData?.hash,
+  //   onSuccess: () => {
+  //     onSuccess?.();
+  //   }
+  // });
 
-  const { isLoading: isEmergencyClosing } = useWaitForTransaction({
-    hash: emergencyCloseData?.hash,
-    onSuccess: () => {
-      onSuccess?.();
-    }
-  });
+  // const { isLoading: isEmergencyClosing } = useWaitForTransaction({
+  //   hash: emergencyCloseData?.hash,
+  //   onSuccess: () => {
+  //     onSuccess?.();
+  //   }
+  // });
 
   const getTimeoutStatus = () => {
     if (!isChannelExpired) {
@@ -199,16 +199,8 @@ export function ChannelTimeoutManager({
             <h4 className="font-medium mb-2">Participant Actions:</h4>
             <div className="space-y-2">
               <p className="text-sm text-red-700">
-                The leader failed to submit proof on time. You can slash their bond and enable emergency withdrawals.
+                The leader failed to submit proof on time. Emergency actions are available below.
               </p>
-              <Button
-                onClick={() => handleTimeout?.()}
-                disabled={isHandlingTimeout || !handleTimeout}
-                variant="destructive"
-                className="w-full"
-              >
-                {isHandlingTimeout ? 'Processing...' : 'Slash Leader Bond & Enable Emergency Withdrawals'}
-              </Button>
             </div>
           </div>
         )}
@@ -219,16 +211,8 @@ export function ChannelTimeoutManager({
             <h4 className="font-medium mb-2">Emergency Actions:</h4>
             <div className="space-y-2">
               <p className="text-sm text-red-700">
-                Anyone can trigger emergency closure of this expired channel.
+                Channel has expired and emergency procedures may be required. Contact the contract owner for assistance.
               </p>
-              <Button
-                onClick={() => emergencyClose?.()}
-                disabled={isEmergencyClosing || !emergencyClose}
-                variant="destructive"
-                className="w-full"
-              >
-                {isEmergencyClosing ? 'Processing...' : 'Emergency Close Channel'}
-              </Button>
             </div>
           </div>
         )}
