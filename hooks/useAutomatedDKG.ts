@@ -23,6 +23,13 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { useSignMessage } from 'wagmi';
+import { 
+  generateMockFrostRound1Package, 
+  generateMockSecretShare,
+  generateMockGroupVerifyingKey,
+  logPackageInfo 
+} from '@/lib/frost-mock-generator';
+import { eciesEncrypt, signEncryptedPackage } from '@/lib/ecies';
 
 interface DKGSession {
   id: string;

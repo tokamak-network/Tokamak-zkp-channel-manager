@@ -32,8 +32,8 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
     targetContract: ETH_TOKEN_ADDRESS,
     participants: [''],
     l2PublicKeys: [''],
-    timeout: '24',
-    timeoutUnit: 'hours',
+    timeout: '1',
+    timeoutUnit: 'days',
     pkx: '',
     pky: ''
   });
@@ -68,10 +68,8 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
     const timeout = parseFloat(formData.timeout);
     if (isNaN(timeout) || timeout <= 0) {
       newErrors.timeout = 'Timeout must be greater than 0';
-    } else if (formData.timeoutUnit === 'hours' && timeout < 1) {
-      newErrors.timeout = 'Minimum timeout is 1 hour';
-    } else if (formData.timeoutUnit === 'days' && timeout > 7) {
-      newErrors.timeout = 'Maximum timeout is 7 days';
+    } else if (formData.timeoutUnit === 'days' && (timeout < 1 || timeout > 365)) {
+      newErrors.timeout = 'Timeout must be between 1 and 365 days';
     }
 
     // Validate public key components
@@ -83,7 +81,7 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
     return Object.keys(newErrors).length === 0;
   };
 
-  // Prepare contract write
+  // Prepare contract write with required 1 ETH leader bond
   const { config } = usePrepareContractWrite({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
@@ -96,6 +94,7 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
       pkx: formData.pkx ? BigInt(formData.pkx) : BigInt(0),
       pky: formData.pky ? BigInt(formData.pky) : BigInt(0)
     }],
+    value: parseUnits('1', 18), // Required 1 ETH leader bond
     enabled: validateForm() && !!formData.targetContract
   });
 
@@ -116,8 +115,8 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
       targetContract: ETH_TOKEN_ADDRESS,
       participants: [''],
       l2PublicKeys: [''],
-      timeout: '24',
-      timeoutUnit: 'hours',
+      timeout: '1',
+      timeoutUnit: 'days',
       pkx: '',
       pky: ''
     });
@@ -151,6 +150,10 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
           </DialogTitle>
           <DialogDescription>
             Set up a new ZK Rollup bridge channel with multiple participants
+            <br />
+            <span className="text-amber-600 dark:text-amber-400 font-medium">
+              ⚠️ Requires 1 ETH leader bond deposit
+            </span>
           </DialogDescription>
         </DialogHeader>
 
@@ -238,6 +241,8 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
             <div className="flex gap-2">
               <Input
                 type="number"
+                min="1"
+                max="365"
                 placeholder="Duration"
                 value={formData.timeout}
                 onChange={(e) => setFormData(prev => ({ ...prev, timeout: e.target.value }))}
@@ -245,19 +250,18 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
               />
               <Select
                 value={formData.timeoutUnit}
-                onValueChange={(value: 'hours' | 'days') => setFormData(prev => ({ ...prev, timeoutUnit: value }))}
+                onValueChange={(value: 'days') => setFormData(prev => ({ ...prev, timeoutUnit: value }))}
               >
                 <SelectTrigger className="w-24">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="hours">Hours</SelectItem>
                   <SelectItem value="days">Days</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="text-xs text-gray-500">
-              Channel will expire after this duration. Range: 1 hour - 7 days
+              Channel will expire after this duration. Range: 1 day - 365 days
             </div>
             {errors.timeout && (
               <div className="text-sm text-red-500 flex items-center gap-1">
