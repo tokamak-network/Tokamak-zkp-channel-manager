@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "clean": "rm -rf .next node_modules/.cache"
+    "clean": "rm -rf .next node_modules/.cache",
+    "generate-accounts": "node scripts/generate-test-accounts.js"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",

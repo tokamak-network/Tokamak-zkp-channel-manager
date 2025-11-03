@@ -1,0 +1,159 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Accounts</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        h1 {
+            color: #4a9eff;
+            border-bottom: 2px solid #4a9eff;
+            padding-bottom: 10px;
+        }
+        .account {
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .account h2 {
+            color: #6ab7ff;
+            margin-top: 0;
+        }
+        .field {
+            margin: 10px 0;
+        }
+        .label {
+            color: #888;
+            font-weight: bold;
+            display: inline-block;
+            width: 120px;
+        }
+        .value {
+            color: #4a9eff;
+            word-break: break-all;
+            font-size: 14px;
+        }
+        button {
+            background: #4a9eff;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        button:hover {
+            background: #3a8eef;
+        }
+        .warning {
+            background: #ff4444;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔑 Test Accounts for DKG</h1>
+    <div class="warning">
+        ⚠️ WARNING: These are test accounts. Never use them with real funds!
+    </div>
+    
+    
+    <div class="account">
+        <h2>Account 1: Test Account 1</h2>
+        <div class="field">
+            <span class="label">Address:</span>
+            <span class="value" id="addr-0">0x43c15d21d9f00bd9a38f1fced8433b248b010704</span>
+            <button onclick="copy('addr-0')">Copy</button>
+        </div>
+        <div class="field">
+            <span class="label">Private Key:</span>
+            <span class="value" id="priv-0">0x4cac579346b7a56a19e01550e91ddc3285ddcdc5647aaf2efafe595d7d6f6d0a</span>
+            <button onclick="copy('priv-0')">Copy</button>
+        </div>
+        <div class="field">
+            <span class="label">Public Key (Full):</span>
+            <span class="value" id="pub-0">0x0420e96546a9efb0aa29011a18de2ec4dc55d7379bad6d4b0fa869844940089bd7a243e14685d2b8a349ff02477bc78a085fdc7d99ccf5d570c1447e6e74f1d906</span>
+            <button onclick="copy('pub-0')">Copy</button>
+        </div>
+        <div class="field">
+            <span class="label">Public Key (Compressed):</span>
+            <span class="value" id="pub-comp-0">0x0220e96546a9efb0aa29011a18de2ec4dc55d7379bad6d4b0fa869844940089bd7</span>
+            <button onclick="copy('pub-comp-0')">Copy</button>
+        </div>
+    </div>
+    
+    <div class="account">
+        <h2>Account 2: Test Account 2</h2>
+        <div class="field">
+            <span class="label">Address:</span>
+            <span class="value" id="addr-1">0x0836b508a35bc0bf8a4574541f9bdecd3ec05715</span>
+            <button onclick="copy('addr-1')">Copy</button>
+        </div>
+        <div class="field">
+            <span class="label">Private Key:</span>
+            <span class="value" id="priv-1">0xb1c4e3b811d67099be2f3df9c30dfa51cb5db021ca2c55c1686824c40c58a7bc</span>
+            <button onclick="copy('priv-1')">Copy</button>
+        </div>
+        <div class="field">
+            <span class="label">Public Key (Full):</span>
+            <span class="value" id="pub-1">0x04747dcd57ed25f1ee3b8e157c5415a14acee184e266785dc8ece53ce40077f4dff98abbe54ab5faed7874a1c125864b5a63bba1797dc9ace70110ca06a05dcd77</span>
+            <button onclick="copy('pub-1')">Copy</button>
+        </div>
+        <div class="field">
+            <span class="label">Public Key (Compressed):</span>
+            <span class="value" id="pub-comp-1">0x03747dcd57ed25f1ee3b8e157c5415a14acee184e266785dc8ece53ce40077f4df</span>
+            <button onclick="copy('pub-comp-1')">Copy</button>
+        </div>
+    </div>
+    
+    <div class="account">
+        <h2>Account 3: Test Account 3</h2>
+        <div class="field">
+            <span class="label">Address:</span>
+            <span class="value" id="addr-2">0x4fd5d0eec509594c847d90cdd8cc8794061c4ce1</span>
+            <button onclick="copy('addr-2')">Copy</button>
+        </div>
+        <div class="field">
+            <span class="label">Private Key:</span>
+            <span class="value" id="priv-2">0x068921b116ed8880e4991e3131a807f06e3d4527827576ad1122a1a6b4189f23</span>
+            <button onclick="copy('priv-2')">Copy</button>
+        </div>
+        <div class="field">
+            <span class="label">Public Key (Full):</span>
+            <span class="value" id="pub-2">0x04c25fb2b9c193d18e10382fc11c9377522f5eafdbdc2c43821ca534ec7d98b399626c64a9c5a853dc607af7a6888c39787eacfcb43306e94132c23ef963250a39</span>
+            <button onclick="copy('pub-2')">Copy</button>
+        </div>
+        <div class="field">
+            <span class="label">Public Key (Compressed):</span>
+            <span class="value" id="pub-comp-2">0x03c25fb2b9c193d18e10382fc11c9377522f5eafdbdc2c43821ca534ec7d98b399</span>
+            <button onclick="copy('pub-comp-2')">Copy</button>
+        </div>
+    </div>
+    
+    
+    <script>
+        function copy(id) {
+            const text = document.getElementById(id).textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Copied to clipboard!');
+            });
+        }
+    </script>
+</body>
+</html>
+  

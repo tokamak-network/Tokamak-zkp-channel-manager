@@ -12,15 +12,21 @@ export function Footer({
   showTestnetWarning = true 
 }: FooterProps) {
   return (
-    <footer className={`border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 py-8 mt-12 transition-colors duration-300 ${className}`}>
+    <footer className={`border-t-2 border-[#00FFFF] bg-black py-8 mt-12 relative ${className}`}>
+      {/* Neon glow line */}
+      <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#00FFFF] to-transparent neon-border-cyan"></div>
+      
       <div className="px-4 lg:px-6 text-center">
-        <div className="flex items-center justify-center gap-2 mb-4">
-          <div className="h-6 w-6 rounded bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-center">
-            <span className="text-white text-xs font-bold">ZK</span>
+        <div className="flex items-center justify-center gap-3 mb-4">
+          <div 
+            className="h-8 w-8 bg-black border-2 border-[#FFFF00] flex items-center justify-center neon-border-yellow"
+            style={{ clipPath: 'polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px)' }}
+          >
+            <span className="text-[#FFFF00] text-sm font-bold pixel-font neon-glow-yellow">ZK</span>
           </div>
-          <span className="font-semibold text-gray-800 dark:text-gray-200">Tokamak ZK-Rollup Manager</span>
+            <span className="font-semibold text-[#FFFF00] pixel-font text-lg neon-glow-yellow">Tokamak ZKP Manager</span>
         </div>
-        <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
+        <p className="text-sm text-[#00FFFF] mb-6 pixel-font">
           Powered by Tokamak Network
         </p>
 
@@ -31,7 +37,7 @@ export function Footer({
             href="https://x.com/Tokamak_Network"
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors duration-200"
+            className="p-2 text-[#00FFFF] hover:text-[#FFFF00] transition-colors duration-200 hover:neon-glow-yellow"
             aria-label="Follow us on X (Twitter)"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -44,7 +50,7 @@ export function Footer({
             href="https://www.tokamak.network/"
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors duration-200"
+            className="p-2 text-[#00FFFF] hover:text-[#FFFF00] transition-colors duration-200 hover:neon-glow-yellow"
             aria-label="Visit our website"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -57,7 +63,7 @@ export function Footer({
             href="https://medium.com/tokamak-network"
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors duration-200"
+            className="p-2 text-[#00FFFF] hover:text-[#FF00FF] transition-colors duration-200 hover:neon-glow-pink"
             aria-label="Read our blog on Medium"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -70,7 +76,7 @@ export function Footer({
             href="https://discord.com/invite/J4chV2zuAK"
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors duration-200"
+            className="p-2 text-[#00FFFF] hover:text-[#FFFF00] transition-colors duration-200 hover:neon-glow-yellow"
             aria-label="Join our Discord community"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -83,7 +89,7 @@ export function Footer({
             href="https://t.me/tokamak_network"
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors duration-200"
+            className="p-2 text-[#00FFFF] hover:text-[#FF00FF] transition-colors duration-200 hover:neon-glow-pink"
             aria-label="Join our Telegram channel"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -96,7 +102,7 @@ export function Footer({
             href="https://www.linkedin.com/company/tokamaknetwork/"
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors duration-200"
+            className="p-2 text-[#00FFFF] hover:text-[#FFFF00] transition-colors duration-200 hover:neon-glow-yellow"
             aria-label="Connect with us on LinkedIn"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -106,8 +112,11 @@ export function Footer({
         </div>
 
         {showTestnetWarning && (
-          <div className="text-xs text-gray-500 dark:text-gray-400">
-            <p>⚠️ Testnet Version</p>
+          <div 
+            className="inline-block px-4 py-2 bg-[#1A1A2E] text-[#FFFF00] border-2 border-[#FFFF00] text-sm pixel-font neon-border-yellow"
+            style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
+          >
+            <p className="neon-glow-yellow">⚠️ TESTNET VERSION ⚠️</p>
           </div>
         )}
       </div>

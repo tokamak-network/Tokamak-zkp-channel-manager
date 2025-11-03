@@ -57,6 +57,13 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       description: 'Dashboard and overview',
       requiresConnection: false
     },
+    {
+      name: 'State Explorer',
+      href: '/state-explorer',
+      icon: '📊',
+      description: 'View session states and activity',
+      requiresConnection: false
+    },
   ];
 
   // User action items (shown when connected)
@@ -192,17 +199,23 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       )}
 
       {/* Sidebar */}
-      <div className={`fixed top-0 left-0 h-full bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 z-50 ${
+      <div className={`absolute top-0 left-0 h-full bg-black border-r-2 border-[#00FFFF] transition-all duration-300 z-50 m-0 p-0 ${
         isCollapsed ? 'w-16 -translate-x-full lg:translate-x-0' : 'w-64 translate-x-0'
       } lg:translate-x-0`}>
+        {/* Neon glow line */}
+        <div className="absolute top-0 right-0 bottom-0 w-0.5 bg-gradient-to-b from-transparent via-[#00FFFF] to-transparent neon-border-cyan"></div>
+        
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between p-4 border-b-2 border-[#00FFFF]">
           {!isCollapsed && (
             <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-center">
-                <span className="text-white font-bold text-sm">ZK</span>
+              <div 
+                className="h-8 w-8 bg-black border-2 border-[#FFFF00] flex items-center justify-center neon-border-yellow"
+                style={{ clipPath: 'polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px)' }}
+              >
+                <span className="text-[#FFFF00] font-bold text-sm pixel-font neon-glow-yellow">ZK</span>
               </div>
-              <span className="font-semibold text-gray-900 dark:text-gray-100">Tokamak ZK</span>
+              <span className="font-semibold text-[#FFFF00] pixel-font neon-glow-yellow">Tokamak ZKP</span>
             </div>
           )}
           <button
@@ -211,9 +224,10 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
               setIsCollapsed(newCollapsed);
               onCollapse?.(newCollapsed);
             }}
-            className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="p-1 hover:bg-[#1A1A2E] transition-colors border-2 border-transparent hover:border-[#00FFFF] hover:neon-border-cyan"
+            style={{ clipPath: 'polygon(2px 0, 100% 0, 100% calc(100% - 2px), calc(100% - 2px) 100%, 0 100%, 0 2px)' }}
           >
-            <span className="text-gray-600 dark:text-gray-300">{isCollapsed ? '→' : '←'}</span>
+            <span className="text-[#00FFFF] pixel-font neon-glow-cyan">{isCollapsed ? '→' : '←'}</span>
           </button>
         </div>
 
@@ -228,19 +242,20 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
                 key={item.name}
                 onClick={() => handleNavigation(item)}
                 disabled={isDisabled}
-                className={`w-full flex items-center ${isCollapsed ? 'justify-center px-3' : 'gap-3 px-3'} py-2 rounded-lg text-left transition-colors ${
+                style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
+                className={`w-full flex items-center ${isCollapsed ? 'justify-center px-3' : 'gap-3 px-3'} py-2 text-left transition-all border-2 ${
                   isActive 
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700' 
+                    ? 'bg-[#1A1A2E] text-[#FFFF00] border-[#FFFF00] neon-border-yellow' 
                     : isDisabled
-                    ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                    : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    ? 'text-gray-600 cursor-not-allowed border-transparent'
+                    : 'text-[#00FFFF] hover:bg-[#1A1A2E] border-[#00FFFF] hover:border-[#FF00FF] hover:neon-border-pink hover:translate-x-[-2px]'
                 }`}
               >
                 <span className="text-lg">{item.icon}</span>
                 {!isCollapsed && (
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">{item.name}</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{item.description}</div>
+                    <div className={`font-medium text-sm truncate pixel-font ${isActive ? 'neon-glow-yellow' : ''}`}>{item.name}</div>
+                    <div className="text-xs text-[#00FFFF] truncate">{item.description}</div>
                   </div>
                 )}
               </button>
@@ -254,7 +269,8 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
             href="https://github.com/tokamak-network/Tokamak-zkp-channel-manager"
             target="_blank"
             rel="noopener noreferrer"
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 hover:border-gray-300 dark:hover:border-gray-500 transition-all duration-200 ${
+            style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
+            className={`w-full flex items-center gap-3 px-3 py-2 bg-[#1A1A2E] border-2 border-[#00FFFF] text-[#00FFFF] hover:bg-[#2A2A3E] hover:border-[#FF00FF] hover:neon-border-pink transition-all duration-200 ${
               isCollapsed ? 'justify-center' : ''
             }`}
           >
@@ -263,13 +279,13 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
             </svg>
             {!isCollapsed && (
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm flex items-center gap-1">
-                  GitHub Repository
+                <div className="font-medium text-sm flex items-center gap-1 pixel-font">
+                  GitHub Repo
                   <svg className="w-3 h-3 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                   </svg>
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">View source code & contribute</div>
+                <div className="text-xs text-[#00FFFF] truncate">View source code</div>
               </div>
             )}
           </a>
@@ -280,15 +296,16 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
           <div className="absolute bottom-20 left-4 right-4">
             <button
               onClick={handleDisconnect}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors ${
+              style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
+              className={`w-full flex items-center gap-3 px-3 py-2 text-[#FF1493] hover:bg-[#1A1A2E] border-2 border-transparent hover:border-[#FF1493] hover:neon-border-pink transition-all ${
                 isCollapsed ? 'justify-center' : ''
               }`}
             >
               <span className="text-lg">🔌</span>
               {!isCollapsed && (
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm">Disconnect</div>
-                  <div className="text-xs text-red-500 dark:text-red-400">Disconnect wallet</div>
+                  <div className="font-medium text-sm pixel-font">Disconnect</div>
+                  <div className="text-xs text-[#FF1493]">Disconnect wallet</div>
                 </div>
               )}
             </button>
@@ -298,15 +315,18 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
         {/* Connection Status */}
         {!isCollapsed && (
           <div className="absolute bottom-4 left-4 right-4">
-            <div className={`px-3 py-2 rounded-lg text-xs ${
-              isConnected 
-                ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700' 
-                : 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-700'
-            }`}>
-              <div className="font-medium">
-                {isConnected ? 'Wallet Connected' : 'Wallet Not Connected'}
+            <div 
+              style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
+              className={`px-3 py-2 text-xs border-2 ${
+                isConnected 
+                  ? 'bg-[#1A1A2E] text-[#00FF00] border-[#00FF00]' 
+                  : 'bg-[#1A1A2E] text-[#FFFF00] border-[#FFFF00] neon-border-yellow'
+              }`}
+            >
+              <div className={`font-medium pixel-font ${isConnected ? '' : 'neon-glow-yellow'}`}>
+                {isConnected ? 'Wallet Connected' : 'Not Connected'}
               </div>
-              <div className="text-gray-500 dark:text-gray-400">
+              <div className="text-[#00FFFF] text-xs">
                 {isConnected ? 'Ready to interact' : 'Connect to continue'}
               </div>
             </div>
@@ -321,12 +341,13 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
           setIsCollapsed(newCollapsed);
           onCollapse?.(newCollapsed);
         }}
-        className="fixed top-4 left-4 z-60 lg:hidden bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 shadow-lg hover:shadow-xl transition-all duration-200"
+        style={{ clipPath: 'polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px)' }}
+        className="absolute top-4 left-4 z-60 lg:hidden bg-[#1A1A2E] border-2 border-[#00FFFF] p-3 neon-border-cyan hover:border-[#FF00FF] transition-all duration-200"
       >
         <div className="flex flex-col gap-1">
-          <span className={`block w-5 h-0.5 bg-gray-600 dark:bg-gray-300 transition-all duration-300 ${isCollapsed ? '' : 'rotate-45 translate-y-1.5'}`}></span>
-          <span className={`block w-5 h-0.5 bg-gray-600 dark:bg-gray-300 transition-all duration-300 ${isCollapsed ? '' : 'opacity-0'}`}></span>
-          <span className={`block w-5 h-0.5 bg-gray-600 dark:bg-gray-300 transition-all duration-300 ${isCollapsed ? '' : '-rotate-45 -translate-y-1.5'}`}></span>
+          <span className={`block w-5 h-0.5 bg-[#C8EDFF] transition-all duration-300 ${isCollapsed ? '' : 'rotate-45 translate-y-1.5'}`}></span>
+          <span className={`block w-5 h-0.5 bg-[#C8EDFF] transition-all duration-300 ${isCollapsed ? '' : 'opacity-0'}`}></span>
+          <span className={`block w-5 h-0.5 bg-[#C8EDFF] transition-all duration-300 ${isCollapsed ? '' : '-rotate-45 -translate-y-1.5'}`}></span>
         </div>
       </button>
     </>

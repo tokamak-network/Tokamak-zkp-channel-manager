@@ -1,16 +1,21 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, IBM_Plex_Mono } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 
 const inter = Inter({ subsets: ['latin'] });
+const ibmPlexMono = IBM_Plex_Mono({ 
+  weight: ['400', '500', '600'], 
+  subsets: ['latin'],
+  variable: '--font-ibm-plex-mono'
+});
 
 export const metadata: Metadata = {
-  title: 'Tokamak ZK Rollup Manager',
-  description: 'User-friendly interface for Tokamak ZK Rollup Manager operations',
-  keywords: ['Tokamak', 'ZK Rollup', 'Bridge', 'Ethereum', 'DeFi'],
+  title: 'Tokamak ZKP Channel Manager',
+  description: 'User-friendly interface for Tokamak ZKP Channel Manager operations',
+  keywords: ['Tokamak', 'ZKP', 'Channel', 'Ethereum', 'DeFi', 'Zero-Knowledge Proof'],
   authors: [{ name: 'Tokamak Network' }],
   metadataBase: new URL('http://localhost:3000'),
   icons: {
@@ -22,22 +27,22 @@ export const metadata: Metadata = {
     'Content-Language': 'en-US',
   },
   openGraph: {
-    title: 'Tokamak ZK Rollup Manager',
+    title: 'Tokamak ZKP Channel Manager',
     description: 'Secure and efficient bridging solution with zero-knowledge proofs',
     type: 'website',
     locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Tokamak ZK Rollup Manager',
-    description: 'Secure and efficient bridging solution with zero-knowledge proofs',
+    title: 'Tokamak ZKP Channel Manager',
+    description: 'Secure and efficient channel management with zero-knowledge proofs',
   },
 };
 
 export const viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#0ea5e9',
+  themeColor: '#000000',
 };
 
 export default function RootLayout({
@@ -46,12 +51,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en-US" className="scroll-smooth">
-      <body className={`${inter.className} antialiased`}>
+    <html lang="en-US" className="scroll-smooth m-0 p-0">
+      <head>
+        <link href="https://fonts.googleapis.com/css2?family=Jersey+10&display=swap" rel="stylesheet" />
+      </head>
+      <body className={`${inter.className} ${ibmPlexMono.variable} antialiased m-0 p-0 overflow-x-hidden`}>
         <Providers>
-          <div className="min-h-dvh bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-slate-900 transition-colors duration-300" style={{backgroundSize: '100% 120vh', backgroundAttachment: 'fixed'}}>
-            {children}
-          </div>
+          {children}
         </Providers>
         <Analytics />
         <SpeedInsights />

@@ -24,6 +24,8 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
+    --font-ibm-plex-mono: 'IBM Plex Mono', monospace;
+    --font-jersey: 'Jersey 10', cursive;
   }
 
   .dark {
@@ -50,33 +52,34 @@
 }
 
 @layer base {
-  * {
+  *,
+  *::before,
+  *::after {
     @apply border-gray-200;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
   }
   
-  /* Root element styling to prevent white background during overscroll */
+  /* Root element styling - Pac-Man theme */
   html {
-    @apply bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-slate-900;
+    @apply bg-black;
     min-height: 100vh;
-    min-height: 100dvh; /* Dynamic viewport height for mobile */
-    background-attachment: fixed;
+    min-height: 100dvh;
     /* Prevent overscroll bounce effect */
     overscroll-behavior: none;
     overscroll-behavior-y: none;
-    /* Ensure background covers beyond viewport */
-    background-size: 100% 120vh;
   }
   
   body {
-    @apply bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-slate-900 text-foreground;
+    @apply bg-black text-foreground;
     min-height: 100vh;
     min-height: 100dvh;
-    background-attachment: fixed;
+    margin: 0;
+    padding: 0;
     /* Prevent overscroll bounce */
     overscroll-behavior: none;
     overscroll-behavior-y: none;
-    /* Ensure background covers beyond viewport */
-    background-size: 100% 120vh;
     /* Prevent pull-to-refresh and overscroll glow */
     overscroll-behavior-x: none;
   }
@@ -85,33 +88,101 @@
   #__next {
     min-height: 100vh;
     min-height: 100dvh;
-  }
-  
-  /* Create extended background to cover overscroll areas */
-  html::before {
-    content: '';
-    position: fixed;
-    top: -100vh;
-    left: 0;
-    right: 0;
-    height: 300vh;
-    @apply bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-slate-900;
-    z-index: -9999;
-    pointer-events: none;
+    margin: 0;
+    padding: 0;
   }
 }
 
 @layer utilities {
+  /* Pixel art / retro styles */
+  .pixel-corners {
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  }
+  
+  .pixel-shadow {
+    box-shadow: 3px 3px 0px 0px rgba(0, 0, 0, 0.5);
+  }
+  
+  .pixel-shadow-lg {
+    box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 0.6);
+  }
+  
+  .pixel-border {
+    border-width: 2px;
+    border-style: solid;
+  }
+  
+  .pixel-font {
+    font-family: 'Jersey 10', cursive;
+    letter-spacing: 0.05em;
+  }
+  
+  /* Pac-Man neon glow effects */
+  .neon-glow-yellow {
+    text-shadow: 
+      0 0 5px #FFFF00,
+      0 0 10px #FFFF00,
+      0 0 20px #FFFF00,
+      0 0 40px #FFD700;
+  }
+  
+  .neon-glow-cyan {
+    text-shadow: 
+      0 0 5px #00FFFF,
+      0 0 10px #00FFFF,
+      0 0 20px #00FFFF,
+      0 0 40px #00CED1;
+  }
+  
+  .neon-glow-pink {
+    text-shadow: 
+      0 0 5px #FF00FF,
+      0 0 10px #FF00FF,
+      0 0 20px #FF00FF,
+      0 0 40px #FF1493;
+  }
+  
+  .neon-border-yellow {
+    box-shadow: 
+      0 0 5px #FFFF00,
+      0 0 10px #FFFF00,
+      0 0 15px #FFFF00,
+      inset 0 0 5px rgba(255, 255, 0, 0.2);
+  }
+  
+  .neon-border-cyan {
+    box-shadow: 
+      0 0 5px #00FFFF,
+      0 0 10px #00FFFF,
+      0 0 15px #00FFFF,
+      inset 0 0 5px rgba(0, 255, 255, 0.2);
+  }
+  
+  .neon-border-pink {
+    box-shadow: 
+      0 0 5px #FF00FF,
+      0 0 10px #FF00FF,
+      0 0 15px #FF00FF,
+      inset 0 0 5px rgba(255, 0, 255, 0.2);
+  }
+  
+  /* Pac-Man dot pattern background */
+  .pacman-dots {
+    background-image: radial-gradient(circle, #FFFF00 1px, transparent 1px);
+    background-size: 20px 20px;
+    opacity: 0.1;
+  }
+  
   .gradient-text {
     @apply bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent;
   }
   
   .gradient-border {
-    @apply relative overflow-hidden rounded-lg;
+    @apply relative overflow-hidden;
   }
   
   .gradient-border::before {
-    @apply absolute inset-0 rounded-lg p-[1px];
+    @apply absolute inset-0 p-[1px];
     background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
     content: '';
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
@@ -119,41 +190,48 @@
   }
   
   .card-hover {
-    @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1;
+    @apply transition-all duration-200;
+  }
+  
+  .card-hover:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 5px 5px 0px 0px rgba(0, 0, 0, 0.3);
   }
   
   .status-active {
-    @apply bg-green-50 text-green-700 border-green-200;
+    @apply bg-green-900/20 text-green-300 border-green-700;
   }
   
   .status-pending {
-    @apply bg-yellow-50 text-yellow-700 border-yellow-200;
+    @apply bg-yellow-900/20 text-yellow-300 border-yellow-700;
   }
   
   .status-inactive {
-    @apply bg-gray-50 text-gray-700 border-gray-200;
+    @apply bg-gray-700/20 text-gray-400 border-gray-600;
   }
   
   .status-error {
-    @apply bg-red-50 text-red-700 border-red-200;
+    @apply bg-red-900/20 text-red-400 border-red-700;
   }
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar - Pixel style */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 12px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-gray-100 dark:bg-gray-800;
+  @apply bg-[#001020];
+  border-left: 2px solid #0A438F;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 dark:bg-gray-600 rounded-full;
+  @apply bg-[#0A3F84];
+  border: 2px solid #0A438F;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400 dark:bg-gray-500;
+  @apply bg-[#0077CC];
 }
 
 /* Loading animations */

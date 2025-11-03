@@ -39,7 +39,10 @@ export function Layout({
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+    <div className="min-h-screen bg-[#0A0A1A] relative overflow-x-hidden">
+      {/* Pac-Man dot pattern overlay */}
+      <div className="fixed inset-0 pacman-dots pointer-events-none z-0"></div>
+      
       {/* Channel Created Banner */}
       {showBanner && (
         <ClientOnly>
@@ -47,7 +50,7 @@ export function Layout({
         </ClientOnly>
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar - Fixed, independent area */}
       {showSidebar && (
         <ClientOnly>
           <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
@@ -64,19 +67,21 @@ export function Layout({
         </ClientOnly>
       )}
 
-      {/* Main Content Area */}
-      <div className={`ml-0 ${showSidebar ? (sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64') : ''} transition-all duration-300 flex flex-col min-h-screen`}>
-        {/* Header */}
-        <Header
-          title={title}
-          subtitle={subtitle}
-          showMobileMenu={showMobileMenu}
-          setShowMobileMenu={showSidebar ? setShowMobileMenu : undefined}
-          className={headerClassName}
-        />
+      {/* Header - Fixed, independent area */}
+      <Header
+        title={title}
+        subtitle={subtitle}
+        showMobileMenu={showMobileMenu}
+        setShowMobileMenu={showSidebar ? setShowMobileMenu : undefined}
+        className={headerClassName}
+        sidebarCollapsed={sidebarCollapsed}
+        showSidebar={showSidebar}
+      />
 
+      {/* Main Content Area - Flow layout without margins */}
+      <div className={`min-h-screen flex flex-col pt-[72px] ${showSidebar ? (sidebarCollapsed ? 'lg:pl-16' : 'lg:pl-64') : ''} transition-all duration-300`}>
         {/* Main Content */}
-        <main className={`flex-1 px-4 py-8 lg:px-6 ${mainClassName}`}>
+        <main className={`flex-1 px-4 py-8 lg:px-6 ${mainClassName || ''}`}>
           {children}
         </main>
 
