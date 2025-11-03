@@ -53,7 +53,7 @@ export default function RootLayout({
   return (
     <html lang="en-US" className="scroll-smooth m-0 p-0">
       <head>
-        <link href="https://fonts.googleapis.com/css2?family=Jersey+10&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Orbitron:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
       </head>
       <body className={`${inter.className} ${ibmPlexMono.variable} antialiased m-0 p-0 overflow-x-hidden`}>
         <Providers>

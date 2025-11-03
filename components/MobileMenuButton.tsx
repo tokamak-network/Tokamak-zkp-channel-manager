@@ -9,7 +9,7 @@ export function MobileMenuButton({ showMobileMenu, setShowMobileMenu }: MobileMe
   return (
     <button
       onClick={() => setShowMobileMenu(!showMobileMenu)}
-      className="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors relative"
+      className="xl:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors relative"
       aria-label="Navigation menu"
     >
       <div className="flex flex-col gap-1">

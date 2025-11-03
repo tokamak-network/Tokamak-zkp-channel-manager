@@ -22,7 +22,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
   // Set initial collapsed state based on screen size
   useEffect(() => {
     const handleResize = () => {
-      const isMobile = window.innerWidth < 1024; // lg breakpoint
+      const isMobile = window.innerWidth < 1200; // xl breakpoint (1200px)
       setIsCollapsed(isMobile);
       onCollapse?.(isMobile);
     };
@@ -54,14 +54,12 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       name: 'Home',
       href: '/',
       icon: '⌂',
-      description: 'Dashboard and overview',
       requiresConnection: false
     },
     {
       name: 'State Explorer',
       href: '/state-explorer',
       icon: '📊',
-      description: 'View session states and activity',
       requiresConnection: false
     },
   ];
@@ -74,8 +72,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       userActions.push({
         name: 'Create Channel',
         href: '/create-channel',
-        icon: '+',
-        description: 'Create multi-party bridge channel',
+        icon: '⚒',
         requiresConnection: true
       });
     }
@@ -84,8 +81,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
     userActions.push({
       name: 'DKG Management',
       href: '/dkg-management',
-      icon: '◆',
-      description: 'Distributed Key Generation',
+      icon: '🔑',
       requiresConnection: true
     });
 
@@ -95,15 +91,13 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
         {
           name: 'Deposit Tokens',
           href: '/deposit-tokens',
-          icon: '↓',
-          description: '',
+          icon: '💰',
           requiresConnection: true
         },
         {
           name: 'Withdraw Tokens',
           href: '/withdraw-tokens',
-          icon: '↑',
-          description: '',
+          icon: '💳',
           requiresConnection: true
         }
       );
@@ -117,7 +111,6 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       name: 'Channel Explorer',
       href: '/channel-explorer',
       icon: '🔍',
-      description: 'View all channels and activity',
       requiresConnection: true
     });
   }
@@ -129,36 +122,31 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       {
         name: 'Initialize State',
         href: '/initialize-state',
-        icon: '⚙',
-        description: '',
+        icon: '⚡',
         requiresConnection: true
       },
       {
         name: 'Submit Proof',
         href: '/submit-proof',
-        icon: '▣',
-        description: '',
+        icon: '📋',
         requiresConnection: true
       },
       {
         name: 'Sign Proof',
         href: '/sign-proof',
         icon: '✎',
-        description: '',
         requiresConnection: true
       },
       {
         name: 'Close Channel',
         href: '/close-channel',
         icon: '⊗',
-        description: '',
         requiresConnection: true
       },
       {
         name: 'Delete Channel',
         href: '/delete-channel',
         icon: '✕',
-        description: '',
         requiresConnection: true
       }
     );
@@ -193,29 +181,35 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       {/* Mobile backdrop */}
       {!isCollapsed && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 xl:hidden"
           onClick={() => setIsCollapsed(true)}
         />
       )}
 
       {/* Sidebar */}
-      <div className={`absolute top-0 left-0 h-full bg-black border-r-2 border-[#00FFFF] transition-all duration-300 z-50 m-0 p-0 ${
-        isCollapsed ? 'w-16 -translate-x-full lg:translate-x-0' : 'w-64 translate-x-0'
-      } lg:translate-x-0`}>
-        {/* Neon glow line */}
-        <div className="absolute top-0 right-0 bottom-0 w-0.5 bg-gradient-to-b from-transparent via-[#00FFFF] to-transparent neon-border-cyan"></div>
+      <div className={`absolute top-0 left-0 h-full bg-black border-r-2 border-gray-800 transition-all duration-300 z-50 m-0 p-0 ${
+        isCollapsed ? 'w-16 -translate-x-full xl:translate-x-0' : 'w-64 translate-x-0'
+      } xl:translate-x-0`}>
+        {/* Subtle glow line */}
+        <div className="absolute top-0 right-0 bottom-0 w-0.5 bg-gradient-to-b from-transparent via-gray-600 to-transparent"></div>
         
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b-2 border-[#00FFFF]">
+        <div className="flex items-center justify-between p-4 pb-6">
           {!isCollapsed && (
             <div className="flex items-center gap-2">
               <div 
-                className="h-8 w-8 bg-black border-2 border-[#FFFF00] flex items-center justify-center neon-border-yellow"
-                style={{ clipPath: 'polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px)' }}
+                className="h-8 w-8 flex items-center justify-center p-1"
               >
-                <span className="text-[#FFFF00] font-bold text-sm pixel-font neon-glow-yellow">ZK</span>
+                <img 
+                  src="/images/logo/tokamak-logo.svg" 
+                  alt="Tokamak Logo"
+                  className="w-full h-full"
+                  style={{
+                    filter: 'drop-shadow(0 0 3px #2A72E5) drop-shadow(0 0 5px #2A72E5)'
+                  }}
+                />
               </div>
-              <span className="font-semibold text-[#FFFF00] pixel-font neon-glow-yellow">Tokamak ZKP</span>
+              <span className="font-bold arcade-font text-gray-300 text-xs">Tokamak Network</span>
             </div>
           )}
           <button
@@ -224,10 +218,10 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
               setIsCollapsed(newCollapsed);
               onCollapse?.(newCollapsed);
             }}
-            className="p-1 hover:bg-[#1A1A2E] transition-colors border-2 border-transparent hover:border-[#00FFFF] hover:neon-border-cyan"
+            className="p-1 hover:bg-[#1A1A2E] transition-colors border-2 border-transparent hover:border-gray-500"
             style={{ clipPath: 'polygon(2px 0, 100% 0, 100% calc(100% - 2px), calc(100% - 2px) 100%, 0 100%, 0 2px)' }}
           >
-            <span className="text-[#00FFFF] pixel-font neon-glow-cyan">{isCollapsed ? '→' : '←'}</span>
+            <span className="text-gray-400 arcade-font text-xs">{isCollapsed ? '→' : '←'}</span>
           </button>
         </div>
 
@@ -243,19 +237,18 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
                 onClick={() => handleNavigation(item)}
                 disabled={isDisabled}
                 style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
-                className={`w-full flex items-center ${isCollapsed ? 'justify-center px-3' : 'gap-3 px-3'} py-2 text-left transition-all border-2 ${
+                className={`w-full flex items-center ${isCollapsed ? 'justify-center px-4' : 'gap-3 px-4'} py-3 text-left transition-all border-2 ${
                   isActive 
-                    ? 'bg-[#1A1A2E] text-[#FFFF00] border-[#FFFF00] neon-border-yellow' 
+                    ? 'bg-white text-black border-white' 
                     : isDisabled
                     ? 'text-gray-600 cursor-not-allowed border-transparent'
-                    : 'text-[#00FFFF] hover:bg-[#1A1A2E] border-[#00FFFF] hover:border-[#FF00FF] hover:neon-border-pink hover:translate-x-[-2px]'
+                    : 'text-gray-400 hover:bg-[#1A1A2E] border-transparent hover:border-gray-400 hover:text-white hover:translate-x-[-2px]'
                 }`}
               >
-                <span className="text-lg">{item.icon}</span>
+                <span className="text-xl">{item.icon}</span>
                 {!isCollapsed && (
-                  <div className="flex-1 min-w-0">
-                    <div className={`font-medium text-sm truncate pixel-font ${isActive ? 'neon-glow-yellow' : ''}`}>{item.name}</div>
-                    <div className="text-xs text-[#00FFFF] truncate">{item.description}</div>
+                  <div className={`font-bold text-sm truncate arcade-font`}>
+                    {item.name}
                   </div>
                 )}
               </button>
@@ -264,28 +257,20 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
         </nav>
 
         {/* GitHub Link */}
-        <div className={`absolute ${isConnected ? 'bottom-36' : 'bottom-20'} left-4 right-4`}>
+        <div className={`absolute ${isConnected ? 'bottom-28' : 'bottom-16'} left-4 right-4`}>
           <a
             href="https://github.com/tokamak-network/Tokamak-zkp-channel-manager"
             target="_blank"
             rel="noopener noreferrer"
             style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
-            className={`w-full flex items-center gap-3 px-3 py-2 bg-[#1A1A2E] border-2 border-[#00FFFF] text-[#00FFFF] hover:bg-[#2A2A3E] hover:border-[#FF00FF] hover:neon-border-pink transition-all duration-200 ${
+            className={`w-full flex items-center gap-4 px-4 py-3 bg-black border-2 border-gray-700 text-gray-400 hover:bg-[#1A1A2E] hover:border-gray-500 hover:text-white transition-all duration-200 ${
               isCollapsed ? 'justify-center' : ''
             }`}
           >
-            <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clipRule="evenodd" />
-            </svg>
+            <span className="text-xl">⚙</span>
             {!isCollapsed && (
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm flex items-center gap-1 pixel-font">
-                  GitHub Repo
-                  <svg className="w-3 h-3 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </div>
-                <div className="text-xs text-[#00FFFF] truncate">View source code</div>
+              <div className="font-bold text-sm arcade-font truncate">
+                GitHub
               </div>
             )}
           </a>
@@ -293,19 +278,18 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
 
         {/* Disconnect Button */}
         {isConnected && (
-          <div className="absolute bottom-20 left-4 right-4">
+          <div className="absolute bottom-16 left-4 right-4">
             <button
               onClick={handleDisconnect}
               style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
-              className={`w-full flex items-center gap-3 px-3 py-2 text-[#FF1493] hover:bg-[#1A1A2E] border-2 border-transparent hover:border-[#FF1493] hover:neon-border-pink transition-all ${
+              className={`w-full flex items-center gap-4 px-4 py-3 bg-black text-gray-500 hover:bg-[#1A1A2E] border-2 border-transparent hover:border-gray-600 hover:text-gray-300 transition-all ${
                 isCollapsed ? 'justify-center' : ''
               }`}
             >
-              <span className="text-lg">🔌</span>
+              <span className="text-xl">⊗</span>
               {!isCollapsed && (
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm pixel-font">Disconnect</div>
-                  <div className="text-xs text-[#FF1493]">Disconnect wallet</div>
+                <div className="font-bold text-sm arcade-font truncate">
+                  Disconnect
                 </div>
               )}
             </button>
@@ -317,17 +301,14 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
           <div className="absolute bottom-4 left-4 right-4">
             <div 
               style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
-              className={`px-3 py-2 text-xs border-2 ${
+              className={`px-4 py-2 text-center border-2 ${
                 isConnected 
-                  ? 'bg-[#1A1A2E] text-[#00FF00] border-[#00FF00]' 
-                  : 'bg-[#1A1A2E] text-[#FFFF00] border-[#FFFF00] neon-border-yellow'
+                  ? 'bg-[#1A1A2E] text-white border-gray-500' 
+                  : 'bg-[#1A1A2E] text-gray-500 border-gray-700'
               }`}
             >
-              <div className={`font-medium pixel-font ${isConnected ? '' : 'neon-glow-yellow'}`}>
-                {isConnected ? 'Wallet Connected' : 'Not Connected'}
-              </div>
-              <div className="text-[#00FFFF] text-xs">
-                {isConnected ? 'Ready to interact' : 'Connect to continue'}
+              <div className={`font-bold arcade-font text-sm`}>
+                {isConnected ? '● ONLINE' : '○ OFFLINE'}
               </div>
             </div>
           </div>
@@ -342,12 +323,12 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
           onCollapse?.(newCollapsed);
         }}
         style={{ clipPath: 'polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px)' }}
-        className="absolute top-4 left-4 z-60 lg:hidden bg-[#1A1A2E] border-2 border-[#00FFFF] p-3 neon-border-cyan hover:border-[#FF00FF] transition-all duration-200"
+        className="absolute top-4 left-4 z-60 xl:hidden bg-[#1A1A2E] border-2 border-gray-700 p-3 hover:border-gray-500 transition-all duration-200"
       >
         <div className="flex flex-col gap-1">
-          <span className={`block w-5 h-0.5 bg-[#C8EDFF] transition-all duration-300 ${isCollapsed ? '' : 'rotate-45 translate-y-1.5'}`}></span>
-          <span className={`block w-5 h-0.5 bg-[#C8EDFF] transition-all duration-300 ${isCollapsed ? '' : 'opacity-0'}`}></span>
-          <span className={`block w-5 h-0.5 bg-[#C8EDFF] transition-all duration-300 ${isCollapsed ? '' : '-rotate-45 -translate-y-1.5'}`}></span>
+          <span className={`block w-5 h-0.5 bg-gray-400 transition-all duration-300 ${isCollapsed ? '' : 'rotate-45 translate-y-1.5'}`}></span>
+          <span className={`block w-5 h-0.5 bg-gray-400 transition-all duration-300 ${isCollapsed ? '' : 'opacity-0'}`}></span>
+          <span className={`block w-5 h-0.5 bg-gray-400 transition-all duration-300 ${isCollapsed ? '' : '-rotate-45 -translate-y-1.5'}`}></span>
         </div>
       </button>
     </>

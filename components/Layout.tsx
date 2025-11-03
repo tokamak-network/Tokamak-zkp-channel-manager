@@ -79,7 +79,7 @@ export function Layout({
       />
 
       {/* Main Content Area - Flow layout without margins */}
-      <div className={`min-h-screen flex flex-col pt-[72px] ${showSidebar ? (sidebarCollapsed ? 'lg:pl-16' : 'lg:pl-64') : ''} transition-all duration-300`}>
+      <div className={`min-h-screen flex flex-col pt-[72px] ${showSidebar ? (sidebarCollapsed ? 'xl:pl-16' : 'xl:pl-64') : ''} transition-all duration-300`}>
         {/* Main Content */}
         <main className={`flex-1 px-4 py-8 lg:px-6 ${mainClassName || ''}`}>
           {children}

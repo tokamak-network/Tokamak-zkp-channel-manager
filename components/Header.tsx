@@ -26,7 +26,7 @@ export function Header({
   sidebarCollapsed = false,
   showSidebar = true
 }: HeaderProps) {
-  const leftOffset = showSidebar ? (sidebarCollapsed ? 'lg:left-16' : 'lg:left-64') : 'left-0';
+  const leftOffset = showSidebar ? (sidebarCollapsed ? 'xl:left-16' : 'xl:left-64') : 'left-0';
   
   return (
     <header className={`bg-black border-b-2 border-[#00FFFF] absolute top-0 left-0 ${leftOffset} right-0 z-40 m-0 transition-all duration-300 ${className}`}>
@@ -41,18 +41,28 @@ export function Header({
               {/* Tokamak Logo - Pac-Man Style */}
               <div className="flex items-center gap-3">
                 {/* Neon Logo Box */}
-                <div 
-                  className="w-10 h-10 bg-black border-2 border-[#FFFF00] relative neon-border-yellow"
-                  style={{ clipPath: 'polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px)' }}
-                >
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-[#FFFF00] font-bold text-xl pixel-font neon-glow-yellow">ZK</span>
+                  <div 
+                    className="w-12 h-12 relative p-2"
+                  >
+                  <div className="absolute inset-0 flex items-center justify-center p-2">
+                    <img 
+                      src="/images/logo/tokamak-logo.svg" 
+                      alt="Tokamak Logo"
+                      className="w-full h-full"
+                      style={{
+                        filter: 'drop-shadow(0 0 5px #2A72E5) drop-shadow(0 0 10px #2A72E5) drop-shadow(0 0 15px #2A72E5)'
+                      }}
+                    />
                   </div>
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold pixel-font tracking-wider">
-                    <span className="text-[#FFFF00] neon-glow-yellow">{title} ZKP</span>{' '}
-                    <span className="text-[#00FFFF] neon-glow-cyan">Channel Manager</span>
+                  <h1 className="font-bold tracking-wider flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
+                    <span className="arcade-font text-lg text-[#00FFFF] neon-glow-cyan">
+                      {title} ZKP
+                    </span>
+                    <span className="arcade-font text-base text-[#FF00FF] neon-glow-pink">
+                      Channel Manager
+                    </span>
                   </h1>
                 </div>
               </div>

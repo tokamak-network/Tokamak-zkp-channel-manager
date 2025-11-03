@@ -9,6 +9,10 @@ module.exports = {
   ],
   theme: {
     extend: {
+      screens: {
+        'lg': '980px',
+        'xl': '1200px',
+      },
       colors: {
         border: 'hsl(214.3 31.8% 91.4%)',
         input: 'hsl(214.3 31.8% 91.4%)',

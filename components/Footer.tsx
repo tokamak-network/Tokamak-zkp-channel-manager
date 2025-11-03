@@ -19,14 +19,20 @@ export function Footer({
       <div className="px-4 lg:px-6 text-center">
         <div className="flex items-center justify-center gap-3 mb-4">
           <div 
-            className="h-8 w-8 bg-black border-2 border-[#FFFF00] flex items-center justify-center neon-border-yellow"
-            style={{ clipPath: 'polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px)' }}
+            className="h-8 w-8 flex items-center justify-center flash-animation p-1"
           >
-            <span className="text-[#FFFF00] text-sm font-bold pixel-font neon-glow-yellow">ZK</span>
+            <img 
+              src="/images/logo/tokamak-logo.svg" 
+              alt="Tokamak Logo"
+              className="w-full h-full"
+              style={{
+                filter: 'drop-shadow(0 0 3px #2A72E5) drop-shadow(0 0 5px #2A72E5)'
+              }}
+            />
           </div>
-            <span className="font-semibold text-[#FFFF00] pixel-font text-lg neon-glow-yellow">Tokamak ZKP Manager</span>
+            <span className="font-bold arcade-font text-[#00FFFF] text-base">Tokamak ZKP Manager</span>
         </div>
-        <p className="text-sm text-[#00FFFF] mb-6 pixel-font">
+        <p className="text-xs text-[#00FFFF] mb-6 font-mono">
           Powered by Tokamak Network
         </p>
 
