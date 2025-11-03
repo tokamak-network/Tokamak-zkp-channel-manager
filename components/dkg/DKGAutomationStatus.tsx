@@ -7,19 +7,14 @@ import { Button } from '@/components/ui/button';
 interface DKGAutomationStatusProps {
   isAutomationEnabled: boolean;
   activeAutomations: string[];
-  sessionTimeouts: Record<string, { phase: string; remainingMs: number }>;
-  formatRemainingTime: (ms: number) => string;
   onToggleAutomation?: () => void;
 }
 
 export function DKGAutomationStatus({
   isAutomationEnabled,
   activeAutomations,
-  sessionTimeouts,
-  formatRemainingTime,
   onToggleAutomation
 }: DKGAutomationStatusProps) {
-  const hasActiveTimeouts = Object.keys(sessionTimeouts).length > 0;
   const hasActiveAutomations = activeAutomations.length > 0;
 
   return (
@@ -65,25 +60,7 @@ export function DKGAutomationStatus({
               </div>
             )}
 
-            {hasActiveTimeouts && (
-              <div>
-                <p className="font-medium">⏰ Session Timeouts:</p>
-                <ul className="list-disc list-inside ml-2">
-                  {Object.entries(sessionTimeouts).map(([sessionId, timeout]) => (
-                    <li key={sessionId} className="flex items-center justify-between">
-                      <span>
-                        {sessionId.slice(0, 8)}... ({timeout.phase})
-                      </span>
-                      <Badge variant="outline" className="text-xs">
-                        {formatRemainingTime(timeout.remainingMs)}
-                      </Badge>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {!hasActiveAutomations && !hasActiveTimeouts && (
+            {!hasActiveAutomations && (
               <p className="text-blue-600 dark:text-blue-400">
                 No active DKG sessions. Create or join a session to begin.
               </p>

@@ -36,14 +36,8 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
     return () => window.removeEventListener('resize', handleResize);
   }, [onCollapse]);
 
-  // Check if user is authorized to create channels
-  const { data: isAuthorized } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'isAuthorizedCreator',
-    args: address ? [address] : undefined,
-    enabled: isConnected && !!address,
-  });
+  // Anyone can create channels now - no authorization required
+  const isAuthorized = true;
 
   // Use the custom hook for dynamic channel leadership and participation checking
   const { hasChannels, isParticipant, isLoading: leadershipLoading } = useUserRolesDynamic();

@@ -144,6 +144,11 @@ export function ChannelCard({ channel, userAddress }: ChannelCardProps) {
                   </Button>
                 </Link>
               )}
+              {channel.isExpired && (channel.state === 2 || channel.state === 3) && channel.isUserLeader && (
+                <Button size="sm" variant="gradient" className="flex-1">
+                  Submit Proof
+                </Button>
+              )}
               {channel.isReadyToClose && channel.isUserLeader && (
                 <Button size="sm" variant="gradient" className="flex-1">
                   Close Channel

@@ -1,9 +1,9 @@
 import { Address } from 'wagmi';
 
 // Contract addresses - update these with actual deployed contract addresses
-export const ROLLUP_BRIDGE_ADDRESS: Address = '0x43D25e32b81523BBE9E2dDCFD9493ccD0dBB0c6e' as Address; 
-export const VERIFIER_ADDRESS: Address = '0x708fbfE3acC1F65948304015f1789a05383a674b' as Address; 
-export const ZECFROST_ADDRESS: Address = '0x242E4891d939ec102cA5bBC597ea6490DA0902CD' as Address; 
+export const ROLLUP_BRIDGE_ADDRESS: Address = '0xa8F516930A4C3fc9CE3fb4702e90C7d77b626d48' as Address; 
+export const VERIFIER_ADDRESS: Address = '0xF680590dB955F7975AA6BA02250d11a5a2feC526' as Address; 
+export const ZECFROST_ADDRESS: Address = '0xC106357d9e917A1ee0c1F701d2cEeE8768f2EC48' as Address; 
 
 // ETH token address constant from contract
 export const ETH_TOKEN_ADDRESS: Address = '0x0000000000000000000000000000000000000001';

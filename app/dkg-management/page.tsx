@@ -83,9 +83,7 @@ export default function DKGManagementPage() {
     setSuccessMessage,
     connectToServer,
     clearAllSessions,
-    setPendingCreateSessionParams,
-    sessionTimeouts,
-    formatRemainingTime
+    setPendingCreateSessionParams
   } = useDKGWebSocket(address, setIsCreatingSession, setNewlyCreatedSession);
 
   const {
@@ -340,8 +338,6 @@ export default function DKGManagementPage() {
           <DKGAutomationStatus
             isAutomationEnabled={isAutomationEnabled}
             activeAutomations={activeAutomations}
-            sessionTimeouts={sessionTimeouts}
-            formatRemainingTime={formatRemainingTime}
           />
         )}
 

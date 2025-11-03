@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSignMessage } from 'wagmi';
 import { hexToBytes } from 'viem';
 import { keccak256 } from 'js-sha3';
-import { DKGTimeoutManager, formatRemainingTime } from '@/lib/dkg-timeouts';
 import { DKGErrorHandler, DKGErrorType } from '@/lib/dkg-error-handler';
 
 interface DKGSession {
@@ -62,9 +61,6 @@ export function useDKGWebSocket(
   const pendingSessionParamsRef = useRef<{minSigners: number; maxSigners: number; participants: any[]; automationMode?: 'manual' | 'automatic'} | null>(null);
 
 
-  // Timeout management
-  const timeoutManagerRef = useRef<DKGTimeoutManager>(new DKGTimeoutManager());
-  const [sessionTimeouts, setSessionTimeouts] = useState<Record<string, { phase: string; remainingMs: number }>>({});
 
   const { signMessageAsync } = useSignMessage();
 
@@ -178,28 +174,6 @@ export function useDKGWebSocket(
     }
   }, [sessions, saveSessionsToStorage]);
 
-  // Handle timeout events
-  const handleSessionTimeout = useCallback((sessionId: string, phase: string) => {
-    console.warn(`⏰ Session ${sessionId} timed out in ${phase} phase`);
-    
-    // Update session status to failed
-    setSessions(prev => prev.map(session => 
-      session.id === sessionId ? {
-        ...session,
-        status: 'failed' as const
-      } : session
-    ));
-    
-    // Show error message
-    setError(`Session ${sessionId.slice(0, 8)}... timed out during ${phase} phase. Unresponsive participants may have dropped out.`);
-    
-    // Remove from timeout tracking
-    setSessionTimeouts(prev => {
-      const updated = { ...prev };
-      delete updated[sessionId];
-      return updated;
-    });
-  }, []);
 
   // WebSocket message handler
   const handleServerMessage = useCallback((message: any) => {
@@ -253,21 +227,6 @@ export function useDKGWebSocket(
         
         // Creator automatically joins their own session
         addJoinedSession(newSession.id);
-        
-        // Start timeout for participant joining phase
-        timeoutManagerRef.current.startTimeout(
-          newSession.id,
-          'joining',
-          handleSessionTimeout
-        );
-        
-        setSessionTimeouts(prev => ({
-          ...prev,
-          [newSession.id]: {
-            phase: 'joining',
-            remainingMs: timeoutManagerRef.current.getRemainingTime(newSession.id)
-          }
-        }));
         
         if (setIsCreatingSession) setIsCreatingSession(false);
         if (setNewlyCreatedSession) setNewlyCreatedSession(newSession);
@@ -386,14 +345,6 @@ export function useDKGWebSocket(
         });
         
         if (myIdHex && typeof myIdHex === 'string' && myIdHex.length > 0) {
-          // Clear joining timeout and start Round 1 timeout
-          timeoutManagerRef.current.clearTimeout(sessionId);
-          timeoutManagerRef.current.startTimeout(
-            sessionId,
-            'round1',
-            handleSessionTimeout
-          );
-          
           setFrostIdMap(prev => ({
             ...prev,
             [sessionId]: myIdHex
@@ -418,14 +369,6 @@ export function useDKGWebSocket(
               roster: message.payload.roster || session.roster,
               currentParticipants: message.payload.roster ? message.payload.roster.length : session.currentParticipants
             };
-          }));
-          
-          setSessionTimeouts(prev => ({
-            ...prev,
-            [sessionId]: {
-              phase: 'round1',
-              remainingMs: timeoutManagerRef.current.getRemainingTime(sessionId)
-            }
           }));
           
           setSuccessMessage(`🚀 All participants have joined! DKG Round 1 (Commitments) is now starting...`);
@@ -488,7 +431,7 @@ export function useDKGWebSocket(
       default:
         break;
     }
-  }, [address, isJoiningSession, justJoinedSession, sessions, saveSessionsToStorage, handleSessionTimeout]);
+  }, [address, isJoiningSession, justJoinedSession, sessions, saveSessionsToStorage]);
 
   // Connect to WebSocket server
   const connectToServer = useCallback(async (serverUrl: string) => {
@@ -818,34 +761,6 @@ export function useDKGWebSocket(
     pendingSessionParamsRef.current = params; // Also store in ref to prevent loss
   }, []);
 
-  // Cleanup timeouts on unmount
-  useEffect(() => {
-    return () => {
-      timeoutManagerRef.current.clearAllTimeouts();
-    };
-  }, []);
-
-  // Update timeout countdown every second
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setSessionTimeouts(prev => {
-        const updated = { ...prev };
-        let hasChanges = false;
-
-        for (const [sessionId, timeout] of Object.entries(updated)) {
-          const remainingMs = timeoutManagerRef.current.getRemainingTime(sessionId);
-          if (remainingMs !== timeout.remainingMs) {
-            updated[sessionId] = { ...timeout, remainingMs };
-            hasChanges = true;
-          }
-        }
-
-        return hasChanges ? updated : prev;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   return {
     // Connection state
@@ -880,10 +795,6 @@ export function useDKGWebSocket(
     connectToServer,
     clearAllSessions,
     saveSessionsToStorage,
-    setPendingCreateSessionParams,
-    
-    // Timeout management
-    sessionTimeouts,
-    formatRemainingTime
+    setPendingCreateSessionParams
   };
 }
