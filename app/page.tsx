@@ -126,7 +126,7 @@ export default function HomePage() {
                 </div>
                 <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1 text-sm group-hover:text-green-700 dark:group-hover:text-green-400 transition-colors">Create Channel</h3>
                 <p className="text-gray-600 dark:text-gray-300 text-xs group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors">
-                  Create multi-party bridge channel (1 ETH bond)
+                  Create multi-party bridge channel (0.001 ETH bond)
                 </p>
               </div>
             )}
