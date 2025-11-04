@@ -42,7 +42,7 @@ export function Header({
               <div className="flex items-center gap-3">
                 {/* Neon Logo Box */}
                   <div 
-                    className="w-12 h-12 relative p-2"
+                    className="w-12 h-12 relative p-2 flash-animation"
                   >
                   <div className="absolute inset-0 flex items-center justify-center p-2">
                     <img 
@@ -57,10 +57,16 @@ export function Header({
                 </div>
                 <div>
                   <h1 className="font-bold tracking-wider flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
-                    <span className="arcade-font text-lg text-[#00FFFF] neon-glow-cyan">
+                    <span 
+                      className="arcade-font text-lg pulse-glow-animation"
+                      style={{ color: '#00FFFF' }}
+                    >
                       {title} ZKP
                     </span>
-                    <span className="arcade-font text-base text-[#FF00FF] neon-glow-pink">
+                    <span 
+                      className="arcade-font text-base pulse-glow-animation"
+                      style={{ color: '#FF00FF' }}
+                    >
                       Channel Manager
                     </span>
                   </h1>
@@ -112,7 +118,11 @@ export function Header({
                               onClick={openConnectModal}
                               type="button"
                               className="h-10 px-6 bg-black border-2 border-[#FFFF00] text-[#FFFF00] hover:bg-[#1A1A2E] hover:border-[#00FFFF] hover:text-[#00FFFF] transition-all pixel-font text-base neon-border-yellow hover:neon-border-cyan"
-                              style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
+                              style={{ 
+                                clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)',
+                                color: '#FFFF00',
+                                borderColor: '#FFFF00'
+                              }}
                             >
                               CONNECT WALLET
                             </button>
@@ -125,7 +135,11 @@ export function Header({
                               onClick={openChainModal}
                               type="button"
                               className="h-10 px-6 bg-black border-2 border-[#FF00FF] text-[#FF00FF] hover:bg-[#1A1A2E] transition-all pixel-font text-base neon-border-pink"
-                              style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
+                              style={{ 
+                                clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)',
+                                color: '#FF00FF',
+                                borderColor: '#FF00FF'
+                              }}
                             >
                               WRONG NETWORK
                             </button>
@@ -139,7 +153,11 @@ export function Header({
                               onClick={openChainModal}
                               type="button"
                               className="h-10 px-4 bg-black border-2 border-[#00FFFF] text-[#00FFFF] hover:bg-[#1A1A2E] hover:border-[#FFFF00] transition-all flex items-center gap-2 neon-border-cyan hover:neon-border-yellow"
-                              style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
+                              style={{ 
+                                clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)',
+                                color: '#00FFFF',
+                                borderColor: '#00FFFF'
+                              }}
                             >
                               {chain.hasIcon && (
                                 <div
@@ -157,7 +175,7 @@ export function Header({
                                   )}
                                 </div>
                               )}
-                              <span className="font-mono font-semibold text-sm">{chain.name}</span>
+                              <span className="font-mono font-semibold text-sm" style={{ color: '#00FFFF' }}>{chain.name}</span>
                             </button>
 
                             {/* Account Button */}
@@ -165,14 +183,18 @@ export function Header({
                               onClick={openAccountModal}
                               type="button"
                               className="h-10 px-4 bg-black border-2 border-[#FFFF00] text-[#FFFF00] hover:bg-[#1A1A2E] hover:border-[#FF00FF] transition-all flex items-center gap-2 neon-border-yellow hover:neon-border-pink"
-                              style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
+                              style={{ 
+                                clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)',
+                                color: '#FFFF00',
+                                borderColor: '#FFFF00'
+                              }}
                             >
-                              <span className="font-mono font-semibold text-sm">
+                              <span className="font-mono font-semibold text-sm" style={{ color: '#FFFF00' }}>
                                 {account.displayBalance
                                   ? ` ${account.displayBalance}`
                                   : ''}
                               </span>
-                              <span className="font-mono font-semibold text-sm">
+                              <span className="font-mono font-semibold text-sm" style={{ color: '#FFFF00' }}>
                                 {account.displayName}
                               </span>
                             </button>

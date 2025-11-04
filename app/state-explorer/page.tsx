@@ -63,9 +63,6 @@ export default function StateExplorerPage() {
       </div>
 
       <div className="min-h-screen relative overflow-hidden">
-      {/* Pac-Man dot pattern */}
-      <div className="fixed inset-0 pacman-dots z-0"></div>
-
       {/* Main Content */}
       <div className="relative z-10 pt-6 px-12 pb-12">
         <div className="max-w-7xl mx-auto">

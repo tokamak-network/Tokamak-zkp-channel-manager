@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { WagmiConfig } from 'wagmi';
-import { RainbowKitProvider, getDefaultWallets, connectorsForWallets } from '@rainbow-me/rainbowkit';
+import { RainbowKitProvider, getDefaultWallets, connectorsForWallets, darkTheme } from '@rainbow-me/rainbowkit';
 import { injectedWallet, metaMaskWallet, coinbaseWallet } from '@rainbow-me/rainbowkit/wallets';
 import { configureChains, createConfig } from 'wagmi';
 import { mainnet, sepolia } from 'wagmi/chains';
@@ -66,6 +66,30 @@ const queryClient = new QueryClient({
   },
 });
 
+// Custom Retro Arcade Theme for RainbowKit
+const retroTheme = darkTheme({
+  accentColor: '#00FF00',
+  accentColorForeground: '#000000',
+  borderRadius: 'none',
+  fontStack: 'system',
+  overlayBlur: 'large',
+});
+
+retroTheme.colors.modalBackground = '#0a0a14';
+retroTheme.colors.modalBorder = '#00FFFF';
+retroTheme.colors.modalText = '#00FFFF';
+retroTheme.colors.modalTextSecondary = '#808080';
+retroTheme.colors.closeButton = '#808080';
+retroTheme.colors.closeButtonBackground = '#1A1A2E';
+retroTheme.colors.menuItemBackground = '#1A1A2E';
+retroTheme.colors.profileForeground = '#1A1A2E';
+retroTheme.colors.selectedOptionBorder = '#00FF00';
+retroTheme.colors.actionButtonBorder = '#00FFFF';
+retroTheme.colors.actionButtonSecondaryBackground = '#1A1A2E';
+retroTheme.colors.connectButtonBackground = '#000000';
+retroTheme.colors.connectButtonText = '#00FFFF';
+retroTheme.fonts.body = 'var(--font-ibm-plex-mono), monospace';
+
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
@@ -74,6 +98,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           chains={chains}
           showRecentTransactions={false}
           initialChain={sepolia}
+          theme={retroTheme}
         >
           <ThemeProvider>
             <ConsoleErrorFilter enabled={true} />

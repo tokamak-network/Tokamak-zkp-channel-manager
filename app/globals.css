@@ -512,17 +512,17 @@
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-[#001020];
-  border-left: 2px solid #0A438F;
+  @apply bg-black;
+  border-left: 2px solid #00FFFF;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-[#0A3F84];
-  border: 2px solid #0A438F;
+  @apply bg-[#1A1A2E];
+  border: 2px solid #00FFFF;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-[#0077CC];
+  @apply bg-[#00FFFF];
 }
 
 /* Loading animations */
@@ -548,4 +548,205 @@
 
 .tooltip-container:hover .tooltip {
   @apply visible opacity-100;
+}
+
+/* RainbowKit Modal Customization - Retro Arcade Style */
+/* Only apply inside RainbowKit modals, not the entire [data-rk] wrapper */
+div[role="dialog"][data-rk] {
+  /* Modal Overlay */
+  background: rgba(0, 0, 0, 0.95) !important;
+}
+
+div[role="dialog"] > div[data-rk] {
+  /* Modal Container */
+  background: #0a0a14 !important;
+  border: 2px solid #00FFFF !important;
+  border-radius: 0 !important;
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px) !important;
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.5), 0 0 40px rgba(0, 255, 255, 0.3) !important;
+}
+
+div[role="dialog"] [data-rk] h1,
+div[role="dialog"] [data-rk] h2 {
+  /* Modal Title */
+  color: #00FFFF !important;
+  font-family: 'Orbitron', sans-serif !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  text-shadow: 0 0 10px #00FFFF, 0 0 20px #00FFFF !important;
+}
+
+div[role="dialog"] [data-rk] p,
+div[role="dialog"] [data-rk] span,
+div[role="dialog"] [data-rk] div {
+  /* Text inside modal only */
+  color: #00FFFF !important;
+  font-family: var(--font-ibm-plex-mono), monospace !important;
+}
+
+div[role="dialog"] [data-rk] button span,
+div[role="dialog"] [data-rk] button div {
+  /* Override for better contrast */
+  color: inherit !important;
+}
+
+div[role="dialog"] [data-rk] button[disabled] span,
+div[role="dialog"] [data-rk] div[class*="secondary"] {
+  /* Secondary Text */
+  color: #808080 !important;
+}
+
+div[role="dialog"] [data-rk] button {
+  /* Buttons inside modal */
+  background: #1A1A2E !important;
+  border: 2px solid #00FFFF !important;
+  border-radius: 0 !important;
+  color: #00FFFF !important;
+  font-family: var(--font-ibm-plex-mono), monospace !important;
+  font-weight: 600 !important;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px) !important;
+  transition: all 0.2s !important;
+}
+
+div[role="dialog"] [data-rk] button:hover:not([disabled]) {
+  background: #000000 !important;
+  border-color: #FFFF00 !important;
+  color: #FFFF00 !important;
+  box-shadow: 0 0 10px rgba(255, 255, 0, 0.5) !important;
+  transform: translate(-1px, -1px) !important;
+}
+
+div[role="dialog"] [data-rk] button[disabled] {
+  background: #0a0a14 !important;
+  border-color: #404040 !important;
+  color: #404040 !important;
+  cursor: not-allowed !important;
+}
+
+/* Close Button */
+div[role="dialog"] [data-rk] button[aria-label="Close"] {
+  background: #1A1A2E !important;
+  border: 2px solid #808080 !important;
+  color: #808080 !important;
+}
+
+div[role="dialog"] [data-rk] button[aria-label="Close"]:hover {
+  border-color: #FF00FF !important;
+  color: #FF00FF !important;
+  box-shadow: 0 0 10px rgba(255, 0, 255, 0.5) !important;
+}
+
+/* Wallet Options */
+div[role="dialog"] [data-rk] button[data-testid*="rk-wallet-option"] {
+  background: #1A1A2E !important;
+  border: 2px solid #00FFFF !important;
+}
+
+div[role="dialog"] [data-rk] button[data-testid*="rk-wallet-option"]:hover {
+  background: #000000 !important;
+  border-color: #FFFF00 !important;
+  box-shadow: 0 0 15px rgba(255, 255, 0, 0.4) !important;
+}
+
+/* Network Options */
+div[role="dialog"] [data-rk] button[role="menuitem"] {
+  background: #1A1A2E !important;
+  border: 2px solid #00FFFF !important;
+  margin-bottom: 8px !important;
+}
+
+div[role="dialog"] [data-rk] button[role="menuitem"]:hover {
+  background: #000000 !important;
+  border-color: #FFFF00 !important;
+}
+
+/* Selected Network/Wallet - High specificity to override everything */
+div[role="dialog"] [data-rk] button[role="menuitem"][aria-current="true"],
+div[role="dialog"] [data-rk] button[role="menuitem"][data-active="true"],
+div[role="dialog"] [data-rk] button[aria-current="true"],
+div[role="dialog"] [data-rk] button[data-active="true"],
+div[role="dialog"] [data-rk] div[data-active="true"] {
+  background: #000000 !important;
+  border-color: #00FF00 !important;
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.5), inset 0 0 10px rgba(0, 255, 0, 0.1) !important;
+}
+
+div[role="dialog"] [data-rk] button[role="menuitem"][aria-current="true"] span,
+div[role="dialog"] [data-rk] button[role="menuitem"][data-active="true"] span,
+div[role="dialog"] [data-rk] button[aria-current="true"] span,
+div[role="dialog"] [data-rk] button[data-active="true"] span,
+div[role="dialog"] [data-rk] button[aria-current="true"] div,
+div[role="dialog"] [data-rk] button[data-active="true"] div,
+div[role="dialog"] [data-rk] div[data-active="true"] span,
+div[role="dialog"] [data-rk] div[data-active="true"] div {
+  color: #00FF00 !important;
+  text-shadow: 0 0 10px rgba(0, 255, 0, 0.5) !important;
+}
+
+/* Input Fields */
+div[role="dialog"] [data-rk] input {
+  background: #000000 !important;
+  border: 2px solid #00FFFF !important;
+  border-radius: 0 !important;
+  color: #00FFFF !important;
+  font-family: var(--font-ibm-plex-mono), monospace !important;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px) !important;
+}
+
+div[role="dialog"] [data-rk] input:focus {
+  border-color: #FFFF00 !important;
+  box-shadow: 0 0 10px rgba(255, 255, 0, 0.5) !important;
+  outline: none !important;
+}
+
+/* Dividers */
+div[role="dialog"] [data-rk] hr {
+  border-color: #00FFFF !important;
+  opacity: 0.3 !important;
+}
+
+/* Account Info Cards */
+div[role="dialog"] [data-rk] div[class*="AccountButton"],
+div[role="dialog"] [data-rk] div[class*="ChainButton"] {
+  background: #1A1A2E !important;
+  border: 2px solid #00FFFF !important;
+  border-radius: 0 !important;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px) !important;
+}
+
+/* Balance Text */
+div[role="dialog"] [data-rk] div[class*="Balance"] {
+  color: #FFFF00 !important;
+  font-weight: 700 !important;
+  text-shadow: 0 0 10px rgba(255, 255, 0, 0.5) !important;
+}
+
+/* Address Text */
+div[role="dialog"] [data-rk] div[class*="Address"] {
+  color: #00FFFF !important;
+  font-family: var(--font-ibm-plex-mono), monospace !important;
+}
+
+/* Loading Spinner */
+div[role="dialog"] [data-rk] svg[class*="spinner"] circle {
+  stroke: #00FFFF !important;
+}
+
+/* Scrollbar inside modal */
+div[role="dialog"] [data-rk] div::-webkit-scrollbar {
+  width: 8px !important;
+}
+
+div[role="dialog"] [data-rk] div::-webkit-scrollbar-track {
+  background: #000000 !important;
+  border-left: 2px solid #00FFFF !important;
+}
+
+div[role="dialog"] [data-rk] div::-webkit-scrollbar-thumb {
+  background: #1A1A2E !important;
+  border: 2px solid #00FFFF !important;
+}
+
+div[role="dialog"] [data-rk] div::-webkit-scrollbar-thumb:hover {
+  background: #00FFFF !important;
 }

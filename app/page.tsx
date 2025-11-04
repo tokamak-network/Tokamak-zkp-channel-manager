@@ -19,6 +19,7 @@ export default function HomePage() {
   const { address, isConnected } = useAccount();
   const [creatorAddress, setCreatorAddress] = useState("");
   const [showOwnerPanel, setShowOwnerPanel] = useState(false);
+  const [showCreateChannelModal, setShowCreateChannelModal] = useState(false);
 
   // Check if the current user is the owner
   const { data: owner } = useContractRead({
@@ -78,6 +79,11 @@ export default function HomePage() {
       return;
     }
 
+    setShowCreateChannelModal(true);
+  };
+
+  const handleConfirmCreateChannel = () => {
+    setShowCreateChannelModal(false);
     router.push("/create-channel");
   };
 
@@ -221,9 +227,6 @@ export default function HomePage() {
         </div>
 
         <div className="min-h-screen relative overflow-hidden">
-          {/* Pac-Man dot pattern */}
-          <div className="fixed inset-0 pacman-dots z-0"></div>
-
           {/* Main Content */}
           <div className="relative z-10 pt-12 px-6 pb-12">
             <div className="max-w-7xl mx-auto">
@@ -232,11 +235,13 @@ export default function HomePage() {
                 <h1 className="text-3xl pixel-font mb-4 text-[#FFA500] neon-glow-orange">
                   CHANNEL HUB
                 </h1>
-                <p className="text-[#00FFFF] font-mono text-xs tracking-tight">
-                  {isConnected
-                    ? "MANAGE YOUR L2 STATE CHANNELS"
-                    : "CONNECT WALLET TO CONTINUE"}
-                </p>
+                <ClientOnly>
+                  <p className="text-[#00FFFF] pixel-font text-xs tracking-wider">
+                    {isConnected
+                      ? "MANAGE YOUR L2 STATE CHANNELS"
+                      : "CONNECT WALLET TO CONTINUE"}
+                  </p>
+                </ClientOnly>
               </div>
 
               {/* Arcade Cabinet Frame */}
@@ -450,6 +455,103 @@ export default function HomePage() {
           </div>
         </div>
       </Layout>
+
+      {/* Create Channel Modal - Retro Style */}
+      {showCreateChannelModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+          <div
+            className="bg-[#1A1A2E] border-2 border-[#00FF00] p-8 max-w-md w-full"
+            style={{
+              clipPath:
+                "polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px)",
+              boxShadow: "0 0 20px #00FF00, 0 0 40px #00FF00",
+            }}
+          >
+            <div className="text-center">
+              <div className="text-6xl mb-4">⚒</div>
+              <h3
+                className="text-[#00FF00] pixel-font text-xl mb-4"
+                style={{ textShadow: "0 0 10px #00FF00, 0 0 20px #00FF00" }}
+              >
+                CREATE CHANNEL
+              </h3>
+
+              <div className="text-left space-y-4 mb-6">
+                <div
+                  className="bg-black border-2 border-[#00FFFF] p-4"
+                  style={{
+                    clipPath:
+                      "polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)",
+                  }}
+                >
+                  <p className="text-[#00FFFF] font-mono text-xs mb-2 font-semibold">
+                    REQUIREMENTS
+                  </p>
+                  <ul className="text-[#00FFFF] font-mono text-xs space-y-2">
+                    <li className="flex items-start gap-2">
+                      <span className="text-[#FFFF00]">•</span>
+                      <span>
+                        Deposit:{" "}
+                        <span className="text-[#FFFF00] font-semibold">
+                          1 ETH
+                        </span>
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-[#FFFF00]">•</span>
+                      <span>Multi-party state channel</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-[#FFFF00]">•</span>
+                      <span>You will become the channel leader</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div
+                  className="bg-black border-2 border-[#FFA500] p-4"
+                  style={{
+                    clipPath:
+                      "polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)",
+                  }}
+                >
+                  <p className="text-[#FFA500] font-mono text-xs mb-2 font-semibold">
+                    ⚠ NOTICE
+                  </p>
+                  <p className="text-[#00FFFF] font-mono text-xs">
+                    The 1 ETH deposit will be locked until the channel is
+                    properly closed.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowCreateChannelModal(false)}
+                  className="flex-1 h-12 bg-black border-2 border-[#808080] text-[#808080] pixel-font text-xs hover:bg-[#1A1A2E] transition-all"
+                  style={{
+                    clipPath:
+                      "polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)",
+                  }}
+                >
+                  CANCEL
+                </button>
+                <button
+                  onClick={handleConfirmCreateChannel}
+                  className="flex-1 h-12 bg-black border-2 border-[#00FF00] text-[#00FF00] pixel-font text-xs hover:bg-[#1A1A2E] transition-all hover:translate-x-[-2px] hover:translate-y-[-2px]"
+                  style={{
+                    clipPath:
+                      "polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)",
+                    boxShadow: "0 0 10px #00FF0040",
+                  }}
+                >
+                  PROCEED
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
