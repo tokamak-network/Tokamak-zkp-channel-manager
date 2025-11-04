@@ -80,7 +80,7 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
     return Object.keys(newErrors).length === 0;
   };
 
-  // Prepare contract write with required 1 ETH leader bond
+  // Prepare contract write with required 0.001 ETH leader bond
   const channelArgs = validateForm() ? [{
     targetContract: formData.targetContract as `0x${string}`,
     participants: parseParticipantAddresses(participantsText) as `0x${string}`[],
@@ -95,7 +95,7 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'openChannel',
     args: channelArgs,
-    value: BigInt('1000000000000000000'), // Required 1 ETH leader bond (1e18 wei)
+    value: BigInt('1000000000000000'), // Required 0.001 ETH leader bond (1e15 wei)
     enabled: validateForm() && !!formData.targetContract
   } : {
     address: ROLLUP_BRIDGE_ADDRESS,
@@ -160,7 +160,7 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
             Set up a new ZK Rollup bridge channel with multiple participants
             <br />
             <span className="text-amber-600 dark:text-amber-400 font-medium">
-              ⚠️ Requires 1 ETH leader bond deposit
+              ⚠️ Requires 0.001 ETH leader bond deposit
             </span>
           </DialogDescription>
         </DialogHeader>

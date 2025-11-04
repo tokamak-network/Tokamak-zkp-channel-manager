@@ -301,7 +301,7 @@ export function ContractInfo() {
                   <span className="h-2 w-2 rounded-full bg-green-500"></span>
                   <span className="text-gray-600 dark:text-gray-400">Create Channels: </span>
                   <span className="font-medium text-green-700 dark:text-green-300">
-                    Available (1 ETH bond required)
+                    Available (0.001 ETH bond required)
                   </span>
                 </div>
                 <div className="space-y-1">
@@ -509,7 +509,7 @@ export function ContractInfo() {
             <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Next Steps</h4>
             <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
               {!hasChannels && !isParticipant && (
-                <p>• You can create channels! Click "Create Channel" to start your first multi-party bridge channel (1 ETH bond required)</p>
+                <p>• You can create channels! Click "Create Channel" to start your first multi-party bridge channel (0.001 ETH bond required)</p>
               )}
               {isParticipant && (
                 <p>• You're participating in a channel. Use "Manage Channel" to view and interact with your channel</p>
