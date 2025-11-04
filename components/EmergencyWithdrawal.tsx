@@ -25,21 +25,22 @@ export function EmergencyWithdrawal({
 }: EmergencyWithdrawalProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Check if emergency mode is enabled
-  const { data: isEmergencyEnabled } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'isEmergencyModeEnabled',
-    args: [channelId],
-    watch: true
-  });
+  // Check if emergency mode is enabled (mock implementation)
+  // const { data: isEmergencyEnabled } = useContractRead({
+  //   address: ROLLUP_BRIDGE_ADDRESS,
+  //   abi: ROLLUP_BRIDGE_ABI,
+  //   functionName: 'isEmergencyModeEnabled',
+  //   args: [channelId],
+  //   watch: true
+  // });
+  const isEmergencyEnabled = false; // Disabled until emergency functions are implemented in contract
 
   // Get user's original deposit
   const { data: userDeposit } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'getParticipantDeposit',
-    args: [channelId, userAddress],
+    args: [channelId, userAddress as `0x${string}`],
     watch: true
   });
 
@@ -47,28 +48,31 @@ export function EmergencyWithdrawal({
   const { data: hasWithdrawn } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'hasUserWithdrawn',
-    args: [channelId, userAddress],
+    functionName: 'hasWithdrawn',
+    args: [channelId, userAddress as `0x${string}`],
     watch: true
   });
 
-  // Prepare emergency withdrawal
-  const { config: emergencyWithdrawConfig } = usePrepareContractWrite({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'emergencyWithdraw',
-    args: [channelId],
-    enabled: isEmergencyEnabled && !hasWithdrawn && userDeposit && userDeposit > 0
-  });
+  // Prepare emergency withdrawal (commented out until contract function is implemented)
+  // const { config: emergencyWithdrawConfig } = usePrepareContractWrite({
+  //   address: ROLLUP_BRIDGE_ADDRESS,
+  //   abi: ROLLUP_BRIDGE_ABI,
+  //   functionName: 'emergencyWithdraw',
+  //   args: [channelId],
+  //   enabled: isEmergencyEnabled && !hasWithdrawn && userDeposit && userDeposit > 0
+  // });
 
-  const { write: emergencyWithdraw, data: withdrawData } = useContractWrite(emergencyWithdrawConfig);
+  // const { write: emergencyWithdraw, data: withdrawData } = useContractWrite(emergencyWithdrawConfig);
 
-  const { isLoading: isWithdrawing } = useWaitForTransaction({
-    hash: withdrawData?.hash,
-    onSuccess: () => {
-      onSuccess?.();
-    }
-  });
+  // const { isLoading: isWithdrawing } = useWaitForTransaction({
+  //   hash: withdrawData?.hash,
+  //   onSuccess: () => {
+  //     onSuccess?.();
+  //   }
+  // });
+
+  const emergencyWithdraw = undefined;
+  const isWithdrawing = false;
 
   const tokenSymbol = targetContract === ETH_TOKEN_ADDRESS ? 'ETH' : 'Tokens';
   const canWithdraw = isEmergencyEnabled && !hasWithdrawn && userDeposit && userDeposit > 0;
@@ -130,8 +134,11 @@ export function EmergencyWithdrawal({
             </div>
 
             <Button
-              onClick={() => emergencyWithdraw?.()}
-              disabled={isWithdrawing || !emergencyWithdraw}
+              onClick={() => {
+                // Emergency withdrawal function not yet implemented in contract
+                console.log('Emergency withdrawal will be available when contract function is implemented');
+              }}
+              disabled={true} // Disabled until contract function is implemented
               variant="destructive"
               className="w-full"
             >

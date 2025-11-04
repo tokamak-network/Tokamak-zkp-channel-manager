@@ -26,10 +26,10 @@ interface ProofSubmissionModalProps {
 }
 
 interface ProofData {
-  proofPart1: number[];
-  proofPart2: number[];
-  publicInputs: number[];
-  smax: number;
+  proofPart1: bigint[];
+  proofPart2: bigint[];
+  publicInputs: bigint[];
+  smax: bigint;
   initialMPTLeaves: string[];
   finalMPTLeaves: string[];
   participantRoots: string[];
@@ -47,7 +47,7 @@ export function ProofSubmissionModal({
     proofPart1: [],
     proofPart2: [],
     publicInputs: [],
-    smax: 0,
+    smax: BigInt(0),
     initialMPTLeaves: [],
     finalMPTLeaves: [],
     participantRoots: [],
@@ -74,7 +74,16 @@ export function ProofSubmissionModal({
         throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
       }
 
-      setProofData(parsed);
+      // Convert numeric arrays to BigInt arrays
+      const convertedData = {
+        ...parsed,
+        proofPart1: parsed.proofPart1?.map((n: any) => BigInt(n)) || [],
+        proofPart2: parsed.proofPart2?.map((n: any) => BigInt(n)) || [],
+        publicInputs: parsed.publicInputs?.map((n: any) => BigInt(n)) || [],
+        smax: BigInt(parsed.smax || 0)
+      };
+      
+      setProofData(convertedData);
       setErrors({});
       return true;
     } catch (error) {
@@ -120,23 +129,32 @@ export function ProofSubmissionModal({
   };
 
   // Prepare contract write
-  const { config } = usePrepareContractWrite({
+  const isFormValid = validateForm() && !!channelId;
+  
+  const contractConfig = isFormValid ? {
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'submitAggregatedProof',
     args: [channelId, {
-      proofPart1: proofData.proofPart1,
-      proofPart2: proofData.proofPart2,
-      publicInputs: proofData.publicInputs,
-      smax: proofData.smax,
-      initialMPTLeaves: proofData.initialMPTLeaves,
-      finalMPTLeaves: proofData.finalMPTLeaves,
-      participantRoots: proofData.participantRoots,
       aggregatedProofHash: proofData.aggregatedProofHash as `0x${string}`,
-      finalStateRoot: proofData.finalStateRoot as `0x${string}`
-    }],
-    enabled: validateForm() && !!channelId
-  });
+      finalStateRoot: proofData.finalStateRoot as `0x${string}`,
+      proofPart1: proofData.proofPart1 as readonly bigint[],
+      proofPart2: proofData.proofPart2 as readonly bigint[],
+      publicInputs: proofData.publicInputs as readonly bigint[],
+      smax: proofData.smax,
+      initialMPTLeaves: proofData.initialMPTLeaves as readonly `0x${string}`[],
+      finalMPTLeaves: proofData.finalMPTLeaves as readonly `0x${string}`[],
+      participantRoots: proofData.participantRoots as readonly `0x${string}`[]
+    }] as const,
+    enabled: true
+  } : {
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'submitAggregatedProof',
+    enabled: false
+  };
+
+  const { config } = usePrepareContractWrite(contractConfig as any);
 
   const { data, write } = useContractWrite(config);
   const { isLoading, isSuccess } = useWaitForTransaction({
@@ -153,7 +171,7 @@ export function ProofSubmissionModal({
       proofPart1: [],
       proofPart2: [],
       publicInputs: [],
-      smax: 0,
+      smax: BigInt(0),
       initialMPTLeaves: [],
       finalMPTLeaves: [],
       participantRoots: [],
@@ -227,7 +245,18 @@ export function ProofSubmissionModal({
                   const input = document.createElement('input');
                   input.type = 'file';
                   input.accept = '.json';
-                  input.onchange = handleJsonUpload;
+                  input.onchange = (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (e) => {
+                        const content = e.target?.result as string;
+                        setJsonInput(content);
+                        parseProofData(content);
+                      };
+                      reader.readAsText(file);
+                    }
+                  };
                   input.click();
                 }}
               >

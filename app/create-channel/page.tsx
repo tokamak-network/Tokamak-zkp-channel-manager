@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount, useContractWrite, usePrepareContractWrite, useContractRead, useWaitForTransaction } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { parseUnits } from 'ethers';
 import { ROLLUP_BRIDGE_ABI, ROLLUP_BRIDGE_ADDRESS } from '@/lib/contracts';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
@@ -119,14 +118,21 @@ export default function CreateChannelPage() {
     pky: BigInt(pky)
   } : undefined;
 
-  const { config } = usePrepareContractWrite({
+  const contractConfig = channelParams ? {
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'openChannel',
-    args: channelParams ? [channelParams] : undefined,
-    value: parseUnits('1', 18), // Required 1 ETH leader bond
+    args: [channelParams],
+    value: BigInt('1000000000000000'), // Required 0.001 ETH leader bond (1e15 wei)
     enabled: isFormValid() && isConnected,
-  });
+  } : {
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'openChannel',
+    enabled: false,
+  };
+
+  const { config } = usePrepareContractWrite(contractConfig as any);
 
   const { write: createChannel, isLoading: isCreating, data: txData } = useContractWrite({
     ...config,
@@ -257,7 +263,7 @@ export default function CreateChannelPage() {
                     <h3 className="text-lg font-semibold text-amber-800 dark:text-amber-300">Leader Bond Required</h3>
                   </div>
                   <p className="text-amber-700 dark:text-amber-400 mb-3">
-                    Creating a channel requires a 1 ETH leader bond deposit. This bond will be returned when the channel is successfully closed.
+                    Creating a channel requires a 0.001 ETH leader bond deposit. This bond will be returned when the channel is successfully closed.
                   </p>
                   <p className="text-sm text-amber-600 dark:text-amber-500">
                     If you fail to submit proof within 7 days after the channel timeout, your bond may be slashed. Fill out the form below to create your channel.
@@ -456,7 +462,7 @@ export default function CreateChannelPage() {
                     ? 'Waiting for Confirmation...'
                     : isAlreadyLeader 
                     ? 'Already Leading a Channel' 
-                    : 'Create Channel (1 ETH bond)'}
+                    : 'Create Channel (0.001 ETH bond)'}
                 </button>
               </div>
             </form>

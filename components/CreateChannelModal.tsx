@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useContractWrite, usePrepareContractWrite, useWaitForTransaction } from 'wagmi';
-import { parseUnits } from 'ethers';
 import {
   Dialog,
   DialogContent,
@@ -81,22 +80,31 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
     return Object.keys(newErrors).length === 0;
   };
 
-  // Prepare contract write with required 1 ETH leader bond
-  const { config } = usePrepareContractWrite({
+  // Prepare contract write with required 0.001 ETH leader bond
+  const channelArgs = validateForm() ? [{
+    targetContract: formData.targetContract as `0x${string}`,
+    participants: parseParticipantAddresses(participantsText) as `0x${string}`[],
+    l2PublicKeys: parseParticipantAddresses(l2KeysText) as `0x${string}`[],
+    timeout: timeoutToSeconds(parseFloat(formData.timeout), formData.timeoutUnit),
+    pkx: formData.pkx ? BigInt(formData.pkx) : BigInt(0),
+    pky: formData.pky ? BigInt(formData.pky) : BigInt(0)
+  }] : undefined;
+
+  const contractConfig = channelArgs ? {
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'openChannel',
-    args: [{
-      targetContract: formData.targetContract as `0x${string}`,
-      participants: parseParticipantAddresses(participantsText) as `0x${string}`[],
-      l2PublicKeys: parseParticipantAddresses(l2KeysText) as `0x${string}`[],
-      timeout: timeoutToSeconds(parseFloat(formData.timeout), formData.timeoutUnit),
-      pkx: formData.pkx ? BigInt(formData.pkx) : BigInt(0),
-      pky: formData.pky ? BigInt(formData.pky) : BigInt(0)
-    }],
-    value: parseUnits('1', 18), // Required 1 ETH leader bond
+    args: channelArgs,
+    value: BigInt('1000000000000000'), // Required 0.001 ETH leader bond (1e15 wei)
     enabled: validateForm() && !!formData.targetContract
-  });
+  } : {
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'openChannel',
+    enabled: false,
+  };
+
+  const { config } = usePrepareContractWrite(contractConfig as any);
 
   const { data, write } = useContractWrite(config);
   const { isLoading, isSuccess } = useWaitForTransaction({
@@ -152,7 +160,7 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
             Set up a new ZK Rollup bridge channel with multiple participants
             <br />
             <span className="text-amber-600 dark:text-amber-400 font-medium">
-              ⚠️ Requires 1 ETH leader bond deposit
+              ⚠️ Requires 0.001 ETH leader bond deposit
             </span>
           </DialogDescription>
         </DialogHeader>
