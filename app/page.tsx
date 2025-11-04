@@ -415,10 +415,10 @@ export default function HomePage() {
                                   {mission.name}
                                 </h3>
                                 <div className="flex items-center justify-between mt-4">
-                                  <span className="text-[#00FFFF] font-mono text-[10px]">
+                                  <span className="text-[#00FFFF] font-mono text-[10px] opacity-70">
                                     EXECUTE
                                   </span>
-                                  <span className="text-[#FFFF00] font-mono text-xs">
+                                  <span className="text-[#FFFF00] font-mono text-xs opacity-60">
                                     ▶
                                   </span>
                                 </div>
@@ -432,22 +432,165 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Contract Info - Condensed */}
+              {/* Contract Info - Integrated System Panel */}
               <ClientOnly>
                 {isConnected && (
-                  <div
-                    className="mt-12 max-w-2xl mx-auto bg-[#1A1A2E] border-2 border-[#00FFFF] p-6"
-                    style={{
-                      clipPath:
-                        "polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px)",
-                    }}
-                  >
-                    <p className="text-[#00FFFF] font-mono text-xs text-center mb-2">
-                      CONTRACT ADDRESS
-                    </p>
-                    <p className="text-[#FFFF00] font-mono text-sm text-center break-all">
-                      {ROLLUP_BRIDGE_ADDRESS}
-                    </p>
+                  <div className="mt-12 max-w-3xl mx-auto">
+                    {/* Unified System Panel */}
+                    <div
+                      className="relative bg-gradient-to-b from-[#2A2A3E] via-[#1A1A2E] to-[#0A0A14] p-8"
+                      style={{
+                        border: "4px solid #4A4A5E",
+                        borderRadius: "4px",
+                        boxShadow: `
+                          0 0 0 2px #FFA500,
+                          0 0 0 6px #2A2A3E,
+                          0 0 20px rgba(255, 165, 0, 0.4),
+                          inset 0 2px 20px rgba(0, 0, 0, 0.8),
+                          inset 0 0 60px rgba(255, 165, 0, 0.05)
+                        `,
+                      }}
+                    >
+                      {/* Corner Bolts */}
+                      {[
+                        { top: "-top-2", left: "-left-2", rotate: "" },
+                        {
+                          top: "-top-2",
+                          left: "-right-2",
+                          rotate: "rotate-90",
+                        },
+                        {
+                          top: "-bottom-2",
+                          left: "-left-2",
+                          rotate: "rotate-45",
+                        },
+                        { top: "-bottom-2", left: "-right-2", rotate: "" },
+                      ].map((pos, i) => (
+                        <div
+                          key={i}
+                          className={`absolute ${pos.top} ${pos.left} w-4 h-4 bg-gradient-to-br from-[#8B8B9E] to-[#4A4A5E] rounded-full border-2 border-[#2A2A3E]`}
+                          style={{
+                            boxShadow:
+                              "inset 1px 1px 2px rgba(255,255,255,0.3), inset -1px -1px 2px rgba(0,0,0,0.5)",
+                          }}
+                        >
+                          <div className="absolute inset-1 border border-[#6A6A7E] rounded-full"></div>
+                          <div
+                            className={`absolute top-1/2 left-1/2 w-[2px] h-2 bg-[#2A2A3E] transform -translate-x-1/2 -translate-y-1/2 ${pos.rotate}`}
+                          ></div>
+                        </div>
+                      ))}
+
+                      {/* System Header */}
+                      <div className="flex items-center justify-center gap-3 mb-6">
+                        <span className="text-[#FFA500] text-2xl">⚙</span>
+                        <h3
+                          className="arcade-font text-lg text-[#FFA500] tracking-wider"
+                          style={{
+                            textShadow:
+                              "0 0 10px #FFA500, 0 0 20px #FFA500, 2px 2px 0px rgba(0, 0, 0, 0.8)",
+                          }}
+                        >
+                          SMART CONTRACT SYSTEM
+                        </h3>
+                        <span className="text-[#FFA500] text-2xl">⚙</span>
+                      </div>
+
+                      {/* Divider Line */}
+                      <div className="h-[2px] bg-gradient-to-r from-transparent via-[#FFA500] to-transparent opacity-30 mb-6"></div>
+
+                      {/* Display Screen */}
+                      <div
+                        className="bg-black border-2 border-[#00FF88] p-6 mb-6"
+                        style={{
+                          clipPath:
+                            "polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)",
+                          boxShadow:
+                            "inset 0 0 20px rgba(0, 255, 136, 0.2), 0 0 15px rgba(0, 255, 136, 0.3)",
+                        }}
+                      >
+                        <p className="text-[#00FF88] font-mono text-xs text-center mb-3 tracking-widest">
+                          CONTRACT ADDRESS
+                        </p>
+                        <p
+                          className="text-[#00FF88] pixel-font text-xs text-center break-all leading-relaxed mb-6"
+                          style={{
+                            textShadow: "0 0 5px #00FF88",
+                          }}
+                        >
+                          {ROLLUP_BRIDGE_ADDRESS}
+                        </p>
+
+                        {/* Divider */}
+                        <div className="h-[1px] bg-gradient-to-r from-transparent via-[#00FF88] to-transparent opacity-30 mb-4"></div>
+
+                        {/* Channel Stats Grid */}
+                        <div className="grid grid-cols-2 gap-4">
+                          {/* Total Channels */}
+                          <div className="text-center">
+                            <p className="text-[#00FFFF] font-mono text-[10px] mb-2 tracking-wide">
+                              Total Channels
+                            </p>
+                            <p
+                              className="text-[#FFFF00] pixel-font text-xl"
+                              style={{
+                                textShadow:
+                                  "0 0 10px #FFFF00, 0 0 20px #FFFF00",
+                              }}
+                            >
+                              0
+                            </p>
+                          </div>
+
+                          {/* Next Channel ID */}
+                          <div className="text-center">
+                            <p className="text-[#00FFFF] font-mono text-[10px] mb-2 tracking-wide">
+                              Next Channel ID
+                            </p>
+                            <p
+                              className="text-[#FF00FF] pixel-font text-xl"
+                              style={{
+                                textShadow:
+                                  "0 0 10px #FF00FF, 0 0 20px #FF00FF",
+                              }}
+                            >
+                              0
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Control Panel Row */}
+                      <div className="flex items-center justify-between px-4">
+                        {/* Etherscan Link Button */}
+                        <a
+                          href={`https://sepolia.etherscan.io/address/${ROLLUP_BRIDGE_ADDRESS}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-6 py-2 bg-black border-2 border-[#00FF88] text-[#00FF88] arcade-font text-xs hover:bg-[#1A1A2E] hover:neon-border-green transition-all"
+                          style={{
+                            clipPath:
+                              "polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)",
+                          }}
+                        >
+                          [●] ETHERSCAN
+                        </a>
+
+                        {/* Status LED */}
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-3 h-3 bg-[#00FF00] rounded-full"
+                            style={{
+                              boxShadow: "0 0 10px #00FF00, 0 0 20px #00FF00",
+                              animation: "pulse 2s infinite",
+                            }}
+                          ></div>
+                          <span className="text-[#00FF00] font-mono text-xs">
+                            READY
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </ClientOnly>

@@ -257,14 +257,14 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
             target="_blank"
             rel="noopener noreferrer"
             style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
-            className={`w-full flex items-center gap-4 px-4 py-3 bg-black border-2 border-gray-700 text-gray-400 hover:bg-[#1A1A2E] hover:border-gray-500 hover:text-white transition-all duration-200 ${
+            className={`w-full flex items-center gap-4 px-4 py-3 bg-black border-2 border-b-0 border-[#95A5A6] text-[#95A5A6] hover:bg-[#1A1A2E] hover:border-[#B0BEC5] hover:text-[#B0BEC5] transition-all duration-200 ${
               isCollapsed ? 'justify-center' : ''
             }`}
           >
             <span className="text-xl">⚙</span>
             {!isCollapsed && (
               <div className="font-bold text-sm arcade-font truncate">
-                GitHub
+                GITHUB
               </div>
             )}
           </a>
@@ -276,14 +276,14 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
             <button
               onClick={handleDisconnect}
               style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
-              className={`w-full flex items-center gap-4 px-4 py-3 bg-black text-gray-500 hover:bg-[#1A1A2E] border-2 border-transparent hover:border-gray-600 hover:text-gray-300 transition-all ${
+              className={`w-full flex items-center gap-4 px-4 py-3 bg-black text-[#808080] hover:bg-[#1A1A2E] border-2 border-b-0 border-[#808080] hover:border-[#95A5A6] hover:text-[#95A5A6] transition-all ${
                 isCollapsed ? 'justify-center' : ''
               }`}
             >
               <span className="text-xl">⊗</span>
               {!isCollapsed && (
                 <div className="font-bold text-sm arcade-font truncate">
-                  Disconnect
+                  DISCONNECT
                 </div>
               )}
             </button>
@@ -295,13 +295,15 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
           <div className="absolute bottom-4 left-4 right-4">
             <div 
               style={{ clipPath: 'polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px)' }}
-              className={`px-4 py-2 text-center border-2 ${
+              className={`px-4 py-3 text-center border-2 ${
                 isConnected 
-                  ? 'bg-[#1A1A2E] text-white border-gray-500' 
-                  : 'bg-[#1A1A2E] text-gray-500 border-gray-700'
+                  ? 'bg-black border-[#00FF88] neon-border-green' 
+                  : 'bg-black border-[#808080]'
               }`}
             >
-              <div className={`font-bold arcade-font text-sm`}>
+              <div className={`font-bold arcade-font text-sm ${
+                isConnected ? 'text-[#00FF88]' : 'text-[#808080]'
+              }`}>
                 {isConnected ? '● ONLINE' : '○ OFFLINE'}
               </div>
             </div>

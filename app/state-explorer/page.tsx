@@ -43,7 +43,7 @@ export default function StateExplorerPage() {
     // Active dummy data - one per status for testing
     { 
       id: '1', 
-      name: 'Secret Hub #7', 
+      name: 'STATE #7', 
       participants: 10, 
       status: 'pending', 
       timeInfo: '00:05:15', 
@@ -56,7 +56,7 @@ export default function StateExplorerPage() {
     },
     { 
       id: '2', 
-      name: 'Secret Hub #8', 
+      name: 'TRANSACTION #8', 
       participants: 8, 
       status: 'transacted', 
       timeInfo: '01:02:22', 
@@ -69,7 +69,7 @@ export default function StateExplorerPage() {
     },
     { 
       id: '3', 
-      name: 'Secret Hub #9', 
+      name: 'BATCH #9', 
       participants: 12, 
       status: 'rolledUp', 
       timeInfo: '2 hours ago', 
@@ -412,6 +412,13 @@ function SessionCard({
     return 'Unknown';
   };
 
+  const getValueColor = () => {
+    if (isPending) return 'text-[#FFA500]'; // Orange
+    if (isTransacted) return 'text-[#FF00FF]'; // Pink
+    if (isRolledUp) return 'text-[#00FFFF]'; // Cyan
+    return 'text-[#FFFF00]';
+  };
+
   return (
     <div 
       className={`p-6 relative border-2 bg-[#1A1A2E] ${getBorderColor()}`}
@@ -429,8 +436,8 @@ function SessionCard({
               <p className="text-[#00FFFF]">{getStatusLabel()}</p>
             </div>
             <div className="space-y-0 leading-6 text-right">
-              <p className="text-[#FFFF00] font-semibold">{session.participants}</p>
-              <p className="text-[#FFFF00] font-semibold">
+              <p className={`${getValueColor()} font-semibold`}>{session.participants}</p>
+              <p className={`${getValueColor()} font-semibold`}>
                 {formatTimestamp(session.timestamp)}
               </p>
             </div>
