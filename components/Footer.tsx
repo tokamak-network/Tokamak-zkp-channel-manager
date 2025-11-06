@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 
 interface FooterProps {
   className?: string;
@@ -12,16 +13,19 @@ export function Footer({
   showTestnetWarning = true 
 }: FooterProps) {
   return (
-    <footer className={`border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 py-8 mt-12 transition-colors duration-300 ${className}`}>
+    <footer className={`border-t-2 border-[#4fc3f7] bg-gradient-to-b from-[#1a2347] to-[#0a1930] py-8 mt-12 transition-colors duration-300 ${className}`}>
       <div className="px-4 lg:px-6 text-center">
         <div className="flex items-center justify-center gap-2 mb-4">
-          <div className="h-6 w-6 rounded bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-center">
-            <span className="text-white text-xs font-bold">ZK</span>
-          </div>
-          <span className="font-semibold text-gray-800 dark:text-gray-200">Tokamak ZK-Rollup Manager</span>
+          <Image 
+            src="/assets/header/logo.svg" 
+            alt="Tokamak Network" 
+            width={200} 
+            height={17}
+            className="h-5 w-auto"
+          />
         </div>
-        <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
-          Powered by Tokamak Network
+        <p className="text-sm text-gray-300 mb-6">
+          L2 On-Demand Tailored Ethereum. Powered by Tokamak Network
         </p>
 
         {/* Social Media Links */}
@@ -31,7 +35,7 @@ export function Footer({
             href="https://x.com/Tokamak_Network"
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors duration-200"
+            className="p-2 text-gray-400 hover:text-[#4fc3f7] transition-colors duration-200"
             aria-label="Follow us on X (Twitter)"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -44,7 +48,7 @@ export function Footer({
             href="https://www.tokamak.network/"
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors duration-200"
+            className="p-2 text-gray-400 hover:text-[#4fc3f7] transition-colors duration-200"
             aria-label="Visit our website"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -57,7 +61,7 @@ export function Footer({
             href="https://medium.com/tokamak-network"
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors duration-200"
+            className="p-2 text-gray-400 hover:text-[#4fc3f7] transition-colors duration-200"
             aria-label="Read our blog on Medium"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -70,7 +74,7 @@ export function Footer({
             href="https://discord.com/invite/J4chV2zuAK"
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors duration-200"
+            className="p-2 text-gray-400 hover:text-[#4fc3f7] transition-colors duration-200"
             aria-label="Join our Discord community"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -83,7 +87,7 @@ export function Footer({
             href="https://t.me/tokamak_network"
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors duration-200"
+            className="p-2 text-gray-400 hover:text-[#4fc3f7] transition-colors duration-200"
             aria-label="Join our Telegram channel"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -96,7 +100,7 @@ export function Footer({
             href="https://www.linkedin.com/company/tokamaknetwork/"
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors duration-200"
+            className="p-2 text-gray-400 hover:text-[#4fc3f7] transition-colors duration-200"
             aria-label="Connect with us on LinkedIn"
           >
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -106,10 +110,14 @@ export function Footer({
         </div>
 
         {showTestnetWarning && (
-          <div className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="text-xs text-yellow-300 border border-yellow-500 bg-yellow-900/20 py-2 px-4 inline-block">
             <p>⚠️ Testnet Version</p>
           </div>
         )}
+        
+        <div className="text-xs text-gray-400 mt-6">
+          <p>© 2025 Tokamak Network zk-EVM. All rights reserved.</p>
+        </div>
       </div>
     </footer>
   );
