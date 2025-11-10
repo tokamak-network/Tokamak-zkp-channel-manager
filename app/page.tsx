@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation';
 import { Layout } from '@/components/Layout';
 import { ContractInfo } from '@/components/ContractInfo';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
-import { Lock, Zap, Gem } from 'lucide-react';
+import { Lock, Zap, Gem, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Activity, FileCheck, PenTool, XCircle, Trash2 } from 'lucide-react';
 
 export default function HomePage() {
   const router = useRouter();
@@ -128,19 +128,8 @@ export default function HomePage() {
             </div>
           </div>
         ) : (
-          <div className="min-h-screen flex flex-col items-center justify-center px-4 py-20">
-            <div className="max-w-6xl w-full mx-auto text-center">
-              <h2 className="text-4xl lg:text-5xl font-bold text-white mb-6" 
-                  style={{ 
-                    textShadow: '0 0 20px rgba(79, 195, 247, 0.5)', 
-                    fontFamily: '"Jersey 10", "Press Start 2P", monospace' 
-                  }}>
-                Welcome Back
-              </h2>
-              <p className="text-lg lg:text-xl text-gray-200 mb-12 max-w-3xl mx-auto">
-                Manage your channels and transactions
-              </p>
-
+          <div className="min-h-screen p-4 pb-20">
+            <div className="max-w-6xl w-full mx-auto">
               {/* Contract Information */}
               <ClientOnly>
                 <ContractInfo />
@@ -148,7 +137,7 @@ export default function HomePage() {
 
           {/* Action Cards */}
           <ClientOnly>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 max-w-6xl mx-auto px-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 max-w-6xl mx-auto">
             {/* Create Channel - Available for all connected users */}
             {isConnected && (
               <div 
@@ -156,7 +145,7 @@ export default function HomePage() {
                 className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
               >
                 <div className="h-10 w-10 bg-gradient-to-r from-green-500 to-green-600 flex items-center justify-center mx-auto mb-3 group-hover:from-green-400 group-hover:to-green-500 transition-all shadow-lg shadow-green-500/30">
-                  <span className="text-xl">⚒</span>
+                  <PlusCircle className="w-5 h-5 text-white" />
                 </div>
                 <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Create Channel</h3>
                 <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
@@ -172,7 +161,7 @@ export default function HomePage() {
                 className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
               >
                 <div className="h-10 w-10 bg-gradient-to-r from-yellow-500 to-yellow-600 flex items-center justify-center mx-auto mb-3 group-hover:from-yellow-400 group-hover:to-yellow-500 transition-all shadow-lg shadow-yellow-500/30">
-                  <span className="text-xl">🔑</span>
+                  <Key className="w-5 h-5 text-white" />
                 </div>
                 <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">DKG Management</h3>
                 <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
@@ -188,7 +177,7 @@ export default function HomePage() {
                 className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
               >
                 <div className="h-10 w-10 bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center mx-auto mb-3 group-hover:from-blue-400 group-hover:to-blue-500 transition-all shadow-lg shadow-blue-500/30">
-                  <span className="text-xl">💰</span>
+                  <ArrowDownCircle className="w-5 h-5 text-white" />
                 </div>
                 <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Deposit Tokens</h3>
                 <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
@@ -204,7 +193,7 @@ export default function HomePage() {
                 className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
               >
                 <div className="h-10 w-10 bg-gradient-to-r from-purple-500 to-purple-600 flex items-center justify-center mx-auto mb-3 group-hover:from-purple-400 group-hover:to-purple-500 transition-all shadow-lg shadow-purple-500/30">
-                  <span className="text-xl">💳</span>
+                  <ArrowUpCircle className="w-5 h-5 text-white" />
                 </div>
                 <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Withdraw Tokens</h3>
                 <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
@@ -222,7 +211,7 @@ export default function HomePage() {
                   className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
                 >
                   <div className="h-10 w-10 bg-gradient-to-r from-orange-500 to-orange-600 flex items-center justify-center mx-auto mb-3 group-hover:from-orange-400 group-hover:to-orange-500 transition-all shadow-lg shadow-orange-500/30">
-                    <span className="text-xl">⚡</span>
+                    <Activity className="w-5 h-5 text-white" />
                   </div>
                   <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Initialize State</h3>
                   <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
@@ -236,7 +225,7 @@ export default function HomePage() {
                   className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
                 >
                   <div className="h-10 w-10 bg-gradient-to-r from-teal-500 to-teal-600 flex items-center justify-center mx-auto mb-3 group-hover:from-teal-400 group-hover:to-teal-500 transition-all shadow-lg shadow-teal-500/30">
-                    <span className="text-xl">📋</span>
+                    <FileCheck className="w-5 h-5 text-white" />
                   </div>
                   <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Submit Proof</h3>
                   <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
@@ -250,7 +239,7 @@ export default function HomePage() {
                   className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
                 >
                   <div className="h-10 w-10 bg-gradient-to-r from-indigo-500 to-indigo-600 flex items-center justify-center mx-auto mb-3 group-hover:from-indigo-400 group-hover:to-indigo-500 transition-all shadow-lg shadow-indigo-500/30">
-                    <span className="text-xl">✍️</span>
+                    <PenTool className="w-5 h-5 text-white" />
                   </div>
                   <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Sign Proof</h3>
                   <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
@@ -264,7 +253,7 @@ export default function HomePage() {
                   className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
                 >
                   <div className="h-10 w-10 bg-gradient-to-r from-red-500 to-red-600 flex items-center justify-center mx-auto mb-3 group-hover:from-red-400 group-hover:to-red-500 transition-all shadow-lg shadow-red-500/30">
-                    <span className="text-xl">🔐</span>
+                    <XCircle className="w-5 h-5 text-white" />
                   </div>
                   <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Close Channel</h3>
                   <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
@@ -278,7 +267,7 @@ export default function HomePage() {
                   className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
                 >
                   <div className="h-10 w-10 bg-gradient-to-r from-gray-600 to-gray-700 flex items-center justify-center mx-auto mb-3 group-hover:from-gray-500 group-hover:to-gray-600 transition-all shadow-lg shadow-gray-600/30">
-                    <span className="text-xl">🗑️</span>
+                    <Trash2 className="w-5 h-5 text-white" />
                   </div>
                   <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Delete Channel</h3>
                   <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { DKGAutomatedCeremonyModal } from './DKGAutomatedCeremonyModal';
+import { Crown, Users } from 'lucide-react';
 
 interface DKGSession {
   id: string;
@@ -116,7 +117,7 @@ export function DKGSessionsList({
             disabled={false}
             type="button"
           >
-            🚀 Run Automated Ceremony
+            Run Automated Ceremony
           </Button>
         );
       }
@@ -206,7 +207,7 @@ export function DKGSessionsList({
               Finalizing...
             </div>
           ) : (
-            <>🎯 Finalize Submit</>
+            <>Finalize Submit</>
           )}
         </Button>
       );
@@ -295,8 +296,8 @@ export function DKGSessionsList({
         {/* Sessions Created by Me */}
         <Card className="p-6">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              <span className="mr-2">👑</span>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+              <Crown className="w-5 h-5 text-yellow-500" />
               Sessions Created by Me
             </h3>
             <div className="text-sm text-gray-600 dark:text-gray-400">
@@ -321,8 +322,8 @@ export function DKGSessionsList({
         {/* Sessions Joined as Participant */}
         <Card className="p-6">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              <span className="mr-2">🤝</span>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+              <Users className="w-5 h-5 text-blue-500" />
               Sessions as Participant
             </h3>
             <div className="text-sm text-gray-600 dark:text-gray-400">
@@ -352,8 +353,8 @@ export function DKGSessionsList({
         {/* Sessions Created by Me - History */}
         <Card className="p-6">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              <span className="mr-2">👑</span>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+              <Crown className="w-5 h-5 text-yellow-500" />
               Sessions Created by Me
             </h3>
             <div className="text-sm text-gray-600 dark:text-gray-400">
@@ -375,8 +376,8 @@ export function DKGSessionsList({
         {/* Sessions Joined as Participant - History */}
         <Card className="p-6">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              <span className="mr-2">🤝</span>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+              <Users className="w-5 h-5 text-blue-500" />
               Sessions Joined as Participant
             </h3>
             <div className="text-sm text-gray-600 dark:text-gray-400">

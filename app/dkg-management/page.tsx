@@ -7,6 +7,7 @@ import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Flame, Plus, Link2, ClipboardList, CheckCircle, X } from 'lucide-react';
 
 // Import our new DKG components
 import { DKGConnectionStatus } from '@/components/dkg/DKGConnectionStatus';
@@ -226,7 +227,7 @@ export default function DKGManagementPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       
-      setSuccessMessage('🔑 Key share downloaded successfully!');
+      setSuccessMessage('Key share downloaded successfully!');
     }
   };
 
@@ -252,7 +253,7 @@ export default function DKGManagementPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       
-      setSuccessMessage('🔑 Key share downloaded successfully!');
+      setSuccessMessage('Key share downloaded successfully!');
     }
   };
 
@@ -261,10 +262,10 @@ export default function DKGManagementPage() {
       <Layout title="DKG Management">
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="text-center">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+            <h3 className="text-lg font-semibold text-white mb-2">
               Connect Your Wallet
             </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
+            <p className="text-gray-300 mb-4">
               You need to connect your wallet to participate in DKG ceremonies
             </p>
             <ConnectButton />
@@ -276,14 +277,14 @@ export default function DKGManagementPage() {
 
   return (
     <Layout title="DKG Management">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="max-w-7xl mx-auto space-y-6 p-4 lg:p-8">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            <h1 className="text-2xl font-bold text-white">
               DKG Management
             </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-gray-300 mt-1">
               Distributed Key Generation for FROST Threshold Signatures
             </p>
           </div>
@@ -300,9 +301,9 @@ export default function DKGManagementPage() {
         </div>
 
         {/* Statistics */}
-        <Card className="p-4">
+        <Card className="p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]">
           <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-600 dark:text-gray-400">
+            <div className="text-sm text-gray-300">
               {sessions.length} DKG Session(s) • {sessions.filter(s => s.status === 'waiting').length} Active
               <br />
               Created: {sessions.filter(s => s.myRole === 'creator').length} • Joined: {sessions.filter(s => s.myRole === 'participant').length}
@@ -312,7 +313,7 @@ export default function DKGManagementPage() {
                 variant="outline"
                 size="sm"
                 onClick={clearAllSessions}
-                className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                className="text-red-400 hover:bg-red-900/20"
               >
                 Clear All Sessions
               </Button>
@@ -343,17 +344,18 @@ export default function DKGManagementPage() {
 
         {/* Global Messages */}
         {successMessage && (
-          <Card className="p-4 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
+          <Card className="p-4 bg-green-900/20 border-green-500/50">
             <div className="flex items-center gap-2">
-              <span className="text-green-600 dark:text-green-400 font-medium">✅ Success:</span>
-              <p className="text-green-700 dark:text-green-300 text-sm">{successMessage}</p>
+              <CheckCircle className="w-5 h-5 text-green-400" />
+              <span className="text-green-400 font-medium">Success:</span>
+              <p className="text-green-300 text-sm">{successMessage}</p>
               <Button 
                 variant="ghost" 
                 size="sm" 
                 onClick={() => setSuccessMessage('')}
-                className="ml-auto text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30"
+                className="ml-auto text-green-400 hover:bg-green-900/30"
               >
-                ✕
+                <X className="w-4 h-4" />
               </Button>
             </div>
           </Card>
@@ -375,23 +377,26 @@ export default function DKGManagementPage() {
         )}
 
         {/* Tab Navigation */}
-        <div className="flex space-x-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+        <div className="flex space-x-1 bg-[#0a1930] border border-[#4fc3f7]/30 p-1">
           {[
-            { id: 'active', label: 'Active Sessions', icon: '🔥' },
-            { id: 'create', label: 'Create Session', icon: '➕' },
-            { id: 'join', label: 'Join Session', icon: '🔗' },
-            { id: 'history', label: 'History', icon: '📋' }
-          ].map((tab) => (
-            <Button
-              key={tab.id}
-              variant={activeTab === tab.id ? 'default' : 'ghost'}
-              onClick={() => setActiveTab(tab.id)}
-              className="flex-1 justify-center"
-            >
-              <span className="mr-2">{tab.icon}</span>
-              {tab.label}
-            </Button>
-          ))}
+            { id: 'active', label: 'Active Sessions', icon: Flame },
+            { id: 'create', label: 'Create Session', icon: Plus },
+            { id: 'join', label: 'Join Session', icon: Link2 },
+            { id: 'history', label: 'History', icon: ClipboardList }
+          ].map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <Button
+                key={tab.id}
+                variant={activeTab === tab.id ? 'default' : 'ghost'}
+                onClick={() => setActiveTab(tab.id)}
+                className="flex-1 justify-center"
+              >
+                <Icon className="w-4 h-4 mr-2" />
+                {tab.label}
+              </Button>
+            );
+          })}
         </div>
 
         {/* Tab Content */}

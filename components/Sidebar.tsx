@@ -8,6 +8,7 @@ import Image from 'next/image';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { ClientOnly } from '@/components/ClientOnly';
+import { Home, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Search, Settings, FileCheck, PenTool, XCircle, Trash2 } from 'lucide-react';
 
 interface SidebarProps {
   isConnected: boolean;
@@ -35,7 +36,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
     {
       name: 'Home',
       href: '/',
-      icon: '⌂',
+      icon: Home,
       description: 'Dashboard and overview',
       requiresConnection: false
     },
@@ -49,7 +50,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       userActions.push({
         name: 'Create Channel',
         href: '/create-channel',
-        icon: '+',
+        icon: PlusCircle,
         description: 'Create multi-party bridge channel',
         requiresConnection: true
       });
@@ -59,7 +60,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
     userActions.push({
       name: 'DKG Management',
       href: '/dkg-management',
-      icon: '◆',
+      icon: Key,
       description: 'Distributed Key Generation',
       requiresConnection: true
     });
@@ -70,14 +71,14 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
         {
           name: 'Deposit Tokens',
           href: '/deposit-tokens',
-          icon: '↓',
+          icon: ArrowDownCircle,
           description: '',
           requiresConnection: true
         },
         {
           name: 'Withdraw Tokens',
           href: '/withdraw-tokens',
-          icon: '↑',
+          icon: ArrowUpCircle,
           description: '',
           requiresConnection: true
         }
@@ -91,7 +92,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
     channelActions.push({
       name: 'Channel Explorer',
       href: '/channel-explorer',
-      icon: '🔍',
+      icon: Search,
       description: 'View all channels and activity',
       requiresConnection: true
     });
@@ -104,35 +105,35 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       {
         name: 'Initialize State',
         href: '/initialize-state',
-        icon: '⚙',
+        icon: Settings,
         description: '',
         requiresConnection: true
       },
       {
         name: 'Submit Proof',
         href: '/submit-proof',
-        icon: '▣',
+        icon: FileCheck,
         description: '',
         requiresConnection: true
       },
       {
         name: 'Sign Proof',
         href: '/sign-proof',
-        icon: '✎',
+        icon: PenTool,
         description: '',
         requiresConnection: true
       },
       {
         name: 'Close Channel',
         href: '/close-channel',
-        icon: '⊗',
+        icon: XCircle,
         description: '',
         requiresConnection: true
       },
       {
         name: 'Delete Channel',
         href: '/delete-channel',
-        icon: '✕',
+        icon: Trash2,
         description: '',
         requiresConnection: true
       }
@@ -198,12 +199,46 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
             <p className="text-xs text-[#4fc3f7] font-medium tracking-wide">ZK CHANNEL MANAGER</p>
           </div>
           
-          {/* Connect Wallet Button */}
+          {/* Connect Wallet Button or Wallet Info */}
           <div className="mt-6">
             <ClientOnly>
-              <div className="flex justify-center">
-                <ConnectButton />
-              </div>
+              {isConnected && address ? (
+                <div className="space-y-3">
+                  {/* Wallet Address Display */}
+                  <div className="bg-[#0a1930] border border-[#4fc3f7]/30 px-3 py-2">
+                    <div className="text-xs text-gray-400 mb-1">Connected Wallet</div>
+                    <div className="text-sm text-white font-mono flex items-center justify-between">
+                      <span>{address.slice(0, 6)}...{address.slice(-4)}</span>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(address)}
+                        className="text-[#4fc3f7] hover:text-white transition-colors"
+                        title="Copy address"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Network Selection */}
+                  <div className="bg-[#0a1930] border border-[#4fc3f7]/30 px-3 py-2">
+                    <div className="text-xs text-gray-400 mb-1">Network</div>
+                    <select 
+                      className="w-full bg-transparent text-sm text-white font-medium focus:outline-none cursor-pointer"
+                      defaultValue="sepolia"
+                    >
+                      <option value="sepolia" className="bg-[#0a1930]">Sepolia Testnet</option>
+                      <option value="mainnet" className="bg-[#0a1930]">Ethereum Mainnet</option>
+                      <option value="goerli" className="bg-[#0a1930]">Goerli Testnet</option>
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-center">
+                  <ConnectButton />
+                </div>
+              )}
             </ClientOnly>
           </div>
         </div>
@@ -244,9 +279,13 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
                       )}
                       
                       {/* Icon */}
-                      <span className={`text-sm transition-colors ${isActive ? 'text-[#4fc3f7]' : 'text-gray-500 group-hover:text-[#4fc3f7]'}`}>
-                        {item.icon}
-                      </span>
+                      <div className={`transition-colors ${isActive ? 'text-[#4fc3f7]' : 'text-gray-500 group-hover:text-[#4fc3f7]'}`}>
+                        {typeof item.icon === 'string' ? (
+                          <span className="text-sm">{item.icon}</span>
+                        ) : (
+                          <item.icon className="w-4 h-4" />
+                        )}
+                      </div>
                       
                       {/* Text content */}
                       <div className="flex-1 min-w-0">
