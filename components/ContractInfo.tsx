@@ -6,6 +6,7 @@ import { formatUnits, isAddress } from 'viem';
 import { ROLLUP_BRIDGE_ABI, ROLLUP_BRIDGE_ADDRESS } from '@/lib/contracts';
 import { ClientOnly } from '@/components/ClientOnly';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
+import { Info } from 'lucide-react';
 
 export function ContractInfo() {
   const { address, isConnected } = useAccount();
@@ -196,8 +197,8 @@ export function ContractInfo() {
     <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-6 mb-8 shadow-lg shadow-[#4fc3f7]/20 text-left">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10  bg-gradient-to-r from-[#4fc3f7] to-[#29b6f6] flex items-center justify-center shadow-lg shadow-[#4fc3f7]/30">
-            <span className="text-white font-bold text-lg">📋</span>
+          <div className="h-10 w-10 bg-gradient-to-r from-[#4fc3f7] to-[#29b6f6] flex items-center justify-center shadow-lg shadow-[#4fc3f7]/30">
+            <Info className="w-5 h-5 text-white" />
           </div>
           <div>
             <h3 className="text-lg font-semibold text-white">Your Information</h3>
