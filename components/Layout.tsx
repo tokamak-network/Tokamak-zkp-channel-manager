@@ -39,7 +39,7 @@ export function Layout({
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+    <div className="min-h-screen space-background flex flex-col">
       {/* Channel Created Banner */}
       {showBanner && (
         <ClientOnly>
@@ -65,7 +65,7 @@ export function Layout({
       )}
 
       {/* Main Content Area */}
-      <div className={`ml-0 ${showSidebar ? (sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64') : ''} transition-all duration-300 flex flex-col min-h-screen`}>
+      <div className={`ml-0 ${showSidebar ? 'lg:ml-72' : ''} transition-all duration-300 flex flex-col min-h-screen relative`}>
         {/* Header */}
         <Header
           title={title}
@@ -76,7 +76,7 @@ export function Layout({
         />
 
         {/* Main Content */}
-        <main className={`flex-1 px-4 py-8 lg:px-6 ${mainClassName}`}>
+        <main className={`flex-1 ${mainClassName}`}>
           {children}
         </main>
 

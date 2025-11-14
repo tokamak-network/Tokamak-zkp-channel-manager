@@ -5,7 +5,7 @@ import { useContractWrite, usePrepareContractWrite, useWaitForTransaction, useCo
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, Clock, Zap, Shield } from 'lucide-react';
+import { AlertTriangle, Clock, Zap, Shield, X } from 'lucide-react';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 import { formatDuration } from '@/lib/utils';
 
@@ -173,8 +173,9 @@ export function ChannelTimeoutManager({
             <h4 className="font-medium mb-2">Leader Actions:</h4>
             {canSubmitProof ? (
               <div className="space-y-2">
-                <p className="text-sm text-yellow-700">
-                  ⚠️ You must submit aggregated proof within 7 days or your bond will be slashed.
+                <p className="text-sm text-yellow-700 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  You must submit aggregated proof within 7 days or your bond will be slashed.
                 </p>
                 <Button variant="gradient" className="w-full">
                   <Zap className="h-4 w-4 mr-2" />
@@ -182,8 +183,9 @@ export function ChannelTimeoutManager({
                 </Button>
               </div>
             ) : isProofDeadlineExpired ? (
-              <p className="text-sm text-red-700">
-                ❌ Proof deadline expired. Your leader bond has been forfeited.
+              <p className="text-sm text-red-700 flex items-center gap-2">
+                <X className="w-4 h-4" />
+                Proof deadline expired. Your leader bond has been forfeited.
               </p>
             ) : (
               <p className="text-sm text-gray-600">
