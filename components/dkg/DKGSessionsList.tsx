@@ -298,7 +298,7 @@ export function DKGSessionsList({
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
               <Crown className="w-5 h-5 text-yellow-500" />
-              Sessions Created by Me
+              Your Sessions
             </h3>
             <div className="text-sm text-gray-600 dark:text-gray-400">
               {sessions.filter(s => s.myRole === 'creator' && ['waiting', 'round1', 'round2', 'finalizing'].includes(s.status)).length} active sessions

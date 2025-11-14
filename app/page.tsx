@@ -137,20 +137,22 @@ export default function HomePage() {
 
           {/* Action Cards */}
           <ClientOnly>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 max-w-6xl mx-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-6xl mx-auto">
             {/* Create Channel - Available for all connected users */}
             {isConnected && (
               <div 
                 onClick={handleCreateChannel}
-                className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
+                className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
               >
-                <div className="h-10 w-10 bg-gradient-to-r from-green-500 to-green-600 flex items-center justify-center mx-auto mb-3 group-hover:from-green-400 group-hover:to-green-500 transition-all shadow-lg shadow-green-500/30">
-                  <PlusCircle className="w-5 h-5 text-white" />
+                <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                  <PlusCircle className="w-6 h-6 text-white" />
                 </div>
-                <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Create Channel</h3>
-                <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
-                  Create multi-party bridge channel (0.001 ETH bond)
-                </p>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Create Channel</h3>
+                  <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                    Create multi-party bridge channel (0.001 ETH bond)
+                  </p>
+                </div>
               </div>
             )}
 
@@ -158,15 +160,17 @@ export default function HomePage() {
             {isConnected && (
               <div 
                 onClick={handleDKGManagement}
-                className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
+                className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
               >
-                <div className="h-10 w-10 bg-gradient-to-r from-yellow-500 to-yellow-600 flex items-center justify-center mx-auto mb-3 group-hover:from-yellow-400 group-hover:to-yellow-500 transition-all shadow-lg shadow-yellow-500/30">
-                  <Key className="w-5 h-5 text-white" />
+                <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                  <Key className="w-6 h-6 text-white" />
                 </div>
-                <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">DKG Management</h3>
-                <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
-                  Distributed Key Generation
-                </p>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">DKG Management</h3>
+                  <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                    Distributed Key Generation
+                  </p>
+                </div>
               </div>
             )}
 
@@ -174,15 +178,17 @@ export default function HomePage() {
             {isConnected && (isParticipant || hasChannels) && (
               <div 
                 onClick={handleDepositTokens}
-                className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
+                className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
               >
-                <div className="h-10 w-10 bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center mx-auto mb-3 group-hover:from-blue-400 group-hover:to-blue-500 transition-all shadow-lg shadow-blue-500/30">
-                  <ArrowDownCircle className="w-5 h-5 text-white" />
+                <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                  <ArrowDownCircle className="w-6 h-6 text-white" />
                 </div>
-                <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Deposit Tokens</h3>
-                <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
-                  Deposit ETH or ERC20 tokens
-                </p>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Deposit Tokens</h3>
+                  <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                    Deposit ETH or ERC20 tokens
+                  </p>
+                </div>
               </div>
             )}
 
@@ -190,15 +196,17 @@ export default function HomePage() {
             {isConnected && (isParticipant || hasChannels) && (
               <div 
                 onClick={handleWithdrawTokens}
-                className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
+                className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
               >
-                <div className="h-10 w-10 bg-gradient-to-r from-purple-500 to-purple-600 flex items-center justify-center mx-auto mb-3 group-hover:from-purple-400 group-hover:to-purple-500 transition-all shadow-lg shadow-purple-500/30">
-                  <ArrowUpCircle className="w-5 h-5 text-white" />
+                <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                  <ArrowUpCircle className="w-6 h-6 text-white" />
                 </div>
-                <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Withdraw Tokens</h3>
-                <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
-                  Withdraw from closed channel
-                </p>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Withdraw Tokens</h3>
+                  <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                    Withdraw from closed channel
+                  </p>
+                </div>
               </div>
             )}
 
@@ -208,71 +216,81 @@ export default function HomePage() {
                 {/* Initialize State */}
                 <div 
                   onClick={handleInitializeState}
-                  className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
+                  className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
                 >
-                  <div className="h-10 w-10 bg-gradient-to-r from-orange-500 to-orange-600 flex items-center justify-center mx-auto mb-3 group-hover:from-orange-400 group-hover:to-orange-500 transition-all shadow-lg shadow-orange-500/30">
-                    <Activity className="w-5 h-5 text-white" />
+                  <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                    <Activity className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Initialize State</h3>
-                  <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
-                    Initialize channel state
-                  </p>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Initialize State</h3>
+                    <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                      Initialize channel state
+                    </p>
+                  </div>
                 </div>
 
                 {/* Submit Aggregated Proof */}
                 <div 
                   onClick={handleSubmitProof}
-                  className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
+                  className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
                 >
-                  <div className="h-10 w-10 bg-gradient-to-r from-teal-500 to-teal-600 flex items-center justify-center mx-auto mb-3 group-hover:from-teal-400 group-hover:to-teal-500 transition-all shadow-lg shadow-teal-500/30">
-                    <FileCheck className="w-5 h-5 text-white" />
+                  <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                    <FileCheck className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Submit Proof</h3>
-                  <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
-                    Submit aggregated proof
-                  </p>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Submit Proof</h3>
+                    <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                      Submit aggregated proof
+                    </p>
+                  </div>
                 </div>
 
                 {/* Sign Aggregated Proof */}
                 <div 
                   onClick={handleSignProof}
-                  className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
+                  className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
                 >
-                  <div className="h-10 w-10 bg-gradient-to-r from-indigo-500 to-indigo-600 flex items-center justify-center mx-auto mb-3 group-hover:from-indigo-400 group-hover:to-indigo-500 transition-all shadow-lg shadow-indigo-500/30">
-                    <PenTool className="w-5 h-5 text-white" />
+                  <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                    <PenTool className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Sign Proof</h3>
-                  <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
-                    Sign aggregated proof
-                  </p>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Sign Proof</h3>
+                    <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                      Sign aggregated proof
+                    </p>
+                  </div>
                 </div>
 
                 {/* Close Channel */}
                 <div 
                   onClick={handleCloseChannel}
-                  className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
+                  className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
                 >
-                  <div className="h-10 w-10 bg-gradient-to-r from-red-500 to-red-600 flex items-center justify-center mx-auto mb-3 group-hover:from-red-400 group-hover:to-red-500 transition-all shadow-lg shadow-red-500/30">
-                    <XCircle className="w-5 h-5 text-white" />
+                  <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                    <XCircle className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Close Channel</h3>
-                  <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
-                    Close the channel
-                  </p>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Close Channel</h3>
+                    <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                      Close the channel
+                    </p>
+                  </div>
                 </div>
 
                 {/* Delete Channel */}
                 <div 
                   onClick={handleDeleteChannel}
-                  className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group"
+                  className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
                 >
-                  <div className="h-10 w-10 bg-gradient-to-r from-gray-600 to-gray-700 flex items-center justify-center mx-auto mb-3 group-hover:from-gray-500 group-hover:to-gray-600 transition-all shadow-lg shadow-gray-600/30">
-                    <Trash2 className="w-5 h-5 text-white" />
+                  <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                    <Trash2 className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Delete Channel</h3>
-                  <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
-                    Delete the channel
-                  </p>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Delete Channel</h3>
+                    <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                      Delete the channel
+                    </p>
+                  </div>
                 </div>
               </>
             )}

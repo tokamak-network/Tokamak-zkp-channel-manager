@@ -9,7 +9,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { Footer } from '@/components/Footer';
-import { AlertTriangle, Lightbulb } from 'lucide-react';
+import { AlertTriangle, Lightbulb, CheckCircle } from 'lucide-react';
 
 interface Participant {
   address: string;
@@ -275,18 +275,32 @@ export default function CreateChannelPage() {
                         Currently, only WTON and USDT tokens are supported as target contracts.
                       </p>
                       <div className="space-y-2">
-                        <div className="bg-amber-900/40 p-2">
-                          <div className="text-xs font-medium text-amber-300 mb-1">WTON Token</div>
+                        <button
+                          type="button"
+                          onClick={() => setTargetContract('0x79E0d92670106c85E9067b56B8F674340dCa0Bbd')}
+                          className="w-full bg-amber-900/40 p-2 hover:bg-amber-900/60 transition-colors cursor-pointer text-left border border-transparent hover:border-amber-500/50"
+                        >
+                          <div className="text-xs font-medium text-amber-300 mb-1 flex items-center justify-between">
+                            <span>WTON Token</span>
+                            <span className="text-[10px] text-amber-400/60">Click to use</span>
+                          </div>
                           <div className="text-xs text-amber-200/90 font-mono break-all">
                             0x79E0d92670106c85E9067b56B8F674340dCa0Bbd
                           </div>
-                        </div>
-                        <div className="bg-amber-900/40 p-2">
-                          <div className="text-xs font-medium text-amber-300 mb-1">USDT Token</div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTargetContract('0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A')}
+                          className="w-full bg-amber-900/40 p-2 hover:bg-amber-900/60 transition-colors cursor-pointer text-left border border-transparent hover:border-amber-500/50"
+                        >
+                          <div className="text-xs font-medium text-amber-300 mb-1 flex items-center justify-between">
+                            <span>USDT Token</span>
+                            <span className="text-[10px] text-amber-400/60">Click to use</span>
+                          </div>
                           <div className="text-xs text-amber-200/90 font-mono break-all">
                             0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A
                           </div>
-                        </div>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -465,12 +479,12 @@ export default function CreateChannelPage() {
       {/* Success Popup */}
       {showSuccessPopup && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-xl shadow-[#4fc3f7]/30 max-w-md w-full mx-4">
+          <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-xl shadow-[#4fc3f7]/30 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             {/* Header */}
             <div className="p-6 border-b border-[#4fc3f7]/30">
               <div className="flex items-center gap-3">
                 <div className="h-12 w-12 bg-green-500/20 border border-green-500/50 flex items-center justify-center">
-                  <span className="text-2xl">✅</span>
+                  <CheckCircle className="w-7 h-7 text-green-400" />
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-white">Channel Created Successfully!</h2>
@@ -481,33 +495,33 @@ export default function CreateChannelPage() {
 
             {/* Content */}
             <div className="p-6">
-              <h3 className="text-lg font-semibold text-white mb-3">Next Steps</h3>
-              <div className="space-y-3 text-sm text-gray-300">
-                <div className="flex items-start gap-3">
-                  <span className="text-[#4fc3f7] font-bold">1.</span>
+              <h3 className="text-lg font-semibold text-white mb-4">Next Steps</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-300">
+                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
+                  <span className="text-[#4fc3f7] font-bold text-lg">1.</span>
                   <div>
-                    <p className="font-medium text-white">Wait for Participants to Deposit</p>
+                    <p className="font-medium text-white mb-1">Wait for Participants to Deposit</p>
                     <p>All participants need to deposit their tokens into the channel.</p>
                   </div>
                 </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-[#4fc3f7] font-bold">2.</span>
+                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
+                  <span className="text-[#4fc3f7] font-bold text-lg">2.</span>
                   <div>
-                    <p className="font-medium text-white">Initialize Channel State</p>
+                    <p className="font-medium text-white mb-1">Initialize Channel State</p>
                     <p>As the channel leader, you'll need to initialize the channel state once all deposits are complete.</p>
                   </div>
                 </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-[#4fc3f7] font-bold">3.</span>
+                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
+                  <span className="text-[#4fc3f7] font-bold text-lg">3.</span>
                   <div>
-                    <p className="font-medium text-white">Proof Operations</p>
+                    <p className="font-medium text-white mb-1">Proof Operations</p>
                     <p>Submit aggregated proofs, collect signatures, and manage the channel lifecycle.</p>
                   </div>
                 </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-[#4fc3f7] font-bold">4.</span>
+                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
+                  <span className="text-[#4fc3f7] font-bold text-lg">4.</span>
                   <div>
-                    <p className="font-medium text-white">Close & Withdraw</p>
+                    <p className="font-medium text-white mb-1">Close & Withdraw</p>
                     <p>Close the channel when operations are complete and allow participants to withdraw.</p>
                   </div>
                 </div>
