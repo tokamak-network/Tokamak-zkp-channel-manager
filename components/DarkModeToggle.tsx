@@ -1,15 +1,16 @@
 'use client';
 
 import { useTheme } from '@/contexts/ThemeContext';
+import { Sun, Moon } from 'lucide-react';
 
 export function DarkModeToggle() {
   const { theme, toggleTheme } = useTheme();
 
   return (
     <div className="flex items-center gap-2">
-      {/* Emoji indicator */}
-      <span className="text-lg transition-opacity duration-300">
-        {theme === 'light' ? '☀️' : '🌙'}
+      {/* Icon indicator */}
+      <span className="transition-opacity duration-300">
+        {theme === 'light' ? <Sun className="w-5 h-5 text-yellow-500" /> : <Moon className="w-5 h-5 text-blue-300" />}
       </span>
       
       <button

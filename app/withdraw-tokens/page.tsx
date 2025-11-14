@@ -10,10 +10,10 @@ import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 import { ClientOnly } from '@/components/ClientOnly';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Sidebar } from '@/components/Sidebar';
-import { DarkModeToggle } from '@/components/DarkModeToggle';
 import { ChannelState } from '@/lib/types';
 import { canWithdraw } from '@/lib/utils';
 import { generateWithdrawalProof, WithdrawalProofData } from '@/lib/merkleProofGenerator';
+import { ArrowUpCircle, Inbox, Clock, CheckCircle2, AlertCircle, Info } from 'lucide-react';
 
 interface WithdrawableChannel {
   channelId: bigint;
@@ -597,44 +597,36 @@ export default function WithdrawTokensPage() {
       </ClientOnly>
 
       {/* Main Content Area */}
-      <div className={`ml-0 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
-        {/* Header */}
-        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
-          <div className="px-4 py-4 lg:px-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4 ml-12 lg:ml-0">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-green-600 to-green-700 flex items-center justify-center">
-                  <span className="text-white text-sm font-bold">💳</span>
-                </div>
-                <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Withdraw Tokens</h1>
-              </div>
-              <div className="flex items-center gap-3">
-                <ClientOnly>
-                  <DarkModeToggle />
-                </ClientOnly>
-                <ClientOnly>
-                  <ConnectButton />
-                </ClientOnly>
-              </div>
-            </div>
-          </div>
-        </header>
+      <div className="ml-0 lg:ml-72 transition-all duration-300 min-h-screen space-background">
 
         <ClientOnly>
-          <div className="p-6">
-            <div className="max-w-4xl mx-auto space-y-6">
+          <div className="px-4 py-8 lg:px-8">
+            <div className="max-w-5xl mx-auto space-y-6">
               
+              {/* Page Header */}
+              <div className="mb-8">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="h-10 w-10 bg-[#4fc3f7] flex items-center justify-center shadow-lg shadow-[#4fc3f7]/30">
+                    <ArrowUpCircle className="w-6 h-6 text-white" />
+                  </div>
+                  <h1 className="text-3xl font-bold text-white">Withdraw Tokens</h1>
+                </div>
+                <p className="text-gray-300 ml-13">
+                  Withdraw your tokens from closed channels. Merkle proofs are generated automatically.
+                </p>
+              </div>
+
               {/* Info Banner */}
-              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
+              <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-4 mb-6">
               <div className="flex items-start">
                 <div className="flex-shrink-0">
-                  <span className="text-blue-400 text-xl">ℹ️</span>
+                  <Info className="w-5 h-5 text-[#4fc3f7]" />
                 </div>
                 <div className="ml-3">
-                  <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                  <h3 className="text-sm font-medium text-[#4fc3f7]">
                     Simplified Withdrawal Process
                   </h3>
-                  <div className="mt-2 text-sm text-blue-700 dark:text-blue-300">
+                  <div className="mt-2 text-sm text-gray-300">
                     <ul className="list-disc list-inside space-y-1">
                       <li>Channel must be in "Closed" state</li>
                       <li>You must have participated in the channel</li>
@@ -649,8 +641,8 @@ export default function WithdrawTokensPage() {
 
             {/* Withdrawable Channels */}
             {withdrawableChannels.length > 0 ? (
-              <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+              <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 shadow-lg shadow-[#4fc3f7]/20">
+                <h2 className="text-lg font-semibold text-white mb-4">
                   Available Withdrawals
                 </h2>
                 
@@ -658,10 +650,10 @@ export default function WithdrawTokensPage() {
                   {withdrawableChannels.map((channel) => (
                     <div
                       key={channel.channelId.toString()}
-                      className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                      className={`border p-4 cursor-pointer transition-colors ${
                         selectedChannel?.channelId === channel.channelId
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                          : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+                          ? 'border-[#4fc3f7] bg-[#4fc3f7]/10'
+                          : 'border-[#4fc3f7]/30 hover:border-[#4fc3f7]'
                       } ${
                         channel.hasWithdrawn
                           ? 'opacity-50 cursor-not-allowed'
@@ -672,38 +664,38 @@ export default function WithdrawTokensPage() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
                           <div className="flex-shrink-0">
-                            <div className={`w-3 h-3 rounded-full ${
+                            <div className={`w-3 h-3 ${
                               channel.hasWithdrawn 
-                                ? 'bg-gray-400' 
+                                ? 'bg-gray-500' 
                                 : selectedChannel?.channelId === channel.channelId 
-                                ? 'bg-blue-500' 
+                                ? 'bg-[#4fc3f7]' 
                                 : 'bg-green-500'
                             }`} />
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-medium text-gray-900 dark:text-gray-100">
+                              <span className="font-medium text-white">
                                 Channel #{channel.channelId.toString()}
                               </span>
-                              <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-full">
+                              <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/50">
                                 Closed
                               </span>
                               {channel.hasWithdrawn && (
-                                <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full">
+                                <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-gray-500/20 text-gray-400 border border-gray-500/50">
                                   Already Withdrawn
                                 </span>
                               )}
                             </div>
-                            <div className="text-sm text-gray-600 dark:text-gray-400">
+                            <div className="text-sm text-gray-400">
                               Target: {channel.isETH ? 'ETH (Native)' : channel.targetContract}
                             </div>
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="font-medium text-gray-900 dark:text-gray-100">
+                          <div className="font-medium text-white">
                             {formatUnits(channel.userDeposit, channel.decimals)} {channel.symbol}
                           </div>
-                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                          <div className="text-sm text-gray-400">
                             Your Deposit
                           </div>
                         </div>
@@ -714,14 +706,14 @@ export default function WithdrawTokensPage() {
 
                 {/* Withdraw Form */}
                 {selectedChannel && !selectedChannel.hasWithdrawn && (
-                  <div className="border-t border-gray-200 dark:border-gray-600 pt-6">
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">
+                  <div className="border-t border-[#4fc3f7]/30 pt-6">
+                    <h3 className="text-lg font-medium text-white mb-4">
                       Withdrawal Details for Channel #{selectedChannel.channelId.toString()}
                     </h3>
                     
                     <div className="space-y-6">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
                           Claimed Balance
                         </label>
                         <input
@@ -731,9 +723,9 @@ export default function WithdrawTokensPage() {
                           value={claimedBalance}
                           onChange={(e) => setClaimedBalance(e.target.value)}
                           placeholder="0.0"
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
                         />
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        <p className="text-sm text-gray-400 mt-1">
                           Amount you're claiming to withdraw ({selectedChannel.symbol})
                         </p>
                       </div>
@@ -743,7 +735,7 @@ export default function WithdrawTokensPage() {
                         <button
                           onClick={handleGenerateProof}
                           disabled={!claimedBalance || isGeneratingProof}
-                          className="px-6 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200 flex items-center gap-2"
+                          className="px-6 py-2 bg-[#4fc3f7] text-white hover:bg-[#029bee] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] transition-colors duration-200 flex items-center gap-2"
                         >
                           {isGeneratingProof && <LoadingSpinner size="sm" />}
                           {isGeneratingProof ? 'Generating Proof...' : 'Generate Withdrawal Proof'}
@@ -752,14 +744,14 @@ export default function WithdrawTokensPage() {
 
                       {/* Proof Error Display */}
                       {proofError && (
-                        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
+                        <div className="p-4 bg-red-500/10 border border-red-500/50">
                           <div className="flex items-start">
-                            <span className="text-red-400 text-xl mr-3">⚠️</span>
+                            <AlertCircle className="w-5 h-5 text-red-400 mr-3 flex-shrink-0" />
                             <div>
-                              <h4 className="font-medium text-red-800 dark:text-red-200">
+                              <h4 className="font-medium text-red-400">
                                 Proof Generation Failed
                               </h4>
-                              <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                              <p className="text-sm text-red-300/90 mt-1">
                                 {proofError}
                               </p>
                             </div>
@@ -769,14 +761,14 @@ export default function WithdrawTokensPage() {
 
                       {/* Generated Proof Display */}
                       {generatedProof && (
-                        <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg">
+                        <div className="p-4 bg-green-500/10 border border-green-500/50">
                           <div className="flex items-start">
-                            <span className="text-green-400 text-xl mr-3">✅</span>
+                            <CheckCircle2 className="w-5 h-5 text-green-400 mr-3 flex-shrink-0" />
                             <div className="flex-1">
-                              <h4 className="font-medium text-green-800 dark:text-green-200">
+                              <h4 className="font-medium text-green-400">
                                 Withdrawal Proof Generated Successfully!
                               </h4>
-                              <div className="text-sm text-green-700 dark:text-green-300 mt-2 space-y-1">
+                              <div className="text-sm text-green-300/90 mt-2 space-y-1">
                                 <p><strong>Leaf Index:</strong> {generatedProof.leafIndex}</p>
                                 <p><strong>Claimed Balance:</strong> {formatUnits(BigInt(generatedProof.claimedBalance), selectedChannel.decimals)} {selectedChannel.symbol}</p>
                                 <p><strong>Merkle Proof Elements:</strong> {generatedProof.merkleProof.length}</p>
@@ -791,7 +783,7 @@ export default function WithdrawTokensPage() {
                         <button
                           onClick={handleWithdraw}
                           disabled={!isFormValid || isWithdrawing || isWaitingWithdraw || isSubmitting}
-                          className="px-6 py-2 bg-green-600 dark:bg-green-700 text-white rounded-md hover:bg-green-700 dark:hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors duration-200 flex items-center gap-2"
+                          className="px-6 py-2 bg-[#4fc3f7] text-white hover:bg-[#029bee] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] transition-colors duration-200 flex items-center gap-2"
                         >
                           {(isWithdrawing || isWaitingWithdraw || isSubmitting) && (
                             <LoadingSpinner size="sm" />
@@ -807,14 +799,14 @@ export default function WithdrawTokensPage() {
                     </div>
 
                     {withdrawSuccess && (
-                      <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg">
+                      <div className="mt-4 p-4 bg-green-500/10 border border-green-500/50">
                         <div className="flex items-start">
-                          <span className="text-green-400 text-xl mr-3">✅</span>
+                          <CheckCircle2 className="w-5 h-5 text-green-400 mr-3 flex-shrink-0" />
                           <div>
-                            <h4 className="font-medium text-green-800 dark:text-green-200">
+                            <h4 className="font-medium text-green-400">
                               Withdrawal Successful!
                             </h4>
-                            <p className="text-sm text-green-700 dark:text-green-300 mt-1">
+                            <p className="text-sm text-green-300/90 mt-1">
                               Your tokens have been successfully withdrawn from Channel #{selectedChannel.channelId.toString()}.
                             </p>
                           </div>
@@ -825,15 +817,17 @@ export default function WithdrawTokensPage() {
                 )}
               </div>
             ) : (
-              <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-8 text-center">
-                <div className="text-gray-400 text-6xl mb-4">💳</div>
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 text-center shadow-lg shadow-[#4fc3f7]/20">
+                <div className="h-16 w-16 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 flex items-center justify-center mx-auto mb-4">
+                  <Inbox className="w-8 h-8 text-[#4fc3f7]" />
+                </div>
+                <h2 className="text-xl font-semibold text-white mb-2">
                   No Withdrawals Available
                 </h2>
-                <p className="text-gray-600 dark:text-gray-400 mb-6">
+                <p className="text-gray-300 mb-6">
                   You don't have any tokens to withdraw from closed channels at the moment.
                 </p>
-                <div className="text-sm text-gray-500 dark:text-gray-400">
+                <div className="text-sm text-gray-300">
                   <p>Withdrawals are only available when:</p>
                   <ul className="list-disc list-inside mt-2 space-y-1">
                     <li>You participated in a channel that has been closed</li>

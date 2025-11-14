@@ -18,7 +18,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI, ETH_TOKEN_ADDRESS, ERC20_ABI } from '@/lib/contracts';
 import { DepositFormData } from '@/lib/types';
 import { formatBalance, isValidAmount, parseInputAmount, isValidAddress } from '@/lib/utils';
-import { AlertCircle, Coins, ArrowDown } from 'lucide-react';
+import { AlertCircle, Coins, ArrowDown, CheckCircle } from 'lucide-react';
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -260,11 +260,14 @@ export function DepositModal({
           {/* Approval Status */}
           {needsApproval && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <div className="text-sm text-yellow-700 text-center">
+              <div className="text-sm text-yellow-700 text-center flex items-center justify-center gap-2">
                 {isApproving ? (
                   <span>Step 1/2: Approving token spending...</span>
                 ) : approvalSuccess ? (
-                  <span>✅ Token approved! Now deposit your tokens</span>
+                  <>
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                    <span>Token approved! Now deposit your tokens</span>
+                  </>
                 ) : (
                   <span>Step 1: Approve token spending first</span>
                 )}

@@ -109,11 +109,11 @@ export function Footer({
           </a>
         </div>
 
-        {showTestnetWarning && (
+        {/* {showTestnetWarning && (
           <div className="text-xs text-yellow-300 border border-yellow-500 bg-yellow-900/20 py-2 px-4 inline-block">
             <p>⚠️ Testnet Version</p>
           </div>
-        )}
+        )} */}
         
         <div className="text-xs text-gray-400 mt-6">
           <p>© 2025 Tokamak Network zk-EVM. All rights reserved.</p>

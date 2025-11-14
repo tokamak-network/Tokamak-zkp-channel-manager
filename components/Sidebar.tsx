@@ -8,6 +8,7 @@ import Image from 'next/image';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { ClientOnly } from '@/components/ClientOnly';
+import { NetworkDropdown } from '@/components/NetworkDropdown';
 import { Home, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Search, Settings, FileCheck, PenTool, XCircle, Trash2 } from 'lucide-react';
 
 interface SidebarProps {
@@ -199,48 +200,38 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
             <p className="text-xs text-[#4fc3f7] font-medium tracking-wide">ZK CHANNEL MANAGER</p>
           </div>
           
-          {/* Connect Wallet Button or Wallet Info */}
-          <div className="mt-6">
-            <ClientOnly>
-              {isConnected && address ? (
-                <div className="space-y-3">
-                  {/* Wallet Address Display */}
-                  <div className="bg-[#0a1930] border border-[#4fc3f7]/30 px-3 py-2">
-                    <div className="text-xs text-gray-400 mb-1">Connected Wallet</div>
-                    <div className="text-sm text-white font-mono flex items-center justify-between">
-                      <span>{address.slice(0, 6)}...{address.slice(-4)}</span>
-                      <button
-                        onClick={() => navigator.clipboard.writeText(address)}
-                        className="text-[#4fc3f7] hover:text-white transition-colors"
-                        title="Copy address"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
+                  {/* Connect Wallet Button or Wallet Info */}
+                  <div className="mt-6">
+                    <ClientOnly>
+                      {isConnected && address ? (
+                        <div className="space-y-3">
+                          {/* Wallet Address Display */}
+                          <div className="bg-[#0a1930] border border-[#4fc3f7]/30 px-3 py-2">
+                            <div className="text-xs text-gray-400 mb-1">Connected Wallet</div>
+                            <div className="text-sm text-white font-mono flex items-center justify-between">
+                              <span>{address.slice(0, 6)}...{address.slice(-4)}</span>
+                              <button
+                                onClick={() => navigator.clipboard.writeText(address)}
+                                className="text-[#4fc3f7] hover:text-white transition-colors"
+                                title="Copy address"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
 
-                  {/* Network Selection */}
-                  <div className="bg-[#0a1930] border border-[#4fc3f7]/30 px-3 py-2">
-                    <div className="text-xs text-gray-400 mb-1">Network</div>
-                    <select 
-                      className="w-full bg-transparent text-sm text-white font-medium focus:outline-none cursor-pointer"
-                      defaultValue="sepolia"
-                    >
-                      <option value="sepolia" className="bg-[#0a1930]">Sepolia Testnet</option>
-                      <option value="mainnet" className="bg-[#0a1930]">Ethereum Mainnet</option>
-                      <option value="goerli" className="bg-[#0a1930]">Goerli Testnet</option>
-                    </select>
+                          {/* Network Selection */}
+                          <NetworkDropdown />
+                        </div>
+                      ) : (
+                        <div className="flex justify-center">
+                          <ConnectButton />
+                        </div>
+                      )}
+                    </ClientOnly>
                   </div>
-                </div>
-              ) : (
-                <div className="flex justify-center">
-                  <ConnectButton />
-                </div>
-              )}
-            </ClientOnly>
-          </div>
         </div>
 
         {/* Navigation */}

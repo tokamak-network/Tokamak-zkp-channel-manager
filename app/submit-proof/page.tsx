@@ -5,11 +5,11 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useContractRead, useContractWrite, usePrepareContractWrite, useWaitForTransaction, useAccount, useContractReads } from 'wagmi';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
-import { DarkModeToggle } from '@/components/DarkModeToggle';
 import { MobileNavigation } from '@/components/MobileNavigation';
-import { MobileMenuButton } from '@/components/MobileMenuButton';
+import { Footer } from '@/components/Footer';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { FileText, Link, ShieldOff, CheckCircle2, Clock, AlertCircle, Users } from 'lucide-react';
 import { generateMPTLeavesFromToken, tokenToSmallestUnit, validateBalanceConservation } from '@/lib/mptHelper';
 import { computeFinalStateRoot } from '@/lib/merkleProofGenerator';
 import { ETH_TOKEN_ADDRESS } from '@/lib/contracts';
@@ -721,107 +721,99 @@ export default function SubmitProofPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
+    <div className="min-h-screen space-background">
       <ClientOnly>
         <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
       </ClientOnly>
-      
-      <div className={`flex-1 ml-0 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} flex flex-col min-h-screen transition-all duration-300`}>
-        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
-          <div className="px-4 py-4 lg:px-6">
-            <div className="flex items-center justify-between">
-              <div className="hidden lg:flex items-center gap-4">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-center">
-                  <span className="text-white text-sm font-bold">📋</span>
-                </div>
-                <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Submit Aggregated Proof</h1>
+
+      {/* Mobile Navigation Menu */}
+      <MobileNavigation 
+        showMobileMenu={showMobileMenu} 
+        setShowMobileMenu={setShowMobileMenu} 
+      />
+
+      <div className="ml-0 lg:ml-72 transition-all duration-300 min-h-screen">
+        <main className="px-4 py-8 lg:px-8">
+          {/* Page Header */}
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="h-10 w-10 bg-[#4fc3f7] flex items-center justify-center shadow-lg shadow-[#4fc3f7]/30">
+                <FileText className="w-6 h-6 text-white" />
               </div>
-              <div className="flex items-center gap-3">
-                <MobileMenuButton 
-                  showMobileMenu={showMobileMenu} 
-                  setShowMobileMenu={setShowMobileMenu} 
-                />
-                <ClientOnly>
-                  <DarkModeToggle />
-                </ClientOnly>
-                <ClientOnly>
-                  <ConnectButton />
-                </ClientOnly>
-              </div>
+              <h1 className="text-3xl font-bold text-white">Submit Aggregated Proof</h1>
             </div>
+            <p className="text-gray-300 ml-13">
+              Finalize your channel's off-chain computations and settle on-chain
+            </p>
           </div>
-        </header>
 
-        {/* Mobile Navigation Menu */}
-        <MobileNavigation 
-          showMobileMenu={showMobileMenu} 
-          setShowMobileMenu={setShowMobileMenu} 
-        />
-
-        <main className="flex-1 p-4 sm:p-6">
           {!isConnected ? (
-            <div className="text-center py-12">
-              <div className="h-16 w-16 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">🔗</span>
+            <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 text-center shadow-lg shadow-[#4fc3f7]/20">
+              <div className="h-16 w-16 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 flex items-center justify-center mx-auto mb-4">
+                <Link className="w-8 h-8 text-[#4fc3f7]" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Connect Your Wallet</h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <h3 className="text-xl font-semibold text-white mb-2">Connect Your Wallet</h3>
+              <p className="text-gray-300">
                 Please connect your wallet to submit aggregated proof
               </p>
             </div>
           ) : !hasAccess ? (
-            <div className="text-center py-12">
-              <div className="h-16 w-16 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">🚫</span>
+            <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 text-center shadow-lg shadow-[#4fc3f7]/20">
+              <div className="h-16 w-16 bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
+                <ShieldOff className="w-8 h-8 text-red-400" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Access Denied</h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-4">
+              <h3 className="text-xl font-semibold text-white mb-2">Access Denied</h3>
+              <p className="text-gray-300 mb-4">
                 This page is only accessible to channel leaders
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-500">
+              <p className="text-sm text-gray-400">
                 You need to be a channel leader to submit aggregated proofs
               </p>
             </div>
           ) : (
-            <div className="max-w-6xl mx-auto space-y-6">
+            <div className="space-y-6">
               {/* Channel Overview */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+              <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-6 shadow-lg shadow-[#4fc3f7]/20">
                 <div className="flex items-center gap-4 mb-6">
-                  <div className="h-12 w-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
-                    <span className="text-white text-xl">📋</span>
+                  <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center shadow-lg shadow-[#4fc3f7]/30">
+                    <FileText className="w-7 h-7 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Submit Aggregated Proof</h2>
-                    <p className="text-gray-600 dark:text-gray-400 mt-1">
-                      Finalize your channel's off-chain computations and settle on-chain
+                    <h2 className="text-2xl font-bold text-white">Channel Information</h2>
+                    <p className="text-gray-300 mt-1">
+                      Review your channel status before submitting proof
                     </p>
                   </div>
                 </div>
                 
                 {leaderChannel && (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-400">Channel ID</div>
-                      <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">#{leaderChannel.id}</div>
+                    <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 p-4">
+                      <div className="text-sm text-gray-400">Channel ID</div>
+                      <div className="text-lg font-semibold text-white">#{leaderChannel.id}</div>
                     </div>
-                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-400">Status</div>
-                      <div className={`text-lg font-semibold ${channelInfo ? getChannelStateColor(Number(channelInfo[1])) : 'text-gray-500 dark:text-gray-400'}`}>
+                    <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 p-4">
+                      <div className="text-sm text-gray-400">Status</div>
+                      <div className={`text-lg font-semibold ${channelInfo ? 'text-[#4fc3f7]' : 'text-gray-400'}`}>
                         {channelInfo ? getChannelStateDisplay(Number(channelInfo[1])) : 'Loading...'}
                       </div>
                     </div>
-                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-400">Participants</div>
-                      <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 p-4">
+                      <div className="text-sm text-gray-400">Participants</div>
+                      <div className="text-lg font-semibold text-white">
                         {channelParticipants ? channelParticipants.length : '...'}
                       </div>
                     </div>
-                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-400">Ready to Submit Signature</div>
-                      <div className={`text-lg font-semibold ${
-                        (channelInfo && Number(channelInfo[1]) === 4) || isChannelReadyToClose ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'
+                    <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 p-4">
+                      <div className="text-sm text-gray-400">Ready to Submit</div>
+                      <div className={`text-lg font-semibold flex items-center gap-2 ${
+                        (channelInfo && Number(channelInfo[1]) === 4) || isChannelReadyToClose ? 'text-green-400' : 'text-yellow-400'
                       }`}>
-                        {(channelInfo && Number(channelInfo[1]) === 4) || isChannelReadyToClose ? '✓ Yes' : '⏳ Not Yet'}
+                        {(channelInfo && Number(channelInfo[1]) === 4) || isChannelReadyToClose ? (
+                          <><CheckCircle2 className="w-5 h-5" /> Yes</>
+                        ) : (
+                          <><Clock className="w-5 h-5" /> Not Yet</>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -829,9 +821,9 @@ export default function SubmitProofPage() {
               </div>
               
               {/* Proof Submission Form */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-                <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                  <h4 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/20">
+                <div className="p-6 border-b border-[#4fc3f7]/30">
+                  <h4 className="text-xl font-semibold text-white mb-2">
                     Aggregated Proof Data (step 1)
                   </h4>
                 </div>
@@ -842,7 +834,7 @@ export default function SubmitProofPage() {
                     <div className="text-center">
                       <button
                         onClick={handleDownloadProofTemplate}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/20 transition-colors"
                       >
                         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -951,27 +943,27 @@ export default function SubmitProofPage() {
                       </h4>
                       <button
                         onClick={() => setShowFinalStateComputation(!showFinalStateComputation)}
-                        className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                        className="px-4 py-2 text-sm bg-[#4fc3f7] hover:bg-[#029bee] text-white rounded-lg transition-colors"
                       >
                         {showFinalStateComputation ? 'Hide' : 'Show'} Computation
                       </button>
                     </div>
                     
                     {showFinalStateComputation && (
-                      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-6">
+                      <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 p-6 mt-4">
                         <div className="mb-4">
-                          <div className="bg-blue-100 dark:bg-blue-800 p-3 rounded-lg mb-4">
-                            <div className="text-sm text-blue-900 dark:text-blue-100">
-                              <strong>Channel Info:</strong> Channel #{leaderChannel?.id ?? 'N/A'} • {tokenSymbol} ({tokenDecimals} decimals) • {participantCount} participants
+                          <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 p-3 mb-4">
+                            <div className="text-sm text-white">
+                              <strong className="text-[#4fc3f7]">Channel Info:</strong> Channel #{leaderChannel?.id ?? 'N/A'} • {tokenSymbol} ({tokenDecimals} decimals) • {participantCount} participants
                               {tokenAddress && (
-                                <div className="text-xs text-blue-700 dark:text-blue-300 mt-1 break-all">
+                                <div className="text-xs text-gray-300 mt-1 break-all">
                                   Token: {tokenAddress}
                                 </div>
                               )}
                             </div>
                           </div>
                           
-                          <p className="text-sm text-blue-800 dark:text-blue-200 mb-4">
+                          <p className="text-sm text-gray-300 mb-4">
                             Compute the final state root exactly as the contract does in initializeChannelState. 
                             This uses quaternary Merkle tree logic with participant L2 addresses and their final balances.
                           </p>
@@ -980,24 +972,24 @@ export default function SubmitProofPage() {
                         {/* Show fetched L2 addresses */}
                         {fetchedL2Addresses.length > 0 && (
                           <div className="mb-6">
-                            <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">
+                            <h5 className="text-sm font-semibold text-[#4fc3f7] mb-3">
                               Participant L2 Addresses {l2KeysError ? '(L1 Fallback)' : '(From Contract)'}
                             </h5>
-                            <div className="bg-blue-100 dark:bg-blue-800 p-3 rounded-lg">
+                            <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 p-3">
                               <div className="space-y-1 text-xs">
                                 {fetchedL2Addresses.map((l2Address, index) => (
-                                  <div key={index} className="flex items-center gap-2 text-blue-900 dark:text-blue-100">
+                                  <div key={index} className="flex items-center gap-2 text-white">
                                     <span className="w-20">Participant {index + 1}:</span>
                                     <span className="font-mono">{l2Address}</span>
                                     {l2KeysError && channelParticipants && l2Address === channelParticipants[index] && (
-                                      <span className="text-xs text-blue-600 dark:text-blue-300">(L1 fallback)</span>
+                                      <span className="text-xs text-gray-400">(L1 fallback)</span>
                                     )}
                                   </div>
                                 ))}
                               </div>
                               {l2KeysError && (
-                                <div className="mt-2 text-xs text-yellow-700 dark:text-yellow-300">
-                                  ⚠️ L2 public key fetch failed, using L1 addresses as fallback
+                                <div className="mt-2 text-xs text-yellow-300">
+                                  <AlertCircle className="w-3 h-3 inline" /> L2 public key fetch failed, using L1 addresses as fallback
                                 </div>
                               )}
                             </div>
@@ -1007,14 +999,14 @@ export default function SubmitProofPage() {
                         {/* Manual address input */}
                         {showManualAddressInput && fetchedL2Addresses.length === 0 && (
                           <div className="mb-6">
-                            <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">
+                            <h5 className="text-sm font-semibold text-[#4fc3f7] mb-3">
                               Manual Participant L2 Addresses
                             </h5>
                             <div className="space-y-3">
                               <textarea
                                 value={manualAddresses}
                                 onChange={(e) => setManualAddresses(e.target.value)}
-                                className="w-full h-24 p-3 text-xs font-mono border border-blue-300 dark:border-blue-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                                className="w-full h-24 p-3 text-xs font-mono border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
                                 placeholder="Enter participant addresses one per line, e.g.:&#10;0x1234...&#10;0x5678...&#10;0x9abc..."
                               />
                               <div className="flex gap-2">
@@ -1027,7 +1019,7 @@ export default function SubmitProofPage() {
                                     setFetchedL2Addresses(addresses);
                                     setShowManualAddressInput(false);
                                   }}
-                                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
+                                  className="px-3 py-1 bg-[#4fc3f7] hover:bg-[#029bee] text-white text-xs rounded transition-colors"
                                 >
                                   Use These Addresses
                                 </button>
@@ -1048,13 +1040,13 @@ export default function SubmitProofPage() {
                         <div className="grid grid-cols-1 gap-6">
                           {/* Participant Balances */}
                           <div>
-                            <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">
+                            <h5 className="text-sm font-semibold text-[#4fc3f7] mb-3">
                               Final Balances ({tokenSymbol})
                             </h5>
                             <div className="space-y-2">
                               {participantBalances.map((balance, index) => (
                                 <div key={index} className="flex items-center gap-2">
-                                  <span className="text-xs text-blue-700 dark:text-blue-300 w-20">
+                                  <span className="text-xs text-gray-300 w-20">
                                     Participant {index + 1}:
                                   </span>
                                   <input
@@ -1066,9 +1058,9 @@ export default function SubmitProofPage() {
                                       newBalances[index] = e.target.value;
                                       setParticipantBalances(newBalances);
                                     }}
-                                    className="flex-1 px-3 py-1 border border-blue-300 dark:border-blue-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                                    className="flex-1 px-3 py-1 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
                                   />
-                                  <span className="text-xs text-blue-700 dark:text-blue-300">{tokenSymbol}</span>
+                                  <span className="text-xs text-gray-300">{tokenSymbol}</span>
                                 </div>
                               ))}
                             </div>
@@ -1080,7 +1072,7 @@ export default function SubmitProofPage() {
                           <div className="space-y-2">
                             <button
                               onClick={handleComputeFinalStateRoot}
-                              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="px-4 py-2 bg-[#4fc3f7] hover:bg-[#029bee] text-white rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               disabled={fetchedL2Addresses.length === 0}
                             >
                               Compute Final State Root
@@ -1090,45 +1082,52 @@ export default function SubmitProofPage() {
                             {fetchedL2Addresses.length === 0 && (
                               <div className="text-xs">
                                 {!isConnected ? (
-                                  <div className="text-red-600 dark:text-red-400">
-                                    ⚠️ Please connect your wallet to submit proofs
+                                  <div className="text-red-400 flex items-start gap-1">
+                                    <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                                    <span>Please connect your wallet to submit proofs</span>
                                   </div>
                                 ) : !hasAccess ? (
-                                  <div className="text-red-600 dark:text-red-400">
-                                    ⚠️ Only channel leaders can submit proofs. You must be the leader of a channel to access this feature.
+                                  <div className="text-red-400 flex items-start gap-1">
+                                    <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                                    <span>Only channel leaders can submit proofs. You must be the leader of a channel to access this feature.</span>
                                   </div>
                                 ) : !leaderChannel ? (
-                                  <div className="text-orange-600 dark:text-orange-400">
-                                    ⏳ Loading your channel information...
+                                  <div className="text-orange-400 flex items-start gap-1">
+                                    <Clock className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                                    <span>Loading your channel information...</span>
                                   </div>
                                 ) : !channelParticipants ? (
-                                  <div className="text-orange-600 dark:text-orange-400">
-                                    ⏳ Loading channel participants...
+                                  <div className="text-orange-400 flex items-start gap-1">
+                                    <Clock className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                                    <span>Loading channel participants...</span>
                                   </div>
                                 ) : l2KeysLoading ? (
-                                  <div className="text-orange-600 dark:text-orange-400">
-                                    ⏳ Fetching L2 public keys from contract...
+                                  <div className="text-orange-400 flex items-start gap-1">
+                                    <Clock className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                                    <span>Fetching L2 public keys from contract...</span>
                                   </div>
                                 ) : l2KeysError ? (
                                   <div className="space-y-2">
-                                    <div className="text-yellow-600 dark:text-yellow-400">
-                                      ⚠️ L2 key fetch failed, using L1 addresses as fallback
+                                    <div className="text-yellow-400 flex items-start gap-1">
+                                      <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                                      <span>L2 key fetch failed, using L1 addresses as fallback</span>
                                     </div>
                                     <button
                                       onClick={() => setShowManualAddressInput(true)}
-                                      className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline"
+                                      className="text-xs text-[#4fc3f7] hover:text-[#029bee] underline"
                                     >
                                       Enter L2 addresses manually
                                     </button>
                                   </div>
                                 ) : (
                                   <div className="space-y-2">
-                                    <div className="text-orange-600 dark:text-orange-400">
-                                      ⏳ Processing L2 public keys...
+                                    <div className="text-orange-400 flex items-start gap-1">
+                                      <Clock className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                                      <span>Processing L2 public keys...</span>
                                     </div>
                                     <button
                                       onClick={() => setShowManualAddressInput(true)}
-                                      className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline"
+                                      className="text-xs text-[#4fc3f7] hover:text-[#029bee] underline"
                                     >
                                       Enter L2 addresses manually
                                     </button>
@@ -1158,26 +1157,26 @@ export default function SubmitProofPage() {
                         
                         {/* Balance Summary */}
                         {participantBalances.length > 0 && (
-                          <div className="mt-4 p-3 bg-blue-100 dark:bg-blue-800 rounded-lg">
-                            <div className="text-xs text-blue-700 dark:text-blue-300">
-                              <strong>Balance Total:</strong> {participantBalances.reduce((sum, bal) => sum + parseFloat(bal || '0'), 0).toFixed(6)} {tokenSymbol}
+                          <div className="mt-4 p-3 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30">
+                            <div className="text-xs text-gray-300">
+                              <strong className="text-[#4fc3f7]">Balance Total:</strong> {participantBalances.reduce((sum, bal) => sum + parseFloat(bal || '0'), 0).toFixed(6)} {tokenSymbol}
                             </div>
                           </div>
                         )}
                         
                         {/* Computed Final State Root */}
                         {computedFinalStateRoot && (
-                          <div className="mt-6 pt-4 border-t border-blue-200 dark:border-blue-700">
+                          <div className="mt-6 pt-4 border-t border-[#4fc3f7]/30">
                             <div className="flex items-center justify-between mb-3">
-                              <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200">
+                              <h5 className="text-sm font-semibold text-[#4fc3f7]">
                                 Computed Final State Root
                               </h5>
-                              <span className="text-xs text-green-600 dark:text-green-400">
-                                ✅ Computation complete
+                              <span className="text-xs text-green-400 flex items-center gap-1">
+                                <CheckCircle2 className="w-4 h-4" /> Computation complete
                               </span>
                             </div>
-                            <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border">
-                              <div className="text-sm font-mono text-gray-900 dark:text-gray-100 break-all">
+                            <div className="bg-[#0a1930] border border-[#4fc3f7]/30 p-3">
+                              <div className="text-sm font-mono text-white break-all">
                                 {computedFinalStateRoot}
                               </div>
                             </div>
@@ -1185,14 +1184,14 @@ export default function SubmitProofPage() {
                             {/* Computed Participant Roots */}
                             {participantRootsData.length > 0 && (
                               <div className="mt-4">
-                                <h6 className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-2">
+                                <h6 className="text-xs font-semibold text-[#4fc3f7] mb-2">
                                   Computed Participant Roots (Channel Root Sequence)
                                 </h6>
-                                <div className="bg-white dark:bg-gray-800 p-2 rounded border max-h-40 overflow-y-auto">
+                                <div className="bg-[#0a1930] border border-[#4fc3f7]/30 p-2 max-h-40 overflow-y-auto">
                                   {participantRootsData.map((root, index) => (
-                                    <div key={index} className="mb-2 text-xs break-all text-gray-700 dark:text-gray-300">
-                                      <div className="font-semibold mb-1">Participant {index + 1}:</div>
-                                      <div className="font-mono bg-gray-100 dark:bg-gray-700 p-2 rounded">{root}</div>
+                                    <div key={index} className="mb-2 text-xs break-all text-gray-300">
+                                      <div className="font-semibold mb-1 text-[#4fc3f7]">Participant {index + 1}:</div>
+                                      <div className="font-mono bg-[#4fc3f7]/10 border border-[#4fc3f7]/20 p-2">{root}</div>
                                     </div>
                                   ))}
                                 </div>
@@ -1201,12 +1200,12 @@ export default function SubmitProofPage() {
                             
                             {participantLeavesData.length > 0 && (
                               <div className="mt-4">
-                                <h6 className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-2">
+                                <h6 className="text-xs font-semibold text-[#4fc3f7] mb-2">
                                   Participant Leaves (Preview)
                                 </h6>
-                                <div className="bg-white dark:bg-gray-800 p-2 rounded border max-h-32 overflow-y-auto">
+                                <div className="bg-[#0a1930] border border-[#4fc3f7]/30 p-2 max-h-32 overflow-y-auto">
                                   {participantLeavesData.map((leaf, index) => (
-                                    <div key={index} className="mb-1 text-xs break-all text-gray-700 dark:text-gray-300">
+                                    <div key={index} className="mb-1 text-xs break-all text-gray-300">
                                       {index + 1}: {leaf.slice(0, 20)}...{leaf.slice(-10)}
                                     </div>
                                   ))}
@@ -1220,34 +1219,34 @@ export default function SubmitProofPage() {
                   </div>
                   
                   {/* MPT Leaves Generator */}
-                  <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                  <div className="border-t border-[#4fc3f7]/30 pt-6">
                     <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                      <h4 className="text-lg font-semibold text-white">
                         MPT Leaves Computation (step 3)
                       </h4>
                       <button
                         onClick={() => setShowMPTGenerator(!showMPTGenerator)}
-                        className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                        className="px-4 py-2 text-sm bg-[#4fc3f7] hover:bg-[#029bee] text-white transition-colors"
                       >
                         {showMPTGenerator ? 'Hide' : 'Show'} Computation
                       </button>
                     </div>
                     
                     {showMPTGenerator && (
-                      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-6">
+                      <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 p-6 mt-4">
                         <div className="mb-4">
-                          <div className="bg-blue-100 dark:bg-blue-800 p-3 rounded-lg mb-4">
-                            <div className="text-sm text-blue-900 dark:text-blue-100">
+                          <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 p-3 rounded-lg mb-4">
+                            <div className="text-sm text-white">
                               <strong>Channel Info:</strong> {tokenSymbol} ({tokenDecimals} decimals) • {participantCount} participants
                               {tokenAddress && (
-                                <div className="text-xs text-blue-700 dark:text-blue-300 mt-1 break-all">
+                                <div className="text-xs text-gray-300 mt-1 break-all">
                                   Token: {tokenAddress}
                                 </div>
                               )}
                             </div>
                           </div>
                           
-                          <p className="text-sm text-blue-800 dark:text-blue-200 mb-4">
+                          <p className="text-sm text-[#4fc3f7] mb-4">
                             Generate MPT leaves that match your channel's current state to avoid "Initial balance mismatch" errors. 
                             Download the generated leaves as a JSON file to use in your proof data.
                           </p>
@@ -1256,13 +1255,13 @@ export default function SubmitProofPage() {
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                           {/* Initial Balances */}
                           <div>
-                            <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">
+                            <h5 className="text-sm font-semibold text-[#4fc3f7] mb-3">
                               Initial Balances ({tokenSymbol})
                             </h5>
                             <div className="space-y-2">
                               {initialBalances.map((balance, index) => (
                                 <div key={index} className="flex items-center gap-2">
-                                  <span className="text-xs text-blue-700 dark:text-blue-300 w-20">
+                                  <span className="text-xs text-gray-300 w-20">
                                     Participant {index + 1}:
                                   </span>
                                   <input
@@ -1274,9 +1273,9 @@ export default function SubmitProofPage() {
                                       newBalances[index] = e.target.value;
                                       setInitialBalances(newBalances);
                                     }}
-                                    className="flex-1 px-3 py-1 border border-blue-300 dark:border-blue-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                                    className="flex-1 px-3 py-1 border border-[#4fc3f7]/50 rounded text-sm bg-[#0a1930] text-white"
                                   />
-                                  <span className="text-xs text-blue-700 dark:text-blue-300">{tokenSymbol}</span>
+                                  <span className="text-xs text-gray-300">{tokenSymbol}</span>
                                 </div>
                               ))}
                             </div>
@@ -1284,13 +1283,13 @@ export default function SubmitProofPage() {
                           
                           {/* Final Balances */}
                           <div>
-                            <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">
+                            <h5 className="text-sm font-semibold text-[#4fc3f7] mb-3">
                               Final Balances ({tokenSymbol})
                             </h5>
                             <div className="space-y-2">
                               {finalBalances.map((balance, index) => (
                                 <div key={index} className="flex items-center gap-2">
-                                  <span className="text-xs text-blue-700 dark:text-blue-300 w-20">
+                                  <span className="text-xs text-gray-300 w-20">
                                     Participant {index + 1}:
                                   </span>
                                   <input
@@ -1302,9 +1301,9 @@ export default function SubmitProofPage() {
                                       newBalances[index] = e.target.value;
                                       setFinalBalances(newBalances);
                                     }}
-                                    className="flex-1 px-3 py-1 border border-blue-300 dark:border-blue-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                                    className="flex-1 px-3 py-1 border border-[#4fc3f7]/50 rounded text-sm bg-[#0a1930] text-white"
                                   />
-                                  <span className="text-xs text-blue-700 dark:text-blue-300">{tokenSymbol}</span>
+                                  <span className="text-xs text-gray-300">{tokenSymbol}</span>
                                 </div>
                               ))}
                             </div>
@@ -1313,10 +1312,10 @@ export default function SubmitProofPage() {
                         
                         {/* Generate Buttons and Balance Summary */}
                         {initialBalances.length > 0 && (
-                          <div className="text-xs text-blue-700 dark:text-blue-300 mb-4">
+                          <div className="text-xs text-gray-300 mb-4">
                             <strong>Balance Totals:</strong> Initial: {initialBalances.reduce((sum, bal) => sum + parseFloat(bal || '0'), 0).toFixed(6)} {tokenSymbol} • Final: {finalBalances.reduce((sum, bal) => sum + parseFloat(bal || '0'), 0).toFixed(6)} {tokenSymbol}
                             {Math.abs(initialBalances.reduce((sum, bal) => sum + parseFloat(bal || '0'), 0) - finalBalances.reduce((sum, bal) => sum + parseFloat(bal || '0'), 0)) > 0.000001 && (
-                              <span className="text-red-600 dark:text-red-400 ml-2">⚠ Totals don't match!</span>
+                              <span className="text-red-400 ml-2 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Totals don't match!</span>
                             )}
                           </div>
                         )}
@@ -1324,7 +1323,7 @@ export default function SubmitProofPage() {
                         <div className="flex flex-wrap gap-2 mb-4">
                           <button
                             onClick={handleGenerateMPTLeaves}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-4 py-2 bg-[#4fc3f7] hover:bg-[#029bee] text-white rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             disabled={initialBalances.length === 0}
                           >
                             Generate MPT Leaves
@@ -1332,7 +1331,7 @@ export default function SubmitProofPage() {
                           {generatedInitialMPTLeaves.length > 0 && (
                             <button
                               onClick={handleDownloadMPTLeaves}
-                              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+                              className="px-4 py-2 bg-[#4fc3f7] hover:bg-[#029bee] text-white text-sm transition-colors flex items-center gap-2"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -1346,16 +1345,16 @@ export default function SubmitProofPage() {
                         {generatedInitialMPTLeaves.length > 0 && (
                           <div className="mt-6 pt-4 border-t border-blue-200 dark:border-blue-700">
                             <div className="flex items-center justify-between mb-3">
-                              <h5 className="text-sm font-semibold text-blue-800 dark:text-blue-200">
+                              <h5 className="text-sm font-semibold text-[#4fc3f7]">
                                 Generated MPT Leaves Preview
                               </h5>
                               <span className="text-xs text-green-600 dark:text-green-400">
-                                ✅ Ready to download
+<CheckCircle2 className="w-4 h-4 inline" /> Ready to download
                               </span>
                             </div>
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
                               <div>
-                                <div className="text-blue-700 dark:text-blue-300 mb-2">Initial MPT Leaves:</div>
+                                <div className="text-gray-300 mb-2">Initial MPT Leaves:</div>
                                 <div className="bg-white dark:bg-gray-800 p-2 rounded border max-h-32 overflow-y-auto">
                                   {generatedInitialMPTLeaves.map((leaf, index) => (
                                     <div key={index} className="mb-1 break-all text-gray-700 dark:text-gray-300">
@@ -1365,7 +1364,7 @@ export default function SubmitProofPage() {
                                 </div>
                               </div>
                               <div>
-                                <div className="text-blue-700 dark:text-blue-300 mb-2">Final MPT Leaves:</div>
+                                <div className="text-gray-300 mb-2">Final MPT Leaves:</div>
                                 <div className="bg-white dark:bg-gray-800 p-2 rounded border max-h-32 overflow-y-auto">
                                   {generatedFinalMPTLeaves.map((leaf, index) => (
                                     <div key={index} className="mb-1 break-all text-gray-700 dark:text-gray-300">
@@ -1382,65 +1381,80 @@ export default function SubmitProofPage() {
                   </div>
                   
                   {/* Submit Button */}
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 pt-6 border-t border-gray-200 dark:border-gray-700">
+                  <div className="pt-6 border-t border-[#4fc3f7]/30">
+                    {/* Status Messages */}
+                    {!isFormValid && (
+                      <div className="mb-4 p-4 bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
+                        <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-amber-300">
+                          <strong className="block mb-1">Missing Required Data</strong>
+                          Please provide all required data: Upload a JSON file with proof entries and use the computation sections to generate missing data (Final State Root, MPT Leaves, or Participant Roots)
+                        </div>
+                      </div>
+                    )}
+                    
+                    {isFormValid && !isChannelStateValid && channelInfo && (
+                      <div className="mb-4 p-4 bg-red-500/10 border border-red-500/30 flex items-start gap-3">
+                        <ShieldOff className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-red-300">
+                          <strong className="block mb-1">Invalid Channel State</strong>
+                          Channel must be in "Open" or "Active" state to submit proofs. Current state: {getChannelStateDisplay(Number(channelInfo[1]))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {isSuccess && (
+                      <div className="mb-4 p-4 bg-green-500/10 border border-green-500/30 flex items-start gap-3">
+                        <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-green-300">
+                          <strong className="block mb-1">Success!</strong>
+                          Proof submitted successfully!
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Submit Button - Full Width */}
                     <button
                       onClick={handleSubmit}
                       disabled={!canSubmit}
-                      className={`px-8 py-3 rounded-lg font-semibold transition-all ${
+                      className={`w-full px-8 py-4 font-semibold text-lg transition-all ${
                         canSubmit
-                          ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105'
-                          : 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                          ? 'bg-[#4fc3f7] hover:bg-[#029bee] text-white shadow-lg shadow-[#4fc3f7]/30 hover:shadow-xl hover:shadow-[#4fc3f7]/50'
+                          : 'bg-gray-600 text-gray-400 cursor-not-allowed'
                       }`}
                     >
                       {isLoading || isTransactionLoading ? (
-                        <div className="flex items-center gap-2">
-                          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                          <span>Submitting...</span>
+                        <div className="flex items-center justify-center gap-3">
+                          <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                          <span>Submitting Proof...</span>
                         </div>
                       ) : (
                         'Submit Aggregated Proof'
                       )}
                     </button>
-                    
-                    {!isFormValid && (
-                      <div className="text-sm text-amber-600 dark:text-amber-400">
-                        ⚠️ Please provide all required data: Upload a JSON file with proof entries and use the computation sections to generate missing data (Final State Root, MPT Leaves, or Participant Roots)
-                      </div>
-                    )}
-                    
-                    {isFormValid && !isChannelStateValid && channelInfo && (
-                      <div className="text-sm text-red-600 dark:text-red-400">
-                        🚫 Channel must be in "Open" or "Active" state to submit proofs. Current state: {getChannelStateDisplay(Number(channelInfo[1]))}
-                      </div>
-                    )}
-                    
-                    {isSuccess && (
-                      <div className="text-sm text-green-600 dark:text-green-400">
-                        ✅ Proof submitted successfully!
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
               
               {/* Information Panel */}
               {channelInfo && channelTimeoutInfo && (
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-800 p-6">
-                  <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-4">
-                    📊 Off-Chain Computation Summary
+                <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7]/50 p-6 shadow-lg shadow-[#4fc3f7]/10">
+                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-[#4fc3f7]" />
+                    Off-Chain Computation Summary
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     <div>
-                      <div className="text-blue-700 dark:text-blue-300 font-medium">Channel Information</div>
-                      <div className="text-blue-600 dark:text-blue-400 mt-1">
+                      <div className="text-[#4fc3f7] font-medium">Channel Information</div>
+                      <div className="text-gray-300 mt-1">
                         • Target Contract: {channelInfo[0]}<br/>
                         • Initial State Root: {channelInfo[3]}<br/>
                         • Participant Count: {channelInfo[2]?.toString()}
                       </div>
                     </div>
                     <div>
-                      <div className="text-blue-700 dark:text-blue-300 font-medium">Timeline</div>
-                      <div className="text-blue-600 dark:text-blue-400 mt-1">
+                      <div className="text-[#4fc3f7] font-medium">Timeline</div>
+                      <div className="text-gray-300 mt-1">
                         • Channel Opened: {channelTimeoutInfo && channelTimeoutInfo[0] ? new Date(Number(channelTimeoutInfo[0]) * 1000).toLocaleDateString() : 'N/A'}<br/>
                         • Timeout Period: {channelTimeoutInfo && channelTimeoutInfo[1] ? `${Number(channelTimeoutInfo[1])} seconds` : 'N/A'}
                       </div>
@@ -1453,57 +1467,14 @@ export default function SubmitProofPage() {
         </main>
         
         {isSuccess && (
-          <div className="fixed bottom-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg">
-            ✅ Proof submitted successfully!
+          <div className="fixed bottom-4 right-4 bg-green-600 text-white px-6 py-3 shadow-lg flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5" />
+            Proof submitted successfully!
           </div>
         )}
 
         {/* Footer */}
-        <footer className="mt-auto bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-6 py-8">
-          <div className="max-w-6xl mx-auto">
-            <div className="flex flex-wrap justify-center gap-6 mb-6">
-              <a href="https://x.com/Tokamak_Network" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                </svg>
-                <span className="font-medium">X (Twitter)</span>
-              </a>
-              <a href="https://www.tokamak.network/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                </svg>
-                <span className="font-medium">Website</span>
-              </a>
-              <a href="https://medium.com/tokamak-network" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M13.54 12a6.8 6.8 0 01-6.77 6.82A6.8 6.8 0 010 12a6.8 6.8 0 016.77-6.82A6.8 6.8 0 0113.54 12zM20.96 12c0 3.54-1.51 6.42-3.38 6.42-1.87 0-3.39-2.88-3.39-6.42s1.52-6.42 3.39-6.42 3.38 2.88 3.38 6.42M24 12c0 3.17-.53 5.75-1.19 5.75-.66 0-1.19-2.58-1.19-5.75s.53-5.75 1.19-5.75C23.47 6.25 24 8.83 24 12z"/>
-                </svg>
-                <span className="font-medium">Medium</span>
-              </a>
-              <a href="https://discord.gg/J4chV2zuAK" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515a.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0a12.64 12.64 0 0 0-.617-1.25a.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057a19.9 19.9 0 0 0 5.993 3.03a.078.078 0 0 0 .084-.028a14.09 14.09 0 0 0 1.226-1.994a.076.076 0 0 0-.041-.106a13.107 13.107 0 0 1-1.872-.892a.077.077 0 0 1-.008-.128a10.2 10.2 0 0 0 .372-.292a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127a12.299 12.299 0 0 1-1.873.892a.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028a19.839 19.839 0 0 0 6.002-3.03a.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419c0-1.333.956-2.419 2.157-2.419c1.21 0 2.176 1.096 2.157 2.42c0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419c0-1.333.955-2.419 2.157-2.419c1.21 0 2.176 1.096 2.157 2.42c0 1.333-.946 2.418-2.157 2.418z"/>
-                </svg>
-                <span className="font-medium">Discord</span>
-              </a>
-              <a href="https://t.me/tokamak_network" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
-                </svg>
-                <span className="font-medium">Telegram</span>
-              </a>
-              <a href="https://www.linkedin.com/company/tokamaknetwork/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-                </svg>
-                <span className="font-medium">LinkedIn</span>
-              </a>
-            </div>
-            <div className="text-center text-sm text-gray-500 dark:text-gray-400">
-              <p>&copy; 2025 Tokamak Network. All rights reserved.</p>
-            </div>
-          </div>
-        </footer>
+        <Footer className="mt-auto" />
       </div>
     </div>
   );

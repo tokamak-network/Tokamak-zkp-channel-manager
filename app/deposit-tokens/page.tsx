@@ -6,10 +6,10 @@ import { parseUnits, formatUnits, isAddress } from 'viem';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
-import { DarkModeToggle } from '@/components/DarkModeToggle';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { MobileMenuButton } from '@/components/MobileMenuButton';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { ArrowDownCircle, Clock, Inbox, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function DepositTokensPage() {
   const { address, isConnected } = useAccount();
@@ -942,72 +942,53 @@ export default function DepositTokensPage() {
         <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
       </ClientOnly>
 
+      {/* Mobile Navigation Menu */}
+      <MobileNavigation 
+        showMobileMenu={showMobileMenu} 
+        setShowMobileMenu={setShowMobileMenu} 
+      />
+
       {/* Main Content Area */}
-      <div className={`ml-0 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
-        {/* Header */}
-        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
-          <div className="px-4 py-4 lg:px-6">
-            <div className="flex items-center justify-between">
-              <div className="hidden lg:flex items-center gap-4">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-center">
-                  <span className="text-white text-sm font-bold">↓</span>
-                </div>
-                <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Deposit Tokens</h1>
-              </div>
-              <div className="flex items-center gap-3">
-                <MobileMenuButton 
-                  showMobileMenu={showMobileMenu} 
-                  setShowMobileMenu={setShowMobileMenu} 
-                />
-                <ClientOnly>
-                  <DarkModeToggle />
-                </ClientOnly>
-                <ClientOnly>
-                  <ConnectButton />
-                </ClientOnly>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Mobile Navigation Menu */}
-        <MobileNavigation 
-          showMobileMenu={showMobileMenu} 
-          setShowMobileMenu={setShowMobileMenu} 
-        />
-
+      <div className="ml-0 lg:ml-72 transition-all duration-300 min-h-screen space-background">
         {/* Main Content */}
-        <main className="px-4 py-8 lg:px-6">
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6 transition-colors duration-300">
-              <div className="mb-6">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Available Channels for Deposit</h2>
-                <p className="text-gray-600 dark:text-gray-300">
-                  You can only deposit tokens into channels where you're a participant and the channel is in an initialized state.
-                </p>
+        <main className="px-4 py-8 lg:px-8">
+          <div className="max-w-5xl mx-auto">
+            {/* Page Header */}
+            <div className="mb-8">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="h-10 w-10 bg-[#4fc3f7] flex items-center justify-center shadow-lg shadow-[#4fc3f7]/30">
+                  <ArrowDownCircle className="w-6 h-6 text-white" />
+                </div>
+                <h1 className="text-3xl font-bold text-white">Deposit Tokens</h1>
               </div>
+              <p className="text-gray-300 ml-13">
+                You can only deposit tokens into channels where you're a participant and the channel is in an initialized state.
+              </p>
+            </div>
+
+            <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 mb-6 shadow-lg shadow-[#4fc3f7]/20">
 
               <ClientOnly>
                 {!isMounted ? (
                   <div className="text-center py-12">
-                    <div className="h-16 w-16 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
-                      <span className="text-2xl">⏳</span>
+                    <div className="h-16 w-16 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 flex items-center justify-center mx-auto mb-4">
+                      <Clock className="w-8 h-8 text-[#4fc3f7] animate-pulse" />
                     </div>
-                    <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Loading...</h3>
-                    <p className="text-gray-600 dark:text-gray-400">Fetching channel information...</p>
+                    <h3 className="text-xl font-semibold text-white mb-2">Loading...</h3>
+                    <p className="text-gray-300">Fetching channel information...</p>
                   </div>
                 ) : availableChannels.length === 0 ? (
                 <div className="text-center py-12">
-                  <div className="h-16 w-16 bg-yellow-100 dark:bg-yellow-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <span className="text-3xl">📭</span>
+                  <div className="h-16 w-16 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 flex items-center justify-center mx-auto mb-4">
+                    <Inbox className="w-8 h-8 text-[#4fc3f7]" />
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">No Channels Available</h3>
-                  <p className="text-gray-600 dark:text-gray-300 mb-6 max-w-md mx-auto">
+                  <h3 className="text-xl font-semibold text-white mb-4">No Channels Available</h3>
+                  <p className="text-gray-300 mb-6 max-w-md mx-auto">
                     You're not participating in any initialized channels, or your channels are not ready for deposits yet.
                   </p>
-                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4 max-w-md mx-auto transition-colors duration-300">
-                    <h4 className="font-semibold text-blue-900 dark:text-blue-300 mb-2">To deposit tokens, you need:</h4>
-                    <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1 text-left">
+                  <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-4 max-w-md mx-auto">
+                    <h4 className="font-semibold text-[#4fc3f7] mb-2">To deposit tokens, you need:</h4>
+                    <ul className="text-sm text-gray-300 space-y-1 text-left">
                       <li>• To be a participant in a channel</li>
                       <li>• The channel must be in "Initialized" state</li>
                       <li>• Channel leader must initialize the channel first</li>
@@ -1017,44 +998,47 @@ export default function DepositTokensPage() {
               ) : (
                 <div className="space-y-4">
                   {availableChannels.map((channel) => (
-                    <div key={channel.channelId.toString()} className="border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700/50 rounded-lg p-6 hover:shadow-md transition-all duration-300">
+                    <div key={channel.channelId.toString()} className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-6 hover:border-[#4fc3f7] transition-all duration-300">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
-                            <span className="text-blue-600 dark:text-blue-400 font-semibold">#{channel.channelId.toString()}</span>
+                          <div className="h-10 w-10 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 flex items-center justify-center">
+                            <span className="text-[#4fc3f7] font-semibold">#{channel.channelId.toString()}</span>
                           </div>
                           <div>
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Channel {channel.channelId.toString()}</h3>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">Ready for deposits</p>
+                            <h3 className="text-lg font-semibold text-white">Channel {channel.channelId.toString()}</h3>
+                            <p className="text-sm text-gray-400 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Ready for deposits
+                            </p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm text-gray-600 dark:text-gray-400">Your Deposits</p>
-                          <p className="font-medium text-gray-900 dark:text-gray-100">
+                          <p className="text-sm text-gray-400">Your Deposits</p>
+                          <p className="font-medium text-white">
                             {formatUnits(channel.userDeposit || BigInt(0), getTokenDecimals(channel))} {channel.symbol}
                           </p>
                         </div>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm mb-4">
                         <div>
-                          <span className="text-gray-600 dark:text-gray-400">Target Contract:</span>
-                          <p className="font-mono text-xs break-all text-gray-900 dark:text-gray-100">
+                          <span className="text-gray-400">Target Contract:</span>
+                          <p className="font-mono text-xs break-all text-gray-300">
                             {channel.isETH ? 'ETH (Native)' : channel.targetContract}
                           </p>
                         </div>
                         <div>
-                          <span className="text-gray-600 dark:text-gray-400">State:</span>
-                          <span className="ml-2 px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 rounded text-xs font-medium">
+                          <span className="text-gray-400">State:</span>
+                          <span className="ml-2 px-2 py-1 bg-green-500/20 text-green-400 border border-green-500/50 text-xs font-medium">
                             Initialized
                           </span>
                         </div>
                       </div>
 
                       {/* Deposit Section */}
-                      <div className="border-t border-gray-200 dark:border-gray-600 pt-4">
+                      <div className="border-t border-[#4fc3f7]/30 pt-4">
                         <div className="flex items-end gap-3">
                           <div className="flex-1">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            <label className="block text-sm font-medium text-gray-300 mb-1">
                               Amount to Deposit
                             </label>
                             <div className="relative">
@@ -1091,14 +1075,14 @@ export default function DepositTokensPage() {
                                   `Must deposit ${effectiveAllowance ? formatUnits(effectiveAllowance, getTokenDecimals(selectedChannel)) : '0'} ${channel.symbol}` :
                                   `0.0 (max 1,000,000)`
                                 }
-                                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 transition-colors duration-200 ${
+                                className={`w-full px-3 py-2 border focus:outline-none focus:ring-2 transition-colors duration-200 ${
                                   usdtMustSpendExisting && selectedChannel?.channelId === channel.channelId ?
-                                    'border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-100 cursor-not-allowed focus:ring-amber-500 focus:border-amber-500' :
-                                    'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500'
+                                    'border-amber-500/50 bg-amber-900/20 text-amber-100 cursor-not-allowed focus:ring-amber-500 focus:border-amber-500' :
+                                    'border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7]'
                                 }`}
                               />
                               <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                                <span className="text-gray-500 dark:text-gray-400 text-sm font-medium">
+                                <span className="text-gray-400 text-sm font-medium">
                                   {channel.symbol}
                                 </span>
                               </div>
@@ -1130,7 +1114,7 @@ export default function DepositTokensPage() {
 disabled={
                                   !depositAmount || isApproving || isWaitingApproval || isResettingApproval || isWaitingResetApproval || (!approveToken && !resetApproveToken) || channel.state !== 1
                                 }
-                                className="px-6 py-2 bg-orange-600 dark:bg-orange-700 text-white rounded-md hover:bg-orange-700 dark:hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-orange-500 transition-colors duration-200"
+                                className="px-6 py-2 bg-[#4fc3f7] text-white hover:bg-[#029bee] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] transition-colors duration-200"
                               >
                                 {isResettingApproval ? 'Resetting...' : 
                                  isWaitingResetApproval ? 'Confirming Reset...' :
@@ -1139,13 +1123,15 @@ disabled={
                                  (approvalStep === 'reset' ? 'Reset Allowance' : 'Approve')}
                               </button>
                               {approvalError && (
-                                <p className="text-xs text-red-600 dark:text-red-400">
+                                <p className="text-xs text-red-400 flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3" />
                                   {approvalError}
                                 </p>
                               )}
                               {channel.state !== 1 && (
-                                <p className="text-xs text-red-600 dark:text-red-400">
-                                  ⚠️ Channel must be in "Initialized" state for approvals.
+                                <p className="text-xs text-red-400 flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3" />
+                                  Channel must be in "Initialized" state for approvals.
                                 </p>
                               )}
                             </div>
@@ -1172,10 +1158,10 @@ disabled={
                                   (!usdtMustSpendExisting && !isDepositAmountValid(depositAmount, getTokenDecimals(channel))) ||
                                   channel.state !== 1
                                 }
-                                className={`px-6 py-2 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 transition-colors duration-200 ${
+                                className={`px-6 py-2 text-white disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 transition-colors duration-200 ${
                                   usdtMustSpendExisting && selectedChannel?.channelId === channel.channelId ?
-                                    'bg-amber-600 dark:bg-amber-700 hover:bg-amber-700 dark:hover:bg-amber-600 focus:ring-amber-500' :
-                                    'bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 focus:ring-blue-500'
+                                    'bg-amber-600 hover:bg-amber-700 focus:ring-amber-500' :
+                                    'bg-[#4fc3f7] hover:bg-[#029bee] focus:ring-[#4fc3f7]'
                                 }`}
                               >
                                 {(isDepositingETH || isDepositingToken) ? 'Depositing...' : isWaitingDeposit ? 'Confirming...' : 
@@ -1185,18 +1171,21 @@ disabled={
                               {selectedChannel?.channelId === channel.channelId && depositAmount && (
                                 <div className="text-xs space-y-1">
                                   {channel.state !== 1 && (
-                                    <p className="text-red-600 dark:text-red-400">
-                                      ⚠️ Channel must be in "Initialized" state for deposits.
+                                    <p className="text-red-400 flex items-center gap-1">
+                                      <AlertCircle className="w-3 h-3" />
+                                      Channel must be in "Initialized" state for deposits.
                                     </p>
                                   )}
                                   {!isDepositAmountValid(depositAmount, getTokenDecimals(channel)) && (
-                                    <p className="text-red-600 dark:text-red-400">
-                                      ⚠️ Invalid amount. Maximum 1,000,000 tokens allowed.
+                                    <p className="text-red-400 flex items-center gap-1">
+                                      <AlertCircle className="w-3 h-3" />
+                                      Invalid amount. Maximum 1,000,000 tokens allowed.
                                     </p>
                                   )}
                                   {!channel.isETH && !needsApproval && !hasSufficientAllowance && (
-                                    <p className="text-orange-600 dark:text-orange-400">
-                                      ⚠️ Insufficient allowance. Current: {allowance ? formatUnits(allowance, getTokenDecimals(channel)) : '0'} {channel.symbol}
+                                    <p className="text-orange-400 flex items-center gap-1">
+                                      <AlertCircle className="w-3 h-3" />
+                                      Insufficient allowance. Current: {allowance ? formatUnits(allowance, getTokenDecimals(channel)) : '0'} {channel.symbol}
                                     </p>
                                   )}
                                 </div>
@@ -1226,18 +1215,21 @@ disabled={
                               </div>
                             ) : selectedChannel?.channelId === channel.channelId && needsApproval ? (
                               <div>
-                                <p className="text-orange-600 dark:text-orange-400">
-                                  ⚠️ First approve the bridge contract to spend your {typeof channel.symbol === 'string' ? channel.symbol : 'token'} tokens
+                                <p className="text-orange-400 flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3" />
+                                  First approve the bridge contract to spend your {typeof channel.symbol === 'string' ? channel.symbol : 'token'} tokens
                                 </p>
                                 {((typeof channel.symbol === 'string' && channel.symbol === 'USDT') || (typeof channel.symbol === 'string' && channel.symbol.toLowerCase().includes('usdt')) || (typeof channel.symbol === 'string' && channel.symbol.toLowerCase().includes('tether'))) && (
-                                  <p className="text-blue-600 dark:text-blue-400 mt-1">
-                                    ℹ️ USDT may show "no data" error but approval can still succeed. Wait for confirmation.
+                                  <p className="text-[#4fc3f7] mt-1 flex items-center gap-1">
+                                    <AlertCircle className="w-3 h-3" />
+                                    USDT may show "no data" error but approval can still succeed. Wait for confirmation.
                                   </p>
                                 )}
                               </div>
                             ) : selectedChannel?.channelId === channel.channelId && !needsApproval && effectiveAllowance !== undefined ? (
-                              <p className="text-green-600 dark:text-green-400">
-                                ✅ Bridge contract approved to spend your {typeof channel.symbol === 'string' ? channel.symbol : 'token'} tokens
+                              <p className="text-green-400 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Bridge contract approved to spend your {typeof channel.symbol === 'string' ? channel.symbol : 'token'} tokens
                               </p>
                             ) : (
                               <p>
@@ -1259,17 +1251,17 @@ disabled={
 
       {/* Success Popup */}
       {showDepositSuccessPopup && successDepositInfo && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 transition-colors duration-300">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-xl shadow-[#4fc3f7]/30 max-w-md w-full mx-4">
             {/* Header */}
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            <div className="p-6 border-b border-[#4fc3f7]/30">
               <div className="flex items-center gap-3">
-                <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-                  <span className="text-2xl">✅</span>
+                <div className="h-12 w-12 bg-green-500/20 border border-green-500/50 flex items-center justify-center">
+                  <CheckCircle2 className="w-7 h-7 text-green-400" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Deposit Successful!</h2>
-                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                  <h2 className="text-xl font-bold text-white">Deposit Successful!</h2>
+                  <p className="text-sm text-gray-300">
                     Channel {successDepositInfo.channelId} • {successDepositInfo.amount} {successDepositInfo.tokenSymbol}
                   </p>
                 </div>
@@ -1278,30 +1270,30 @@ disabled={
 
             {/* Content */}
             <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Deposit Confirmed</h3>
-              <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
+              <h3 className="text-lg font-semibold text-white mb-3">Deposit Confirmed</h3>
+              <div className="space-y-3 text-sm text-gray-300">
                 <div className="flex items-start gap-3">
-                  <span className="text-green-500 font-bold">✓</span>
+                  <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0" />
                   <div>
-                    <p className="font-medium text-gray-900 dark:text-gray-100">Transaction Confirmed</p>
+                    <p className="font-medium text-white">Transaction Confirmed</p>
                     <p>Your {successDepositInfo.tokenSymbol} tokens have been deposited into the channel.</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="text-blue-500 font-bold">→</span>
+                  <ArrowDownCircle className="w-5 h-5 text-[#4fc3f7] flex-shrink-0" />
                   <div>
-                    <p className="font-medium text-gray-900 dark:text-gray-100">Next Steps</p>
+                    <p className="font-medium text-white">Next Steps</p>
                     <p>Wait for other participants to deposit, then the channel leader will initialize the channel state.</p>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg">
-                <p className="text-sm text-green-800 dark:text-green-300">
-                  <span className="font-medium">↓ Deposit Details:</span> {successDepositInfo.amount} {successDepositInfo.tokenSymbol} deposited to Channel {successDepositInfo.channelId}
+              <div className="mt-6 p-4 bg-green-500/10 border border-green-500/50">
+                <p className="text-sm text-green-400">
+                  <span className="font-medium">Deposit Details:</span> {successDepositInfo.amount} {successDepositInfo.tokenSymbol} deposited to Channel {successDepositInfo.channelId}
                 </p>
                 {successDepositInfo.txHash && (
-                  <p className="text-xs text-green-600 dark:text-green-400 mt-1 font-mono break-all">
+                  <p className="text-xs text-green-400/80 mt-1 font-mono break-all">
                     TX: {successDepositInfo.txHash}
                   </p>
                 )}
@@ -1309,14 +1301,14 @@ disabled={
             </div>
 
             {/* Footer */}
-            <div className="p-6 border-t border-gray-200 dark:border-gray-700">
+            <div className="p-6 border-t border-[#4fc3f7]/30">
               <button
                 onClick={() => {
                   setShowDepositSuccessPopup(false);
                   setSuccessDepositInfo(null);
                   window.location.reload(); // Refresh the page
                 }}
-                className="w-full px-4 py-2 bg-green-600 dark:bg-green-700 text-white rounded-lg hover:bg-green-700 dark:hover:bg-green-600 transition-colors font-medium"
+                className="w-full px-4 py-2 bg-[#4fc3f7] text-white hover:bg-[#029bee] transition-colors font-medium"
               >
                 Close
               </button>
