@@ -7,9 +7,9 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { ROLLUP_BRIDGE_ABI, ROLLUP_BRIDGE_ADDRESS } from '@/lib/contracts';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
-import { DarkModeToggle } from '@/components/DarkModeToggle';
 import { MobileNavigation } from '@/components/MobileNavigation';
-import { MobileMenuButton } from '@/components/MobileMenuButton';
+import { Footer } from '@/components/Footer';
+import { AlertTriangle, Lightbulb, CheckCircle } from 'lucide-react';
 
 interface Participant {
   address: string;
@@ -172,10 +172,10 @@ export default function CreateChannelPage() {
 
   if (!isConnected) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center space-background">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Connect Your Wallet</h1>
-          <p className="text-gray-600 dark:text-gray-300 mb-6">You need to connect your wallet to create a channel</p>
+          <h1 className="text-2xl font-bold text-white mb-4">Connect Your Wallet</h1>
+          <p className="text-gray-300 mb-6">You need to connect your wallet to create a channel</p>
           <ClientOnly>
             <ConnectButton />
           </ClientOnly>
@@ -185,53 +185,27 @@ export default function CreateChannelPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen space-background">
       {/* Sidebar */}
       <ClientOnly>
         <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
       </ClientOnly>
 
+      {/* Mobile Navigation Menu */}
+      <MobileNavigation 
+        showMobileMenu={showMobileMenu} 
+        setShowMobileMenu={setShowMobileMenu} 
+      />
+
       {/* Main Content Area */}
-      <div className={`ml-0 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
-        {/* Header */}
-        <ClientOnly>
-          <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
-            <div className="px-4 py-4 lg:px-6">
-              <div className="flex items-center justify-between">
-                <div className="hidden lg:flex items-center gap-4">
-                  <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-center">
-                    <span className="text-white text-sm font-bold">+</span>
-                  </div>
-                  <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Create Channel</h1>
-                </div>
-                <div className="flex items-center gap-3">
-                  <MobileMenuButton 
-                    showMobileMenu={showMobileMenu} 
-                    setShowMobileMenu={setShowMobileMenu} 
-                  />
-                  <ClientOnly>
-                    <DarkModeToggle />
-                  </ClientOnly>
-                  <ConnectButton />
-                </div>
-              </div>
-            </div>
-          </header>
-        </ClientOnly>
-
-        {/* Mobile Navigation Menu */}
-        <MobileNavigation 
-          showMobileMenu={showMobileMenu} 
-          setShowMobileMenu={setShowMobileMenu} 
-        />
-
+      <div className="ml-0 lg:ml-72 transition-all duration-300 flex flex-col min-h-screen">
         {/* Main Content */}
-        <main className="px-4 py-8 lg:px-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6 transition-colors duration-300">
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Create Multi-Party Channel</h2>
-              <p className="text-gray-600 dark:text-gray-300">
+        <main className="flex-1 px-4 py-8 lg:px-8">
+        <div className="max-w-5xl mx-auto">
+          <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 mb-6 shadow-lg shadow-[#4fc3f7]/20">
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold text-white mb-2">Create Multi-Party Channel</h2>
+              <p className="text-gray-300">
                 Set up a collaborative bridge channel for zero-knowledge proof operations with multiple participants.
               </p>
             </div>
@@ -239,15 +213,15 @@ export default function CreateChannelPage() {
             {/* Warning for users already leading a channel */}
             <ClientOnly>
               {isAlreadyLeader && (
-                <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg">
+                <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-500/50">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="text-yellow-600 dark:text-yellow-400 text-lg">⚠️</span>
-                    <h3 className="text-lg font-semibold text-yellow-800 dark:text-yellow-300">Channel Creation Restricted</h3>
+                    <AlertTriangle className="w-5 h-5 text-yellow-400" />
+                    <h3 className="text-lg font-semibold text-yellow-300">Channel Creation Restricted</h3>
                   </div>
-                  <p className="text-yellow-700 dark:text-yellow-400 mb-3">
+                  <p className="text-yellow-200/90 mb-3">
                     You are already leading an active channel. You can only lead one channel at a time.
                   </p>
-                  <p className="text-sm text-yellow-600 dark:text-yellow-500">
+                  <p className="text-sm text-yellow-300/80">
                     Please close your current channel before creating a new one. You can manage your existing channel from the sidebar menu.
                   </p>
                 </div>
@@ -257,15 +231,15 @@ export default function CreateChannelPage() {
             {/* Info message about leader bond requirement */}
             <ClientOnly>
               {!isAlreadyLeader && address && (
-                <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+                <div className="mb-6 p-4 bg-amber-900/20 border border-amber-500/50">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="text-amber-600 dark:text-amber-400 text-lg">⚠️</span>
-                    <h3 className="text-lg font-semibold text-amber-800 dark:text-amber-300">Leader Bond Required</h3>
+                    <AlertTriangle className="w-5 h-5 text-amber-400" />
+                    <h3 className="text-lg font-semibold text-amber-300">Leader Bond Required</h3>
                   </div>
-                  <p className="text-amber-700 dark:text-amber-400 mb-3">
+                  <p className="text-amber-200/90 mb-3">
                     Creating a channel requires a 0.001 ETH leader bond deposit. This bond will be returned when the channel is successfully closed.
                   </p>
-                  <p className="text-sm text-amber-600 dark:text-amber-500">
+                  <p className="text-sm text-amber-300/80">
                     If you fail to submit proof within 7 days after the channel timeout, your bond may be slashed. Fill out the form below to create your channel.
                   </p>
                 </div>
@@ -275,7 +249,7 @@ export default function CreateChannelPage() {
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Target Contract */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
                   Target Contract Address
                 </label>
                 <input
@@ -283,36 +257,50 @@ export default function CreateChannelPage() {
                   value={targetContract}
                   onChange={(e) => setTargetContract(e.target.value)}
                   placeholder="0x..."
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
                 />
                 {targetContract && !isValidEthereumAddress(targetContract) && (
-                  <p className="text-red-600 dark:text-red-400 text-sm mt-1">Invalid Ethereum address</p>
+                  <p className="text-red-400 text-sm mt-1">Invalid Ethereum address</p>
                 )}
                 
                 {/* Warning for supported tokens */}
-                <div className="mt-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+                <div className="mt-3 p-4 bg-amber-900/20 border border-amber-500/50">
                   <div className="flex items-start gap-3">
-                    <span className="text-amber-600 dark:text-amber-400 text-lg">⚠️</span>
+                    <AlertTriangle className="w-5 h-5 text-amber-400" />
                     <div className="flex-1">
-                      <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-2">
+                      <h4 className="text-sm font-semibold text-amber-300 mb-2">
                         Supported Target Tokens
                       </h4>
-                      <p className="text-amber-700 dark:text-amber-400 text-sm mb-3">
+                      <p className="text-amber-200/90 text-sm mb-3">
                         Currently, only WTON and USDT tokens are supported as target contracts.
                       </p>
                       <div className="space-y-2">
-                        <div className="bg-amber-100 dark:bg-amber-900/40 rounded-md p-2">
-                          <div className="text-xs font-medium text-amber-800 dark:text-amber-300 mb-1">WTON Token</div>
-                          <div className="text-xs text-amber-700 dark:text-amber-400 font-mono break-all">
+                        <button
+                          type="button"
+                          onClick={() => setTargetContract('0x79E0d92670106c85E9067b56B8F674340dCa0Bbd')}
+                          className="w-full bg-amber-900/40 p-2 hover:bg-amber-900/60 transition-colors cursor-pointer text-left border border-transparent hover:border-amber-500/50"
+                        >
+                          <div className="text-xs font-medium text-amber-300 mb-1 flex items-center justify-between">
+                            <span>WTON Token</span>
+                            <span className="text-[10px] text-amber-400/60">Click to use</span>
+                          </div>
+                          <div className="text-xs text-amber-200/90 font-mono break-all">
                             0x79E0d92670106c85E9067b56B8F674340dCa0Bbd
                           </div>
-                        </div>
-                        <div className="bg-amber-100 dark:bg-amber-900/40 rounded-md p-2">
-                          <div className="text-xs font-medium text-amber-800 dark:text-amber-300 mb-1">USDT Token</div>
-                          <div className="text-xs text-amber-700 dark:text-amber-400 font-mono break-all">
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTargetContract('0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A')}
+                          className="w-full bg-amber-900/40 p-2 hover:bg-amber-900/60 transition-colors cursor-pointer text-left border border-transparent hover:border-amber-500/50"
+                        >
+                          <div className="text-xs font-medium text-amber-300 mb-1 flex items-center justify-between">
+                            <span>USDT Token</span>
+                            <span className="text-[10px] text-amber-400/60">Click to use</span>
+                          </div>
+                          <div className="text-xs text-amber-200/90 font-mono break-all">
                             0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A
                           </div>
-                        </div>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -322,7 +310,7 @@ export default function CreateChannelPage() {
               {/* Participants */}
               <div>
                 <div className="flex justify-between items-center mb-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <label className="block text-sm font-medium text-gray-300">
                     Participants ({participants.length}/50)
                   </label>
                   <div className="space-x-2">
@@ -330,7 +318,7 @@ export default function CreateChannelPage() {
                       type="button"
                       onClick={addParticipant}
                       disabled={participants.length >= 50}
-                      className="px-3 py-1 text-sm bg-green-600 dark:bg-green-700 text-white rounded hover:bg-green-700 dark:hover:bg-green-600 disabled:opacity-50 transition-colors duration-200"
+                      className="px-3 py-1 text-sm bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 transition-colors duration-200"
                     >
                       Add
                     </button>
@@ -339,14 +327,14 @@ export default function CreateChannelPage() {
                 
                 <div className="space-y-4">
                   {participants.map((participant, index) => (
-                    <div key={index} className="border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700/50 rounded-lg p-4 transition-colors duration-300">
+                    <div key={index} className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4">
                       <div className="flex justify-between items-start mb-3">
-                        <h4 className="font-medium text-gray-900 dark:text-gray-100">Participant {index + 1}</h4>
+                        <h4 className="font-medium text-white">Participant {index + 1}</h4>
                         {participants.length > 3 && (
                           <button
                             type="button"
                             onClick={() => removeParticipant(index)}
-                            className="text-red-600 dark:text-red-400 hover:text-red-800 text-sm"
+                            className="text-red-400 hover:text-red-300 text-sm"
                           >
                             Remove
                           </button>
@@ -355,7 +343,7 @@ export default function CreateChannelPage() {
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          <label className="block text-xs font-medium text-gray-400 mb-1">
                             L1 Address
                           </label>
                           <input
@@ -363,15 +351,15 @@ export default function CreateChannelPage() {
                             value={participant.address}
                             onChange={(e) => updateParticipant(index, 'address', e.target.value)}
                             placeholder="0x..."
-                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
                           />
                           {participant.address && !isValidEthereumAddress(participant.address) && (
-                            <p className="text-red-600 dark:text-red-400 text-xs mt-1">Invalid address</p>
+                            <p className="text-red-400 text-xs mt-1">Invalid address</p>
                           )}
                         </div>
                         
                         <div>
-                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          <label className="block text-xs font-medium text-gray-400 mb-1">
                             L2 Public Key
                           </label>
                           <input
@@ -379,10 +367,10 @@ export default function CreateChannelPage() {
                             value={participant.l2PublicKey}
                             onChange={(e) => updateParticipant(index, 'l2PublicKey', e.target.value)}
                             placeholder="0x..."
-                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
                           />
                           {participant.l2PublicKey && !isValidEthereumAddress(participant.l2PublicKey) && (
-                            <p className="text-red-600 dark:text-red-400 text-xs mt-1">Invalid L2 public key</p>
+                            <p className="text-red-400 text-xs mt-1">Invalid L2 public key</p>
                           )}
                         </div>
                       </div>
@@ -390,14 +378,14 @@ export default function CreateChannelPage() {
                   ))}
                 </div>
                 
-                <p className="text-sm text-gray-500 mt-2">
+                <p className="text-sm text-gray-400 mt-2">
                   Minimum 3 participants, maximum 50 participants required.
                 </p>
               </div>
 
               {/* Timeout */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
                   Channel Timeout (days)
                 </label>
                 <input
@@ -406,9 +394,9 @@ export default function CreateChannelPage() {
                   max="365"
                   value={timeout}
                   onChange={(e) => setTimeout(parseInt(e.target.value) || 1)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
                 />
-                <p className="text-sm text-gray-500 mt-1">
+                <p className="text-sm text-gray-400 mt-1">
                   Channel timeout period (1 day to 365 days)
                 </p>
               </div>
@@ -417,7 +405,7 @@ export default function CreateChannelPage() {
               {/* Group Public Key */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Public Key X Coordinate
                   </label>
                   <input
@@ -425,15 +413,15 @@ export default function CreateChannelPage() {
                     value={pkx}
                     onChange={(e) => setPkx(e.target.value)}
                     placeholder="0x..."
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
                   />
                   {pkx && !isValidHex(pkx) && (
-                    <p className="text-red-600 dark:text-red-400 text-sm mt-1">Invalid hex format</p>
+                    <p className="text-red-400 text-sm mt-1">Invalid hex format</p>
                   )}
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Public Key Y Coordinate
                   </label>
                   <input
@@ -441,10 +429,10 @@ export default function CreateChannelPage() {
                     value={pky}
                     onChange={(e) => setPky(e.target.value)}
                     placeholder="0x..."
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
                   />
                   {pky && !isValidHex(pky) && (
-                    <p className="text-red-600 dark:text-red-400 text-sm mt-1">Invalid hex format</p>
+                    <p className="text-red-400 text-sm mt-1">Invalid hex format</p>
                   )}
                 </div>
               </div>
@@ -454,7 +442,7 @@ export default function CreateChannelPage() {
                 <button
                   type="submit"
                   disabled={!isFormValid() || isCreating || isConfirming}
-                  className="w-full px-6 py-3 bg-blue-600 dark:bg-blue-700 text-white font-medium rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors duration-200"
+                  className="w-full px-6 py-3 bg-gradient-to-r from-[#4fc3f7] to-[#029bee] text-white font-medium hover:from-[#029bee] hover:to-[#4fc3f7] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] transition-all duration-200"
                 >
                   {isCreating 
                     ? 'Submitting Transaction...' 
@@ -469,9 +457,9 @@ export default function CreateChannelPage() {
           </div>
 
           {/* Info Panel */}
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-6 transition-colors duration-300">
-            <h3 className="font-semibold text-blue-900 dark:text-blue-300 mb-3">Channel Requirements</h3>
-            <ul className="space-y-2 text-sm text-blue-800 dark:text-blue-300">
+          <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-8">
+            <h3 className="font-semibold text-[#4fc3f7] mb-4">Channel Requirements</h3>
+            <ul className="space-y-2 text-sm text-gray-300">
               <li>• Target contract must be a valid Ethereum address</li>
               <li>• Between 3-50 participants required</li>
               <li>• Each participant needs L1 address and L2 public key</li>
@@ -483,72 +471,75 @@ export default function CreateChannelPage() {
           </div>
         </div>
         </main>
+
+        {/* Footer */}
+        <Footer className="mt-auto" />
       </div>
 
       {/* Success Popup */}
       {showSuccessPopup && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 transition-colors duration-300">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-xl shadow-[#4fc3f7]/30 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             {/* Header */}
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            <div className="p-6 border-b border-[#4fc3f7]/30">
               <div className="flex items-center gap-3">
-                <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-                  <span className="text-2xl">✅</span>
+                <div className="h-12 w-12 bg-green-500/20 border border-green-500/50 flex items-center justify-center">
+                  <CheckCircle className="w-7 h-7 text-green-400" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Channel Created Successfully!</h2>
-                  <p className="text-sm text-gray-600 dark:text-gray-300">Channel ID: {createdChannelId}</p>
+                  <h2 className="text-xl font-bold text-white">Channel Created Successfully!</h2>
+                  <p className="text-sm text-gray-300">Channel ID: {createdChannelId}</p>
                 </div>
               </div>
             </div>
 
             {/* Content */}
             <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Next Steps</h3>
-              <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
-                <div className="flex items-start gap-3">
-                  <span className="text-blue-500 font-bold">1.</span>
+              <h3 className="text-lg font-semibold text-white mb-4">Next Steps</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-300">
+                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
+                  <span className="text-[#4fc3f7] font-bold text-lg">1.</span>
                   <div>
-                    <p className="font-medium text-gray-900 dark:text-gray-100">Wait for Participants to Deposit</p>
+                    <p className="font-medium text-white mb-1">Wait for Participants to Deposit</p>
                     <p>All participants need to deposit their tokens into the channel.</p>
                   </div>
                 </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-blue-500 font-bold">2.</span>
+                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
+                  <span className="text-[#4fc3f7] font-bold text-lg">2.</span>
                   <div>
-                    <p className="font-medium text-gray-900 dark:text-gray-100">Initialize Channel State</p>
+                    <p className="font-medium text-white mb-1">Initialize Channel State</p>
                     <p>As the channel leader, you'll need to initialize the channel state once all deposits are complete.</p>
                   </div>
                 </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-blue-500 font-bold">3.</span>
+                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
+                  <span className="text-[#4fc3f7] font-bold text-lg">3.</span>
                   <div>
-                    <p className="font-medium text-gray-900 dark:text-gray-100">Proof Operations</p>
+                    <p className="font-medium text-white mb-1">Proof Operations</p>
                     <p>Submit aggregated proofs, collect signatures, and manage the channel lifecycle.</p>
                   </div>
                 </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-blue-500 font-bold">4.</span>
+                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
+                  <span className="text-[#4fc3f7] font-bold text-lg">4.</span>
                   <div>
-                    <p className="font-medium text-gray-900 dark:text-gray-100">Close & Withdraw</p>
+                    <p className="font-medium text-white mb-1">Close & Withdraw</p>
                     <p>Close the channel when operations are complete and allow participants to withdraw.</p>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
-                <p className="text-sm text-blue-800 dark:text-blue-300">
-                  <span className="font-medium">💡 Tip:</span> You can manage your channel and monitor participant deposits from the dashboard. 
+              <div className="mt-6 p-4 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50">
+                <p className="text-sm text-gray-300">
+                  <span className="font-medium text-[#4fc3f7] inline-flex items-center gap-1"><Lightbulb className="w-4 h-4" /> Tip:</span> You can manage your channel and monitor participant deposits from the dashboard. 
                   Use the sidebar menu to access channel leader functions.
                 </p>
               </div>
             </div>
 
             {/* Footer */}
-            <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex gap-3">
+            <div className="p-6 border-t border-[#4fc3f7]/30 flex gap-3">
               <button
                 onClick={() => setShowSuccessPopup(false)}
-                className="flex-1 px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                className="flex-1 px-4 py-2 text-gray-300 bg-[#0a1930] border border-[#4fc3f7]/30 hover:bg-[#1a2347] hover:text-white transition-colors"
               >
                 Close
               </button>
@@ -557,7 +548,7 @@ export default function CreateChannelPage() {
                   setShowSuccessPopup(false);
                   router.push('/');
                 }}
-                className="flex-1 px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium"
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-[#4fc3f7] to-[#029bee] text-white hover:from-[#029bee] hover:to-[#4fc3f7] transition-colors font-medium"
               >
                 Go to Dashboard
               </button>

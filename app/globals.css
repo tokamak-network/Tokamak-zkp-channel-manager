@@ -1,28 +1,33 @@
+/* Tokamak Landing Page Fonts */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@100;200;300;400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Jersey+10&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 199 89% 48%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 84% 4.9%;
-    --destructive: 0 84.2% 60.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --border: 199 89% 48%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 199 89% 48%;
     --radius: 0.5rem;
   }
 
@@ -33,8 +38,8 @@
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 84% 4.9%;
+    --primary: 199 89% 48%;
+    --primary-foreground: 210 40% 98%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
@@ -43,42 +48,42 @@
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
+    --border: 199 89% 48%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 94.1%;
+    --ring: 199 89% 48%;
   }
 }
 
 @layer base {
   * {
-    @apply border-gray-200;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
   }
   
-  /* Root element styling to prevent white background during overscroll */
+  /* Root element styling - Space Background Theme */
   html {
-    @apply bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-slate-900;
-    min-height: 100vh;
-    min-height: 100dvh; /* Dynamic viewport height for mobile */
-    background-attachment: fixed;
-    /* Prevent overscroll bounce effect */
-    overscroll-behavior: none;
-    overscroll-behavior-y: none;
-    /* Ensure background covers beyond viewport */
-    background-size: 100% 120vh;
-  }
-  
-  body {
-    @apply bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-slate-900 text-foreground;
+    scroll-behavior: smooth;
+    overflow-x: hidden;
+    max-width: 100vw;
+    background: linear-gradient(to bottom, #0a1930 0%, #1a2347 100%);
     min-height: 100vh;
     min-height: 100dvh;
     background-attachment: fixed;
-    /* Prevent overscroll bounce */
     overscroll-behavior: none;
     overscroll-behavior-y: none;
-    /* Ensure background covers beyond viewport */
-    background-size: 100% 120vh;
-    /* Prevent pull-to-refresh and overscroll glow */
-    overscroll-behavior-x: none;
+  }
+  
+  body {
+    @apply text-white;
+    background: linear-gradient(to bottom, #0a1930 0%, #1a2347 100%);
+    min-height: 100vh;
+    min-height: 100dvh;
+    background-attachment: fixed;
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
+    max-width: 100vw;
+    font-family: var(--font-ibm-plex-mono), "IBM Plex Mono", monospace;
   }
   
   /* Additional safety net for the root container */
@@ -95,27 +100,85 @@
     left: 0;
     right: 0;
     height: 300vh;
-    @apply bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-slate-900;
+    background: linear-gradient(to bottom, #0a1930 0%, #1a2347 100%);
     z-index: -9999;
     pointer-events: none;
   }
 }
 
+@layer components {
+  .btn-primary {
+    @apply px-6 py-3 bg-[#028bee] text-white font-semibold shadow-lg hover:shadow-xl hover:bg-[#0277d4] transition-all duration-200 transform hover:scale-105;
+  }
+
+  .btn-secondary {
+    @apply px-6 py-3 bg-transparent border border-[#4fc3f7] text-[#4fc3f7] font-semibold shadow-lg hover:bg-[#4fc3f7] hover:text-white transition-all duration-200 transform hover:scale-105;
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-[#4fc3f7] to-[#29b6f6] bg-clip-text text-transparent;
+  }
+
+  .card {
+    @apply bg-gradient-to-b from-[#1a2347] to-[#0a1930] shadow-lg border border-[#4fc3f7] p-6 transition-all duration-300 hover:shadow-xl hover:shadow-[#4fc3f7]/20;
+  }
+
+  .space-background {
+    background: linear-gradient(to bottom, #0a1930 0%, #1a2347 100%);
+  }
+
+  .tokamak-border {
+    @apply border border-[#4fc3f7];
+  }
+
+  .text-hero-title {
+    color: #00477a !important;
+    text-shadow: -2px -2px 0 #7ed7ff, -2px 0 0 #7ed7ff, -2px 2px 0 #7ed7ff,
+      0 -2px 0 #7ed7ff, 0 2px 0 #7ed7ff, 2px -2px 0 #7ed7ff, 2px 0 0 #7ed7ff,
+      2px 2px 0 #7ed7ff !important;
+    filter: drop-shadow(2px 2px 0 #00477a) !important;
+    font-family: "Jersey 10", "Press Start 2P", monospace !important;
+    font-size: 70px !important;
+    font-style: normal !important;
+    font-weight: 400 !important;
+    line-height: normal !important;
+    letter-spacing: 6.3px !important;
+  }
+
+  .cosmic-star {
+    animation: twinkle 2s infinite alternate;
+  }
+
+  @keyframes twinkle {
+    0% { opacity: 0.3; transform: scale(1); }
+    100% { opacity: 1; transform: scale(1.2); }
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-20px);
+    }
+  }
+
+  .retro-shadow {
+    box-shadow: 8px 8px 0px #0f172a;
+  }
+
+  .neon-glow {
+    text-shadow: 0 0 5px currentColor, 0 0 10px currentColor, 0 0 15px currentColor;
+  }
+}
+
 @layer utilities {
   .gradient-text {
-    @apply bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent;
-  }
-  
-  .gradient-border {
-    @apply relative overflow-hidden rounded-lg;
-  }
-  
-  .gradient-border::before {
-    @apply absolute inset-0 rounded-lg p-[1px];
-    background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
-    content: '';
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask-composite: exclude;
+    @apply bg-gradient-to-r from-[#4fc3f7] to-[#29b6f6] bg-clip-text text-transparent;
   }
   
   .card-hover {
@@ -123,37 +186,54 @@
   }
   
   .status-active {
-    @apply bg-green-50 text-green-700 border-green-200;
+    @apply bg-green-900/30 text-green-300 border-green-500;
   }
   
   .status-pending {
-    @apply bg-yellow-50 text-yellow-700 border-yellow-200;
+    @apply bg-yellow-900/30 text-yellow-300 border-yellow-500;
   }
   
   .status-inactive {
-    @apply bg-gray-50 text-gray-700 border-gray-200;
+    @apply bg-gray-900/30 text-gray-300 border-gray-500;
   }
   
   .status-error {
-    @apply bg-red-50 text-red-700 border-red-200;
+    @apply bg-red-900/30 text-red-300 border-red-500;
   }
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar - Tokamak Style */
 ::-webkit-scrollbar {
   width: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-gray-100 dark:bg-gray-800;
+  @apply bg-[#0a1930];
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 dark:bg-gray-600 rounded-full;
+  @apply bg-[#4fc3f7];
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400 dark:bg-gray-500;
+  @apply bg-[#29b6f6];
+}
+
+/* Custom scrollbar for sidebar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-[#0a1218];
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-[#4fc3f7]/50;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply bg-[#4fc3f7];
 }
 
 /* Loading animations */
@@ -168,15 +248,249 @@
 
 .network-indicator::before {
   content: '';
-  @apply absolute -top-1 -right-1 h-3 w-3 bg-green-400 rounded-full border-2 border-white;
+  @apply absolute -top-1 -right-1 h-3 w-3 bg-[#4fc3f7] border border-[#1a2347];
   animation: pulse 2s infinite;
 }
 
 /* Tooltip animations */
 .tooltip {
-  @apply invisible absolute z-10 px-2 py-1 text-xs text-white bg-gray-900 rounded opacity-0 transition-all duration-300;
+  @apply invisible absolute z-10 px-2 py-1 text-xs text-white bg-[#0a1930] border border-[#4fc3f7] opacity-0 transition-all duration-300;
 }
 
 .tooltip-container:hover .tooltip {
   @apply visible opacity-100;
+}
+
+/* RainbowKit Custom Styling */
+
+/* Main Connect Button */
+div[data-rk] button[data-testid="rk-connect-button"] {
+  border-radius: 0 !important;
+  border: none !important;
+  background: linear-gradient(to right, #028bee, #0277d4) !important;
+  box-shadow: 0 0 20px rgba(79, 195, 247, 0.3) !important;
+  transition: all 0.2s !important;
+  font-family: var(--font-ibm-plex-mono), "IBM Plex Mono", monospace !important;
+  font-weight: 600 !important;
+  padding: 10px 24px !important;
+  color: white !important;
+}
+
+div[data-rk] button[data-testid="rk-connect-button"]:hover {
+  background: linear-gradient(to right, #0277d4, #0266bd) !important;
+  box-shadow: 0 0 30px rgba(79, 195, 247, 0.5) !important;
+  transform: scale(1.05) !important;
+}
+
+/* Force remove rounded corners from RainbowKit - but not from images */
+div[data-rk] div,
+div[data-rk] button,
+div[data-rk] [role="dialog"] {
+  border-radius: 0 !important;
+}
+
+/* Preserve images and their containers */
+div[data-rk] img,
+div[data-rk] svg {
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* Modal Background Overlay - the dark backdrop */
+div[data-rk] > div[style] {
+  background: rgba(10, 25, 48, 0.95) !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+/* Modal Dialog Container */
+div[data-rk] [role="dialog"],
+div[data-rk] div[role="dialog"] {
+  border-radius: 0 !important;
+  background: linear-gradient(to bottom, #1a2347, #0a1930) !important;
+  border: 1px solid #4fc3f7 !important;
+  box-shadow: 0 0 40px rgba(79, 195, 247, 0.4) !important;
+}
+
+/* ULTRA AGGRESSIVE: Force dark background on EVERYTHING in modal except images */
+div[data-rk] [role="dialog"] * {
+  background-color: transparent !important;
+}
+
+/* Only set dark backgrounds on specific container divs */
+div[data-rk] [role="dialog"] > div {
+  background: linear-gradient(to bottom, #1a2347, #0a1930) !important;
+  border-radius: 0 !important;
+}
+
+/* Modal Header/Title */
+div[data-rk] [role="dialog"] h1,
+div[data-rk] [role="dialog"] h2,
+div[data-rk] [role="dialog"] h3 {
+  color: white !important;
+  font-family: var(--font-ibm-plex-mono), "IBM Plex Mono", monospace !important;
+}
+
+/* Modal Text */
+div[data-rk] [role="dialog"] p,
+div[data-rk] [role="dialog"] span,
+div[data-rk] [role="dialog"] div {
+  color: #e5e5e5 !important;
+  font-family: var(--font-ibm-plex-mono), "IBM Plex Mono", monospace !important;
+}
+
+/* Close Button */
+div[data-rk] [role="dialog"] button[aria-label*="Close"] {
+  background: transparent !important;
+  color: #4fc3f7 !important;
+  border: 1px solid #4fc3f7 !important;
+  border-radius: 0 !important;
+}
+
+div[data-rk] [role="dialog"] button[aria-label*="Close"]:hover {
+  background: #4fc3f7/10 !important;
+  color: white !important;
+}
+
+/* Wallet Buttons - Override the transparent background rule */
+div[data-rk] [role="dialog"] button {
+  border-radius: 0 !important;
+  border: 1px solid #4fc3f7/30 !important;
+  background: #0a1930 !important;
+  background-color: #0a1930 !important;
+  color: white !important;
+  font-family: var(--font-ibm-plex-mono), "IBM Plex Mono", monospace !important;
+  transition: all 0.2s !important;
+}
+
+div[data-rk] [role="dialog"] button:hover {
+  background: #028bee !important;
+  background-color: #028bee !important;
+  border-color: #4fc3f7 !important;
+  transform: translateY(-2px) !important;
+}
+
+/* Wallet Button Images and Icons */
+div[data-rk] [role="dialog"] button img,
+div[data-rk] [role="dialog"] button svg {
+  display: inline-block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  filter: none !important;
+}
+
+/* Icon containers inside buttons */
+div[data-rk] [role="dialog"] button > div {
+  display: flex !important;
+  align-items: center !important;
+  background: transparent !important;
+}
+
+/* Wallet Button Text */
+div[data-rk] [role="dialog"] button span {
+  color: white !important;
+}
+
+/* Force dark background on ALL white backgrounds in modal */
+div[data-rk] [role="dialog"] div[style*="background: rgb(255, 255, 255)"],
+div[data-rk] [role="dialog"] div[style*="background-color: rgb(255, 255, 255)"],
+div[data-rk] [role="dialog"] div[style*="background: white"],
+div[data-rk] [role="dialog"] div[style*="background-color: white"],
+div[data-rk] [role="dialog"] div[style*="backgroundColor: rgb(255, 255, 255)"],
+div[data-rk] [role="dialog"] *[style*="background: rgb(255, 255, 255)"],
+div[data-rk] [role="dialog"] *[style*="background-color: rgb(255, 255, 255)"],
+div[data-rk] [role="dialog"] *[style*="background: white"],
+div[data-rk] [role="dialog"] *[style*="backgroundColor"] {
+  background: #1a2347 !important;
+  background-color: #1a2347 !important;
+}
+
+/* Target deeply nested divs */
+div[data-rk] [role="dialog"] div div,
+div[data-rk] [role="dialog"] div div div {
+  background-color: transparent !important;
+}
+
+/* Left panel (wallet selection) - force dark, override transparent rule */
+div[data-rk] [role="dialog"] > div > div:first-child {
+  background: linear-gradient(to bottom, #1a2347, #0a1930) !important;
+  background-color: #1a2347 !important;
+}
+
+div[data-rk] [role="dialog"] > div > div:first-child > * {
+  background: transparent !important;
+}
+
+/* Right panel (What is a Wallet section) - force dark, override transparent rule */
+div[data-rk] [role="dialog"] > div > div:last-child {
+  background: #0a1930 !important;
+  background-color: #0a1930 !important;
+  border-left: 1px solid #4fc3f7/30 !important;
+}
+
+div[data-rk] [role="dialog"] > div > div:last-child > * {
+  background: transparent !important;
+}
+
+/* Icons in "What is a Wallet" section */
+div[data-rk] [role="dialog"] > div > div:last-child img,
+div[data-rk] [role="dialog"] > div > div:last-child svg {
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* Icon containers in info section */
+div[data-rk] [role="dialog"] > div > div:last-child > div {
+  background: transparent !important;
+}
+
+/* Links */
+div[data-rk] [role="dialog"] a {
+  color: #4fc3f7 !important;
+  font-family: var(--font-ibm-plex-mono), "IBM Plex Mono", monospace !important;
+}
+
+div[data-rk] [role="dialog"] a:hover {
+  color: #29b6f6 !important;
+}
+
+/* Scrollbar for modal */
+div[data-rk] [role="dialog"] ::-webkit-scrollbar {
+  width: 6px;
+}
+
+div[data-rk] [role="dialog"] ::-webkit-scrollbar-track {
+  background: #0a1930;
+}
+
+div[data-rk] [role="dialog"] ::-webkit-scrollbar-thumb {
+  background: #4fc3f7;
+}
+
+div[data-rk] [role="dialog"] ::-webkit-scrollbar-thumb:hover {
+  background: #29b6f6;
+}
+
+/* Account Modal (when connected) */
+div[data-rk] button[data-testid="rk-account-button"] {
+  border-radius: 0 !important;
+  border: 1px solid #4fc3f7 !important;
+  background: #028bee !important;
+  color: white !important;
+  font-family: var(--font-ibm-plex-mono), "IBM Plex Mono", monospace !important;
+}
+
+div[data-rk] button[data-testid="rk-account-button"]:hover {
+  background: #0277d4 !important;
+  transform: scale(1.05) !important;
+}
+
+/* Responsive adjustments */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

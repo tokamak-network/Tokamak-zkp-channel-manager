@@ -6,11 +6,11 @@ import { useContractRead, useContractWrite, usePrepareContractWrite, useWaitForT
 import { parseEther, formatEther } from 'viem';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
-import { DarkModeToggle } from '@/components/DarkModeToggle';
 import { MobileNavigation } from '@/components/MobileNavigation';
-import { MobileMenuButton } from '@/components/MobileMenuButton';
+import { Footer } from '@/components/Footer';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { PenTool, Link, ShieldOff, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
 import { ETH_TOKEN_ADDRESS } from '@/lib/contracts';
 
 export default function SignProofPage() {
@@ -97,11 +97,11 @@ export default function SignProofPage() {
   const getChannelStateColor = (stateNumber: number) => {
     const colors = {
       0: 'text-gray-500 dark:text-gray-400',        // None
-      1: 'text-blue-600 dark:text-blue-400',        // Initialized  
-      2: 'text-green-600 dark:text-green-400',      // Open
-      3: 'text-green-600 dark:text-green-400',      // Active
-      4: 'text-yellow-600 dark:text-yellow-400',    // Closing
-      5: 'text-red-600 dark:text-red-400'           // Closed
+      1: 'text-[#4fc3f7]',        // Initialized  
+      2: 'text-green-400',      // Open
+      3: 'text-green-400',      // Active
+      4: 'text-yellow-400',    // Closing
+      5: 'text-red-400'           // Closed
     };
     return colors[stateNumber as keyof typeof colors] || 'text-gray-500 dark:text-gray-400';
   };
@@ -279,75 +279,63 @@ export default function SignProofPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
+    <div className="min-h-screen space-background">
       <ClientOnly>
         <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
       </ClientOnly>
-      
-      <div className={`flex-1 ml-0 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} flex flex-col min-h-screen transition-all duration-300`}>
-        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40 transition-colors duration-300">
-          <div className="px-4 py-4 lg:px-6">
-            <div className="flex items-center justify-between">
-              <div className="hidden lg:flex items-center gap-4">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-green-600 to-green-700 flex items-center justify-center">
-                  <span className="text-white text-sm font-bold">✍️</span>
-                </div>
-                <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Sign Aggregated Proof</h1>
+
+      <MobileNavigation 
+        showMobileMenu={showMobileMenu} 
+        setShowMobileMenu={setShowMobileMenu} 
+      />
+
+      <div className="ml-0 lg:ml-72 transition-all duration-300 min-h-screen">
+        <main className="px-4 py-8 lg:px-8">
+          {/* Page Header */}
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="h-10 w-10 bg-[#4fc3f7] flex items-center justify-center shadow-lg shadow-[#4fc3f7]/30">
+                <PenTool className="w-6 h-6 text-white" />
               </div>
-              <div className="flex items-center gap-3">
-                <MobileMenuButton 
-                  showMobileMenu={showMobileMenu} 
-                  setShowMobileMenu={setShowMobileMenu} 
-                />
-                <ClientOnly>
-                  <DarkModeToggle />
-                </ClientOnly>
-                <ClientOnly>
-                  <ConnectButton />
-                </ClientOnly>
-              </div>
+              <h1 className="text-3xl font-bold text-white">Sign Aggregated Proof</h1>
             </div>
+            <p className="text-gray-300 ml-13">
+              Sign the aggregated proof to confirm channel finalization
+            </p>
           </div>
-        </header>
 
-        <MobileNavigation 
-          showMobileMenu={showMobileMenu} 
-          setShowMobileMenu={setShowMobileMenu} 
-        />
-
-        <main className="flex-1 p-4 sm:p-6">
           {!isConnected ? (
-            <div className="text-center py-12">
-              <div className="h-16 w-16 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">🔌</span>
+            <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 text-center shadow-lg shadow-[#4fc3f7]/20">
+              <div className="h-16 w-16 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 flex items-center justify-center mx-auto mb-4">
+                <Link className="w-8 h-8 text-[#4fc3f7]" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Connect Your Wallet</h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
+              <h3 className="text-xl font-semibold text-white mb-2">Connect Your Wallet</h3>
+              <p className="text-gray-300 mb-6">
                 Please connect your wallet to sign aggregated proofs
               </p>
               <ConnectButton />
             </div>
           ) : !hasAccess ? (
-            <div className="text-center py-12">
-              <div className="h-16 w-16 bg-orange-100 dark:bg-orange-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">🚫</span>
+            <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 text-center shadow-lg shadow-[#4fc3f7]/20">
+              <div className="h-16 w-16 bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
+                <ShieldOff className="w-8 h-8 text-red-400" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Access Denied</h3>
-              <p className="text-gray-600 dark:text-gray-400">
+              <h3 className="text-xl font-semibold text-white mb-2">Access Denied</h3>
+              <p className="text-gray-300">
                 Only channel leaders can sign aggregated proofs
               </p>
             </div>
           ) : (
-            <div className="max-w-6xl mx-auto space-y-6">
+            <div className="space-y-6">
               {/* Channel Overview */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+              <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-6 shadow-lg shadow-[#4fc3f7]/20">
                 <div className="flex items-center gap-4 mb-6">
-                  <div className="h-12 w-12 bg-gradient-to-r from-green-500 to-green-600 rounded-xl flex items-center justify-center">
-                    <span className="text-white text-xl">✍️</span>
+                  <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center shadow-lg shadow-[#4fc3f7]/30">
+                    <PenTool className="w-7 h-7 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Sign Aggregated Proof</h2>
-                    <p className="text-gray-600 dark:text-gray-400 mt-1">
+                    <h2 className="text-2xl font-bold text-white">Channel Information</h2>
+                    <p className="text-gray-300 mt-1">
                       Submit your group threshold signature to finalize the channel closure
                     </p>
                   </div>
@@ -355,28 +343,32 @@ export default function SignProofPage() {
                 
                 {leaderChannel && (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-400">Channel ID</div>
-                      <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">#{leaderChannel.id}</div>
+                    <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 rounded-lg p-4">
+                      <div className="text-sm text-gray-400">Channel ID</div>
+                      <div className="text-lg font-semibold text-white">#{leaderChannel.id}</div>
                     </div>
-                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-400">Status</div>
+                    <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 rounded-lg p-4">
+                      <div className="text-sm text-gray-400">Status</div>
                       <div className={`text-lg font-semibold ${channelInfo ? getChannelStateColor(Number(channelInfo[1])) : 'text-gray-500 dark:text-gray-400'}`}>
                         {channelInfo ? getChannelStateDisplay(Number(channelInfo[1])) : 'Loading...'}
                       </div>
                     </div>
-                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-400">Participants</div>
-                      <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 rounded-lg p-4">
+                      <div className="text-sm text-gray-400">Participants</div>
+                      <div className="text-lg font-semibold text-white">
                         {channelParticipants ? channelParticipants.length : '...'}
                       </div>
                     </div>
-                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                      <div className="text-sm text-gray-600 dark:text-gray-400">Ready to Close</div>
-                      <div className={`text-lg font-semibold ${
-                        isChannelReadyToClose ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'
+                    <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 rounded-lg p-4">
+                      <div className="text-sm text-gray-400">Ready to Close</div>
+                      <div className={`text-lg font-semibold flex items-center gap-2 ${
+                        isChannelReadyToClose ? 'text-green-400' : 'text-yellow-400'
                       }`}>
-                        {isChannelReadyToClose ? '✓ Yes' : '⏳ Not Yet'}
+                        {isChannelReadyToClose ? (
+                          <><CheckCircle2 className="w-5 h-5" /> Yes</>
+                        ) : (
+                          <><Clock className="w-5 h-5" /> Not Yet</>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -384,12 +376,12 @@ export default function SignProofPage() {
               </div>
               
               {/* Signature Submission Form */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-                <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/20">
+                <div className="p-6 border-b border-[#4fc3f7]/30">
+                  <h3 className="text-xl font-semibold text-white mb-2">
                     Group Threshold Signature
                   </h3>
-                  <p className="text-gray-600 dark:text-gray-400">
+                  <p className="text-gray-400">
                     Submit the group threshold signature generated from your off-chain signing ceremony
                   </p>
                 </div>
@@ -415,7 +407,7 @@ export default function SignProofPage() {
 
                   {/* File Upload Section */}
                   <div className="max-w-2xl mx-auto">
-                    <label className="block text-sm font-medium text-gray-900 dark:text-gray-100 mb-4">
+                    <label className="block text-sm font-medium text-white mb-4">
                       Signature Data File (JSON) *
                     </label>
                     {!uploadedFile ? (
@@ -449,18 +441,18 @@ export default function SignProofPage() {
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex items-center gap-3">
                             <div className="h-12 w-12 bg-green-100 dark:bg-green-800 rounded-lg flex items-center justify-center">
-                              <svg className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="h-6 w-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                               </svg>
                             </div>
                             <div>
                               <h3 className="text-lg font-semibold text-green-800 dark:text-green-200">{uploadedFile.name}</h3>
-                              <p className="text-sm text-green-600 dark:text-green-400">Signature data loaded successfully</p>
+                              <p className="text-sm text-green-400">Signature data loaded successfully</p>
                             </div>
                           </div>
                           <button
                             onClick={removeFile}
-                            className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 p-2"
+                            className="text-red-400 hover:text-red-800 dark:hover:text-red-300 p-2"
                           >
                             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -471,17 +463,17 @@ export default function SignProofPage() {
                         {/* Signature Data Summary */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                           <div className="bg-white dark:bg-gray-800 rounded-lg p-3">
-                            <div className="text-gray-600 dark:text-gray-400">Message</div>
+                            <div className="text-gray-400">Message</div>
                             <div className="font-semibold text-green-800 dark:text-green-200 truncate">{signatureData.message.slice(0, 20)}...</div>
                           </div>
                           <div className="bg-white dark:bg-gray-800 rounded-lg p-3">
-                            <div className="text-gray-600 dark:text-gray-400">R Point (rx, ry)</div>
+                            <div className="text-gray-400">R Point (rx, ry)</div>
                             <div className="font-semibold text-green-800 dark:text-green-200 truncate">
                               ({signatureData.rx.slice(0, 8)}..., {signatureData.ry.slice(0, 8)}...)
                             </div>
                           </div>
                           <div className="bg-white dark:bg-gray-800 rounded-lg p-3 col-span-1 md:col-span-2">
-                            <div className="text-gray-600 dark:text-gray-400">Signature Scalar (z)</div>
+                            <div className="text-gray-400">Signature Scalar (z)</div>
                             <div className="font-semibold text-green-800 dark:text-green-200 truncate">{signatureData.z.slice(0, 20)}...</div>
                           </div>
                         </div>
@@ -489,55 +481,73 @@ export default function SignProofPage() {
                     )}
                     {fileError && (
                       <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
-                        <p className="text-red-600 dark:text-red-400 text-sm">{fileError}</p>
+                        <p className="text-red-400 text-sm">{fileError}</p>
                       </div>
                     )}
                   </div>
                   
                   {/* Submit Button */}
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 pt-6 border-t border-gray-200 dark:border-gray-700">
+                  <div className="pt-6 border-t border-[#4fc3f7]/30">
+                    {/* Status Messages */}
+                    {!isFormValid && (
+                      <div className="mb-4 p-4 bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
+                        <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-amber-300">
+                          <strong className="block mb-1">Missing Required Data</strong>
+                          Please upload the signature JSON file containing all required parameters
+                        </div>
+                      </div>
+                    )}
+                    
+                    {isFormValid && !isChannelStateValid && channelInfo && (
+                      <div className="mb-4 p-4 bg-red-500/10 border border-red-500/30 flex items-start gap-3">
+                        <ShieldOff className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-red-300">
+                          <strong className="block mb-1">Invalid Channel State</strong>
+                          Channel must be in "Closing" state to sign proofs. Current state: {getChannelStateDisplay(Number(channelInfo[1]))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {isFormValid && isChannelStateValid && isSignatureAlreadySubmitted && (
+                      <div className="mb-4 p-4 bg-blue-500/10 border border-blue-500/30 flex items-start gap-3">
+                        <CheckCircle2 className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-blue-300">
+                          <strong className="block mb-1">Already Signed</strong>
+                          Signature already submitted! Channel is ready to close.
+                        </div>
+                      </div>
+                    )}
+                    
+                    {isSuccess && (
+                      <div className="mb-4 p-4 bg-green-500/10 border border-green-500/30 flex items-start gap-3">
+                        <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-green-300">
+                          <strong className="block mb-1">Success!</strong>
+                          Proof signed successfully!
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Submit Button - Full Width */}
                     <button
                       onClick={handleSubmit}
                       disabled={!canSubmit}
-                      className={`px-8 py-3 rounded-lg font-semibold transition-all ${
+                      className={`w-full px-8 py-4 font-semibold text-lg transition-all ${
                         canSubmit
-                          ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105'
-                          : 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                          ? 'bg-[#4fc3f7] hover:bg-[#029bee] text-white shadow-lg shadow-[#4fc3f7]/30 hover:shadow-xl hover:shadow-[#4fc3f7]/50'
+                          : 'bg-gray-600 text-gray-400 cursor-not-allowed'
                       }`}
                     >
                       {isLoading || isTransactionLoading ? (
-                        <div className="flex items-center gap-2">
-                          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                          <span>Signing...</span>
+                        <div className="flex items-center justify-center gap-3">
+                          <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                          <span>Signing Proof...</span>
                         </div>
                       ) : (
                         'Sign Aggregated Proof'
                       )}
                     </button>
-                    
-                    {!isFormValid && (
-                      <div className="text-sm text-amber-600 dark:text-amber-400">
-                        ⚠️ Please upload the signature JSON file containing all required parameters
-                      </div>
-                    )}
-                    
-                    {isFormValid && !isChannelStateValid && channelInfo && (
-                      <div className="text-sm text-red-600 dark:text-red-400">
-                        🚫 Channel must be in "Closing" state to sign proofs. Current state: {getChannelStateDisplay(Number(channelInfo[1]))}
-                      </div>
-                    )}
-                    
-                    {isFormValid && isChannelStateValid && isSignatureAlreadySubmitted && (
-                      <div className="text-sm text-blue-600 dark:text-blue-400">
-                        ✅ Signature already submitted! Channel is ready to close.
-                      </div>
-                    )}
-                    
-                    {isSuccess && (
-                      <div className="text-sm text-green-600 dark:text-green-400">
-                        ✅ Proof signed successfully!
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
@@ -545,40 +555,7 @@ export default function SignProofPage() {
           )}
         </main>
         
-        {/* Footer */}
-        <footer className="mt-auto bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-6 py-8">
-          <div className="max-w-6xl mx-auto">
-            <div className="flex flex-wrap justify-center gap-6 mb-6">
-              <a href="https://x.com/Tokamak_Network" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                </svg>
-                <span className="font-medium">X (Twitter)</span>
-              </a>
-              <a href="https://www.tokamak.network/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                </svg>
-                <span className="font-medium">Official Website</span>
-              </a>
-              <a href="https://medium.com/@tokamak.network" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M13.54 12a6.8 6.8 0 01-6.77 6.82A6.8 6.8 0 010 12a6.8 6.8 0 016.77-6.82A6.8 6.8 0 0113.54 12zM20.96 12c0 3.54-1.51 6.42-3.38 6.42-1.87 0-3.39-2.88-3.39-6.42s1.52-6.42 3.39-6.42 3.38 2.88 3.38 6.42M24 12c0 3.17-.53 5.75-1.19 5.75-.66 0-1.19-2.58-1.19-5.75s.53-5.75 1.19-5.75C23.47 6.25 24 8.83 24 12z"/>
-                </svg>
-                <span className="font-medium">Medium</span>
-              </a>
-              <a href="https://github.com/tokamak-network" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
-                </svg>
-                <span className="font-medium">GitHub</span>
-              </a>
-            </div>
-            <div className="text-center text-sm text-gray-500 dark:text-gray-400">
-              <p>&copy; 2025 Tokamak Network. All rights reserved.</p>
-            </div>
-          </div>
-        </footer>
+        <Footer className="mt-auto" />
       </div>
     </div>
   );

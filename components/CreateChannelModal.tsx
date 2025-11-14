@@ -18,7 +18,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI, ETH_TOKEN_ADDRESS } from '@/lib/contracts';
 import { CreateChannelFormData } from '@/lib/types';
 import { parseParticipantAddresses, isValidAddress, timeoutToSeconds } from '@/lib/utils';
-import { AlertCircle, Users, Clock, Settings } from 'lucide-react';
+import { AlertCircle, Users, Clock, Settings, AlertTriangle } from 'lucide-react';
 
 interface CreateChannelModalProps {
   isOpen: boolean;
@@ -159,8 +159,9 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
           <DialogDescription>
             Set up a new ZK Rollup bridge channel with multiple participants
             <br />
-            <span className="text-amber-600 dark:text-amber-400 font-medium">
-              ⚠️ Requires 0.001 ETH leader bond deposit
+            <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1 mt-2">
+              <AlertTriangle className="w-4 h-4" />
+              Requires 0.001 ETH leader bond deposit
             </span>
           </DialogDescription>
         </DialogHeader>

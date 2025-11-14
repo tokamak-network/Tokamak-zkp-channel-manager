@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount, useContractRead } from 'wagmi';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { Home, PlusCircle, FileCheck, ArrowDownCircle, ArrowUpCircle, Settings, PenTool, XCircle, Trash2 } from 'lucide-react';
 
 interface MobileNavigationProps {
   showMobileMenu: boolean;
@@ -88,11 +89,11 @@ export function MobileNavigation({ showMobileMenu, setShowMobileMenu }: MobileNa
     <div className="lg:hidden bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-lg">
       <div className="px-4 py-2 space-y-1">
         {/* Navigation Links */}
-        <div 
+        <div
           onClick={() => handleNavigation('/')}
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
         >
-          <span>🏠</span>
+          <Home className="w-5 h-5" />
           <span className="font-medium">Dashboard</span>
         </div>
         
@@ -101,7 +102,7 @@ export function MobileNavigation({ showMobileMenu, setShowMobileMenu }: MobileNa
             onClick={() => handleNavigation('/create-channel')}
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
           >
-            <span>⚒</span>
+            <PlusCircle className="w-5 h-5" />
             <span className="font-medium">Create Channel</span>
           </div>
         )}
@@ -112,7 +113,7 @@ export function MobileNavigation({ showMobileMenu, setShowMobileMenu }: MobileNa
               onClick={() => handleNavigation('/deposit-tokens')}
               className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
             >
-              <span>💰</span>
+              <ArrowDownCircle className="w-5 h-5" />
               <span className="font-medium">Deposit Tokens</span>
             </div>
             
@@ -120,7 +121,7 @@ export function MobileNavigation({ showMobileMenu, setShowMobileMenu }: MobileNa
               onClick={() => handleNavigation('/withdraw-tokens')}
               className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
             >
-              <span>💳</span>
+              <ArrowUpCircle className="w-5 h-5" />
               <span className="font-medium">Withdraw Tokens</span>
             </div>
           </>
@@ -133,15 +134,15 @@ export function MobileNavigation({ showMobileMenu, setShowMobileMenu }: MobileNa
               onClick={() => handleNavigation('/initialize-state')}
               className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
             >
-              <span>⚡</span>
+              <Settings className="w-5 h-5" />
               <span className="font-medium">Initialize State</span>
             </div>
             
-            <div 
+            <div
               onClick={() => handleNavigation('/submit-proof')}
               className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
             >
-              <span>📋</span>
+              <FileCheck className="w-5 h-5" />
               <span className="font-medium">Submit Proof</span>
             </div>
             
@@ -149,7 +150,7 @@ export function MobileNavigation({ showMobileMenu, setShowMobileMenu }: MobileNa
               onClick={() => handleNavigation('/sign-proof')}
               className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
             >
-              <span>✍️</span>
+              <PenTool className="w-5 h-5" />
               <span className="font-medium">Sign Proof</span>
             </div>
             
@@ -157,7 +158,7 @@ export function MobileNavigation({ showMobileMenu, setShowMobileMenu }: MobileNa
               onClick={() => handleNavigation('/close-channel')}
               className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
             >
-              <span>🔐</span>
+              <XCircle className="w-5 h-5" />
               <span className="font-medium">Close Channel</span>
             </div>
             
@@ -165,7 +166,7 @@ export function MobileNavigation({ showMobileMenu, setShowMobileMenu }: MobileNa
               onClick={() => handleNavigation('/delete-channel')}
               className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
             >
-              <span>🗑️</span>
+              <Trash2 className="w-5 h-5" />
               <span className="font-medium">Delete Channel</span>
             </div>
           </>

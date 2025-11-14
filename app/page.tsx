@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import { Layout } from '@/components/Layout';
 import { ContractInfo } from '@/components/ContractInfo';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
+import { Lock, Zap, Gem, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Activity, FileCheck, PenTool, XCircle, Trash2 } from 'lucide-react';
 
 export default function HomePage() {
   const router = useRouter();
@@ -68,66 +69,90 @@ export default function HomePage() {
   return (
     <>
       <Layout>
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-            Welcome to the Tokamak zk-Rollup manager
-          </h2>
-          <p className="text-lg text-gray-600 dark:text-gray-300 mb-8">
-            Connect your wallet to start using the Zero-Knowledge Rollup Manager
-          </p>
-
-          {/* Contract Information */}
-          <ClientOnly>
-            <ContractInfo />
-          </ClientOnly>
-
-          {/* Connection Status */}
-          <ClientOnly fallback={
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-8">
-              <div className="flex items-center justify-center gap-3 mb-3">
-                <div className="h-3 w-3 bg-gray-400 rounded-full"></div>
-                <h3 className="text-lg font-semibold text-gray-900">Loading...</h3>
-              </div>
-              <p className="text-gray-600">
-                Checking wallet connection status
-              </p>
+        {/* Hero Section - When Not Connected */}
+        {!isConnected ? (
+          <div className="min-h-screen flex flex-col items-center justify-center px-4 py-20 relative">
+            {/* Background decorative elements */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+              <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#4fc3f7]/5 blur-3xl"></div>
+              <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#028bee]/5 blur-3xl"></div>
             </div>
-          }>
-            {!isConnected ? (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-8">
-                <div className="flex items-center justify-center gap-3 mb-3">
-                  <div className="h-3 w-3 bg-yellow-500 rounded-full animate-pulse"></div>
-                  <h3 className="text-lg font-semibold text-yellow-900">Wallet Not Connected</h3>
+
+            <div className="max-w-4xl w-full mx-auto text-center relative z-10">
+              {/* Main Title */}
+              <h1 className="text-5xl lg:text-6xl xl:text-7xl font-bold text-white mb-6 leading-tight" 
+                  style={{ 
+                    textShadow: '0 0 30px rgba(79, 195, 247, 0.3)', 
+                    fontFamily: '"Jersey 10", "Press Start 2P", monospace' 
+                  }}>
+                Tokamak zk-Rollup
+                <span className="block text-[#4fc3f7] mt-2">Channel Manager</span>
+              </h1>
+
+              {/* Subtitle */}
+              <p className="text-lg lg:text-xl text-gray-300 mb-16 max-w-2xl mx-auto leading-relaxed">
+                Secure, private, and efficient zero-knowledge rollup channels for Ethereum
+              </p>
+
+              {/* Connect Wallet Button - Centered */}
+              <div className="flex justify-center mb-20">
+                <ClientOnly>
+                  <ConnectButton />
+                </ClientOnly>
+              </div>
+
+              {/* Features Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
+                <div className="text-center p-6">
+                  <div className="w-14 h-14 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 mx-auto mb-4 flex items-center justify-center">
+                    <Lock className="w-6 h-6 text-[#4fc3f7]" />
+                  </div>
+                  <h4 className="text-white font-semibold mb-2 text-lg">Privacy First</h4>
+                  <p className="text-gray-400 text-sm">Zero-knowledge proofs ensure complete transaction privacy</p>
                 </div>
-                <p className="text-yellow-700 mb-4">
-                  Please connect your wallet to access bridge functionality
-                </p>
-                <div className="flex justify-center">
-                  <ClientOnly>
-                    <ConnectButton />
-                  </ClientOnly>
+                <div className="text-center p-6">
+                  <div className="w-14 h-14 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 mx-auto mb-4 flex items-center justify-center">
+                    <Zap className="w-6 h-6 text-[#4fc3f7]" />
+                  </div>
+                  <h4 className="text-white font-semibold mb-2 text-lg">Lightning Fast</h4>
+                  <p className="text-gray-400 text-sm">Off-chain processing with on-chain security guarantees</p>
+                </div>
+                <div className="text-center p-6">
+                  <div className="w-14 h-14 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 mx-auto mb-4 flex items-center justify-center">
+                    <Gem className="w-6 h-6 text-[#4fc3f7]" />
+                  </div>
+                  <h4 className="text-white font-semibold mb-2 text-lg">Low Cost</h4>
+                  <p className="text-gray-400 text-sm">Minimal gas fees through batch transaction processing</p>
                 </div>
               </div>
-            ) : null}
-          </ClientOnly>
-
+            </div>
+          </div>
+        ) : (
+          <div className="min-h-screen p-4 pb-20">
+            <div className="max-w-6xl w-full mx-auto">
+              {/* Contract Information */}
+              <ClientOnly>
+                <ContractInfo />
+              </ClientOnly>
 
           {/* Action Cards */}
           <ClientOnly>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 max-w-6xl mx-auto px-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-6xl mx-auto">
             {/* Create Channel - Available for all connected users */}
             {isConnected && (
               <div 
                 onClick={handleCreateChannel}
-                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-green-300 dark:hover:border-green-500 group"
+                className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
               >
-                <div className="h-10 w-10 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-green-200 dark:group-hover:bg-green-800/40 transition-colors">
-                  <span className="text-xl">⚒</span>
+                <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                  <PlusCircle className="w-6 h-6 text-white" />
                 </div>
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1 text-sm group-hover:text-green-700 dark:group-hover:text-green-400 transition-colors">Create Channel</h3>
-                <p className="text-gray-600 dark:text-gray-300 text-xs group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors">
-                  Create multi-party bridge channel (0.001 ETH bond)
-                </p>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Create Channel</h3>
+                  <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                    Create multi-party bridge channel (0.001 ETH bond)
+                  </p>
+                </div>
               </div>
             )}
 
@@ -135,15 +160,17 @@ export default function HomePage() {
             {isConnected && (
               <div 
                 onClick={handleDKGManagement}
-                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-yellow-300 dark:hover:border-yellow-500 group"
+                className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
               >
-                <div className="h-10 w-10 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-yellow-200 dark:group-hover:bg-yellow-800/40 transition-colors">
-                  <span className="text-xl">🔑</span>
+                <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                  <Key className="w-6 h-6 text-white" />
                 </div>
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1 text-sm group-hover:text-yellow-700 dark:group-hover:text-yellow-300 transition-colors">DKG Management</h3>
-                <p className="text-gray-600 dark:text-gray-300 text-xs group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors">
-                  Distributed Key Generation
-                </p>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">DKG Management</h3>
+                  <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                    Distributed Key Generation
+                  </p>
+                </div>
               </div>
             )}
 
@@ -151,15 +178,17 @@ export default function HomePage() {
             {isConnected && (isParticipant || hasChannels) && (
               <div 
                 onClick={handleDepositTokens}
-                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-blue-300 dark:hover:border-blue-500 group"
+                className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
               >
-                <div className="h-10 w-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-blue-200 dark:group-hover:bg-blue-800/40 transition-colors">
-                  <span className="text-xl">💰</span>
+                <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                  <ArrowDownCircle className="w-6 h-6 text-white" />
                 </div>
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1 text-sm group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors">Deposit Tokens</h3>
-                <p className="text-gray-600 dark:text-gray-300 text-xs group-hover:text-gray-700 transition-colors">
-                  Deposit ETH or ERC20 tokens
-                </p>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Deposit Tokens</h3>
+                  <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                    Deposit ETH or ERC20 tokens
+                  </p>
+                </div>
               </div>
             )}
 
@@ -167,15 +196,17 @@ export default function HomePage() {
             {isConnected && (isParticipant || hasChannels) && (
               <div 
                 onClick={handleWithdrawTokens}
-                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-purple-300 dark:hover:border-purple-500 group"
+                className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
               >
-                <div className="h-10 w-10 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-purple-200 dark:group-hover:bg-purple-800/40 transition-colors">
-                  <span className="text-xl">💳</span>
+                <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                  <ArrowUpCircle className="w-6 h-6 text-white" />
                 </div>
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1 text-sm group-hover:text-purple-700 dark:group-hover:text-purple-300 transition-colors">Withdraw Tokens</h3>
-                <p className="text-gray-600 dark:text-gray-300 text-xs group-hover:text-gray-700 transition-colors">
-                  Withdraw from closed channel
-                </p>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Withdraw Tokens</h3>
+                  <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                    Withdraw from closed channel
+                  </p>
+                </div>
               </div>
             )}
 
@@ -185,79 +216,90 @@ export default function HomePage() {
                 {/* Initialize State */}
                 <div 
                   onClick={handleInitializeState}
-                  className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-orange-300 dark:hover:border-orange-500 group"
+                  className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
                 >
-                  <div className="h-10 w-10 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-orange-200 dark:group-hover:bg-orange-800/40 transition-colors">
-                    <span className="text-xl">⚡</span>
+                  <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                    <Activity className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1 text-sm group-hover:text-orange-700 dark:group-hover:text-orange-300 transition-colors">Initialize State</h3>
-                  <p className="text-gray-600 dark:text-gray-300 text-xs group-hover:text-gray-700 transition-colors">
-                    Initialize channel state
-                  </p>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Initialize State</h3>
+                    <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                      Initialize channel state
+                    </p>
+                  </div>
                 </div>
 
                 {/* Submit Aggregated Proof */}
                 <div 
                   onClick={handleSubmitProof}
-                  className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-teal-300 dark:hover:border-teal-500 group"
+                  className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
                 >
-                  <div className="h-10 w-10 bg-teal-100 dark:bg-teal-900/30 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-teal-200 dark:group-hover:bg-teal-800/40 transition-colors">
-                    <span className="text-xl">📋</span>
+                  <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                    <FileCheck className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1 text-sm group-hover:text-teal-700 dark:group-hover:text-teal-300 transition-colors">Submit Proof</h3>
-                  <p className="text-gray-600 dark:text-gray-300 text-xs group-hover:text-gray-700 transition-colors">
-                    Submit aggregated proof
-                  </p>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Submit Proof</h3>
+                    <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                      Submit aggregated proof
+                    </p>
+                  </div>
                 </div>
 
                 {/* Sign Aggregated Proof */}
                 <div 
                   onClick={handleSignProof}
-                  className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-500 group"
+                  className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
                 >
-                  <div className="h-10 w-10 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-indigo-200 dark:group-hover:bg-indigo-800/40 transition-colors">
-                    <span className="text-xl">✍️</span>
+                  <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                    <PenTool className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1 text-sm group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition-colors">Sign Proof</h3>
-                  <p className="text-gray-600 dark:text-gray-300 text-xs group-hover:text-gray-700 transition-colors">
-                    Sign aggregated proof
-                  </p>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Sign Proof</h3>
+                    <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                      Sign aggregated proof
+                    </p>
+                  </div>
                 </div>
 
                 {/* Close Channel */}
                 <div 
                   onClick={handleCloseChannel}
-                  className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-red-300 dark:hover:border-red-500 group"
+                  className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
                 >
-                  <div className="h-10 w-10 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-red-200 dark:group-hover:bg-red-800/40 transition-colors">
-                    <span className="text-xl">🔐</span>
+                  <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                    <XCircle className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1 text-sm group-hover:text-red-700 dark:group-hover:text-red-300 transition-colors">Close Channel</h3>
-                  <p className="text-gray-600 dark:text-gray-300 text-xs group-hover:text-gray-700 transition-colors">
-                    Close the channel
-                  </p>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Close Channel</h3>
+                    <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                      Close the channel
+                    </p>
+                  </div>
                 </div>
 
                 {/* Delete Channel */}
                 <div 
                   onClick={handleDeleteChannel}
-                  className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-gray-400 dark:hover:border-gray-500 group"
+                  className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
                 >
-                  <div className="h-10 w-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center mx-auto mb-3 group-hover:bg-gray-200 dark:group-hover:bg-gray-600 transition-colors">
-                    <span className="text-xl">🗑️</span>
+                  <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
+                    <Trash2 className="w-6 h-6 text-white" />
                   </div>
-                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1 text-sm group-hover:text-gray-700 transition-colors">Delete Channel</h3>
-                  <p className="text-gray-600 dark:text-gray-300 text-xs group-hover:text-gray-700 transition-colors">
-                    Delete the channel
-                  </p>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Delete Channel</h3>
+                    <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
+                      Delete the channel
+                    </p>
+                  </div>
                 </div>
               </>
             )}
             </div>
           </ClientOnly>
-        </div>
+            </div>
+          </div>
+        )}
       </Layout>
-
     </>
   );
 }
