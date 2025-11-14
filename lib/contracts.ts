@@ -1,9 +1,9 @@
 import { Address } from 'wagmi';
 
 // Contract addresses - update these with actual deployed contract addresses
-export const ROLLUP_BRIDGE_ADDRESS: Address = '0x0C854fDD125Ffe6eBA7338015E17B6E7617f0486' as Address; 
-export const VERIFIER_ADDRESS: Address = '0xF680590dB955F7975AA6BA02250d11a5a2feC526' as Address; 
-export const ZECFROST_ADDRESS: Address = '0xC106357d9e917A1ee0c1F701d2cEeE8768f2EC48' as Address; 
+export const ROLLUP_BRIDGE_ADDRESS: Address = '0x23f7b07686866d5bcbfc6c0815aeb02bcbd1ac46' as Address; 
+export const VERIFIER_ADDRESS: Address = '0x708fbfE3acC1F65948304015f1789a05383a674b' as Address; 
+export const ZECFROST_ADDRESS: Address = '0x0829fa48016a19efd87b3d24efb8e07ec5cc2482' as Address; 
 
 // ETH token address constant from contract
 export const ETH_TOKEN_ADDRESS: Address = '0x0000000000000000000000000000000000000001';
@@ -15,9 +15,8 @@ export const ROLLUP_BRIDGE_ABI = [
     inputs: [
       {
         components: [
-          { name: 'targetContract', type: 'address' },
+          { name: 'allowedTokens', type: 'address[]' },
           { name: 'participants', type: 'address[]' },
-          { name: 'l2PublicKeys', type: 'address[]' },
           { name: 'timeout', type: 'uint256' },
           { name: 'pkx', type: 'uint256' },
           { name: 'pky', type: 'uint256' }
@@ -28,7 +27,7 @@ export const ROLLUP_BRIDGE_ABI = [
     ],
     name: 'openChannel',
     outputs: [{ name: 'channelId', type: 'uint256' }],
-    stateMutability: 'nonpayable',
+    stateMutability: 'payable',
     type: 'function'
   },
 
@@ -246,8 +245,8 @@ export const ROLLUP_BRIDGE_ABI = [
     type: 'function'
   },
   {
-    inputs: [{ name: 'creator', type: 'address' }],
-    name: 'isAuthorizedCreator',
+    inputs: [{ name: 'leader', type: 'address' }],
+    name: 'isChannelLeader',
     outputs: [{ name: '', type: 'bool' }],
     stateMutability: 'view',
     type: 'function'
@@ -301,13 +300,6 @@ export const ROLLUP_BRIDGE_ABI = [
     name: 'owner',
     outputs: [{ name: '', type: 'address' }],
     stateMutability: 'view',
-    type: 'function'
-  },
-  {
-    inputs: [{ name: 'creator', type: 'address' }],
-    name: 'authorizeCreator',
-    outputs: [],
-    stateMutability: 'nonpayable',
     type: 'function'
   },
   {

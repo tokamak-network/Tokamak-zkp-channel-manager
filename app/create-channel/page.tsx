@@ -13,7 +13,6 @@ import { AlertTriangle, Lightbulb, CheckCircle } from 'lucide-react';
 
 interface Participant {
   address: string;
-  l2PublicKey: string;
 }
 
 export default function CreateChannelPage() {
@@ -51,16 +50,16 @@ export default function CreateChannelPage() {
 
   // Check if user is already a channel leader
   const isAlreadyLeader = address && (
-    (channelStats0 && channelStats0[5] && channelStats0[5].toLowerCase() === address.toLowerCase() && channelStats0[2] !== 5) ||
-    (channelStats1 && channelStats1[5] && channelStats1[5].toLowerCase() === address.toLowerCase() && channelStats1[2] !== 5)
+    (channelStats0 && channelStats0[4] && String(channelStats0[4]).toLowerCase() === address.toLowerCase() && channelStats0[2] !== 5) ||
+    (channelStats1 && channelStats1[4] && String(channelStats1[4]).toLowerCase() === address.toLowerCase() && channelStats1[2] !== 5)
   );
 
   // Form state
-  const [targetContract, setTargetContract] = useState('');
+  const [allowedTokens, setAllowedTokens] = useState<string[]>(['']);
   const [participants, setParticipants] = useState<Participant[]>([
-    { address: '', l2PublicKey: '' },
-    { address: '', l2PublicKey: '' },
-    { address: '', l2PublicKey: '' }
+    { address: '' },
+    { address: '' },
+    { address: '' }
   ]);
   const [timeout, setTimeout] = useState(1); // in days
   const [pkx, setPkx] = useState('');
@@ -71,8 +70,10 @@ export default function CreateChannelPage() {
 
   // Add/Remove participants
   const addParticipant = () => {
-    if (participants.length < 50) {
-      setParticipants([...participants, { address: '', l2PublicKey: '' }]);
+    const filledTokens = allowedTokens.filter(token => token !== '');
+    const maxParticipants = getMaxParticipants(filledTokens.length || 1); // Use 1 as minimum to show limits
+    if (participants.length < maxParticipants) {
+      setParticipants([...participants, { address: '' }]);
     }
   };
 
@@ -82,10 +83,29 @@ export default function CreateChannelPage() {
     }
   };
 
-  const updateParticipant = (index: number, field: 'address' | 'l2PublicKey', value: string) => {
+  const updateParticipant = (index: number, value: string) => {
     const newParticipants = [...participants];
-    newParticipants[index][field] = value;
+    newParticipants[index].address = value;
     setParticipants(newParticipants);
+  };
+
+  // Add/Remove allowed tokens
+  const addToken = () => {
+    if (allowedTokens.length < 4) {
+      setAllowedTokens([...allowedTokens, '']);
+    }
+  };
+
+  const removeToken = (index: number) => {
+    if (allowedTokens.length > 1) {
+      setAllowedTokens(allowedTokens.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateToken = (index: number, value: string) => {
+    const newTokens = [...allowedTokens];
+    newTokens[index] = value;
+    setAllowedTokens(newTokens);
   };
 
 
@@ -93,15 +113,37 @@ export default function CreateChannelPage() {
   const isValidEthereumAddress = (addr: string) => /^0x[a-fA-F0-9]{40}$/.test(addr);
   const isValidHex = (hex: string) => /^0x[a-fA-F0-9]+$/.test(hex);
 
+  const getMaxParticipants = (tokenCount: number) => {
+    if (tokenCount === 1) return 16;
+    if (tokenCount === 2) return 8;
+    if (tokenCount === 3) return 5;
+    if (tokenCount === 4) return 4;
+    return 16;
+  };
+
   const isFormValid = () => {
+    const filledTokens = allowedTokens.filter(token => token !== '');
+    const maxParticipants = getMaxParticipants(filledTokens.length);
+    
+    // Check for duplicate tokens
+    const uniqueTokens = new Set(filledTokens);
+    const hasDuplicates = uniqueTokens.size !== filledTokens.length;
+    
     return (
       isAuthorized && // User must be authorized to create channels
       !isAlreadyLeader && // Prevent creation if already leading a channel
-      isValidEthereumAddress(targetContract) &&
-      participants.every(p => 
-        isValidEthereumAddress(p.address) && 
-        isValidEthereumAddress(p.l2PublicKey)
+      allowedTokens.length > 0 &&
+      allowedTokens.length <= 4 &&
+      !hasDuplicates && // No duplicate tokens allowed
+      allowedTokens.every(token => 
+        token === '' || // Allow empty tokens during editing
+        token === '0x0000000000000000000000000000000000000001' || // ETH_TOKEN_ADDRESS
+        isValidEthereumAddress(token)
       ) &&
+      filledTokens.length > 0 && // At least one non-empty token
+      participants.length >= 3 && 
+      participants.length <= maxParticipants &&
+      participants.every(p => isValidEthereumAddress(p.address)) &&
       timeout >= 1 && timeout <= 365 && // 1 day to 365 days
       isValidHex(pkx) &&
       isValidHex(pky)
@@ -110,9 +152,8 @@ export default function CreateChannelPage() {
 
   // Prepare contract call
   const channelParams = isFormValid() ? {
-    targetContract: targetContract as `0x${string}`,
+    allowedTokens: allowedTokens.filter(token => token !== '').map(token => token as `0x${string}`),
     participants: participants.map(p => p.address as `0x${string}`),
-    l2PublicKeys: participants.map(p => p.l2PublicKey as `0x${string}`),
     timeout: BigInt(timeout * 86400), // Convert days to seconds
     pkx: BigInt(pkx),
     pky: BigInt(pky)
@@ -204,9 +245,9 @@ export default function CreateChannelPage() {
         <div className="max-w-5xl mx-auto">
           <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 mb-6 shadow-lg shadow-[#4fc3f7]/20">
             <div className="mb-8">
-              <h2 className="text-2xl font-bold text-white mb-2">Create Multi-Party Channel</h2>
+              <h2 className="text-2xl font-bold text-white mb-2">Create Multi-Token Channel</h2>
               <p className="text-gray-300">
-                Set up a collaborative bridge channel for zero-knowledge proof operations with multiple participants.
+                Set up a collaborative bridge channel supporting multiple tokens for zero-knowledge proof operations with multiple participants.
               </p>
             </div>
 
@@ -247,21 +288,87 @@ export default function CreateChannelPage() {
             </ClientOnly>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Target Contract */}
+              {/* Allowed Tokens */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Target Contract Address
-                </label>
-                <input
-                  type="text"
-                  value={targetContract}
-                  onChange={(e) => setTargetContract(e.target.value)}
-                  placeholder="0x..."
-                  className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
-                />
-                {targetContract && !isValidEthereumAddress(targetContract) && (
-                  <p className="text-red-400 text-sm mt-1">Invalid Ethereum address</p>
-                )}
+                <div className="flex justify-between items-center mb-4">
+                  <label className="block text-sm font-medium text-gray-300">
+                    Allowed Tokens ({allowedTokens.length}/4)
+                  </label>
+                  <div className="space-x-2">
+                    <button
+                      type="button"
+                      onClick={addToken}
+                      disabled={allowedTokens.length >= 4}
+                      className="px-3 py-1 text-sm bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 transition-colors duration-200"
+                    >
+                      Add Token
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="space-y-4">
+                  {allowedTokens.map((token, index) => (
+                    <div key={index} className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <h4 className="font-medium text-white">Token {index + 1}</h4>
+                        {allowedTokens.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeToken(index)}
+                            className="text-red-400 hover:text-red-300 text-sm"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      
+                      <div className="flex flex-col gap-3">
+                        <input
+                          type="text"
+                          value={token}
+                          onChange={(e) => updateToken(index, e.target.value)}
+                          placeholder="0x... or use ETH address: 0x0000000000000000000000000000000000000001"
+                          className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
+                        />
+                        {token && token !== '0x0000000000000000000000000000000000000001' && !isValidEthereumAddress(token) && (
+                          <p className="text-red-400 text-xs mt-1">Invalid token address</p>
+                        )}
+                        {token && allowedTokens.filter(t => t === token).length > 1 && (
+                          <p className="text-red-400 text-xs mt-1">Duplicate token address - each token can only be used once</p>
+                        )}
+                        
+                        {/* Quick select buttons */}
+                        <div className="flex gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => updateToken(index, '0x0000000000000000000000000000000000000001')}
+                            className="px-2 py-1 text-xs bg-blue-600/20 border border-blue-500/50 text-blue-300 hover:bg-blue-600/40 transition-colors"
+                          >
+                            ETH
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateToken(index, '0x79E0d92670106c85E9067b56B8F674340dCa0Bbd')}
+                            className="px-2 py-1 text-xs bg-amber-600/20 border border-amber-500/50 text-amber-300 hover:bg-amber-600/40 transition-colors"
+                          >
+                            WTON
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateToken(index, '0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A')}
+                            className="px-2 py-1 text-xs bg-purple-600/20 border border-purple-500/50 text-purple-300 hover:bg-purple-600/40 transition-colors"
+                          >
+                            USDT
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                <p className="text-sm text-gray-400 mt-2">
+                  You can select up to 4 different tokens for your channel. Participants will be able to deposit any of these tokens.
+                </p>
                 
                 {/* Warning for supported tokens */}
                 <div className="mt-3 p-4 bg-amber-900/20 border border-amber-500/50">
@@ -269,39 +376,14 @@ export default function CreateChannelPage() {
                     <AlertTriangle className="w-5 h-5 text-amber-400" />
                     <div className="flex-1">
                       <h4 className="text-sm font-semibold text-amber-300 mb-2">
-                        Supported Target Tokens
+                        Supported Tokens
                       </h4>
                       <p className="text-amber-200/90 text-sm mb-3">
-                        Currently, only WTON and USDT tokens are supported as target contracts.
+                        Currently supported: ETH (native), WTON, and USDT tokens. Use the quick select buttons above.
                       </p>
-                      <div className="space-y-2">
-                        <button
-                          type="button"
-                          onClick={() => setTargetContract('0x79E0d92670106c85E9067b56B8F674340dCa0Bbd')}
-                          className="w-full bg-amber-900/40 p-2 hover:bg-amber-900/60 transition-colors cursor-pointer text-left border border-transparent hover:border-amber-500/50"
-                        >
-                          <div className="text-xs font-medium text-amber-300 mb-1 flex items-center justify-between">
-                            <span>WTON Token</span>
-                            <span className="text-[10px] text-amber-400/60">Click to use</span>
-                          </div>
-                          <div className="text-xs text-amber-200/90 font-mono break-all">
-                            0x79E0d92670106c85E9067b56B8F674340dCa0Bbd
-                          </div>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setTargetContract('0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A')}
-                          className="w-full bg-amber-900/40 p-2 hover:bg-amber-900/60 transition-colors cursor-pointer text-left border border-transparent hover:border-amber-500/50"
-                        >
-                          <div className="text-xs font-medium text-amber-300 mb-1 flex items-center justify-between">
-                            <span>USDT Token</span>
-                            <span className="text-[10px] text-amber-400/60">Click to use</span>
-                          </div>
-                          <div className="text-xs text-amber-200/90 font-mono break-all">
-                            0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A
-                          </div>
-                        </button>
-                      </div>
+                      <p className="text-amber-200/90 text-sm">
+                        For ETH: 0x0000000000000000000000000000000000000001
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -311,13 +393,13 @@ export default function CreateChannelPage() {
               <div>
                 <div className="flex justify-between items-center mb-4">
                   <label className="block text-sm font-medium text-gray-300">
-                    Participants ({participants.length}/50)
+                    Participants ({participants.length}/{getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)})
                   </label>
                   <div className="space-x-2">
                     <button
                       type="button"
                       onClick={addParticipant}
-                      disabled={participants.length >= 50}
+                      disabled={participants.length >= getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)}
                       className="px-3 py-1 text-sm bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 transition-colors duration-200"
                     >
                       Add
@@ -341,46 +423,42 @@ export default function CreateChannelPage() {
                         )}
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-400 mb-1">
-                            L1 Address
-                          </label>
-                          <input
-                            type="text"
-                            value={participant.address}
-                            onChange={(e) => updateParticipant(index, 'address', e.target.value)}
-                            placeholder="0x..."
-                            className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
-                          />
-                          {participant.address && !isValidEthereumAddress(participant.address) && (
-                            <p className="text-red-400 text-xs mt-1">Invalid address</p>
-                          )}
-                        </div>
-                        
-                        <div>
-                          <label className="block text-xs font-medium text-gray-400 mb-1">
-                            L2 Public Key
-                          </label>
-                          <input
-                            type="text"
-                            value={participant.l2PublicKey}
-                            onChange={(e) => updateParticipant(index, 'l2PublicKey', e.target.value)}
-                            placeholder="0x..."
-                            className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
-                          />
-                          {participant.l2PublicKey && !isValidEthereumAddress(participant.l2PublicKey) && (
-                            <p className="text-red-400 text-xs mt-1">Invalid L2 public key</p>
-                          )}
-                        </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-400 mb-1">
+                          L1 Address
+                        </label>
+                        <input
+                          type="text"
+                          value={participant.address}
+                          onChange={(e) => updateParticipant(index, e.target.value)}
+                          placeholder="0x..."
+                          className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
+                        />
+                        {participant.address && !isValidEthereumAddress(participant.address) && (
+                          <p className="text-red-400 text-xs mt-1">Invalid address</p>
+                        )}
                       </div>
                     </div>
                   ))}
                 </div>
                 
                 <p className="text-sm text-gray-400 mt-2">
-                  Minimum 3 participants, maximum 50 participants required.
+                  Minimum 3 participants, maximum {getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)} participants for {allowedTokens.filter(token => token !== '').length || 1} token(s).
                 </p>
+                
+                <div className="mt-3 p-4 bg-blue-900/20 border border-blue-500/50">
+                  <div className="flex items-start gap-3">
+                    <Lightbulb className="w-5 h-5 text-blue-400" />
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-blue-300 mb-2">
+                        L2 MPT Keys
+                      </h4>
+                      <p className="text-blue-200/90 text-sm">
+                        L2 MPT keys are no longer provided during channel creation. Participants will provide their L2 MPT keys when making deposits for each token type.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Timeout */}
@@ -460,13 +538,16 @@ export default function CreateChannelPage() {
           <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-8">
             <h3 className="font-semibold text-[#4fc3f7] mb-4">Channel Requirements</h3>
             <ul className="space-y-2 text-sm text-gray-300">
-              <li>• Target contract must be a valid Ethereum address</li>
-              <li>• Between 3-50 participants required</li>
-              <li>• Each participant needs L1 address and L2 public key</li>
-              <li>• Timeout must be between 1 day and 365 days</li>
-              <li>• Group public key coordinates are required for FROST signatures</li>
-              <li>• Preprocess data JSON file is required with part1 and part2 entries</li>
-              <li>• All addresses must be valid Ethereum format (0x...)</li>
+              <li>• 1-4 unique tokens per channel (ETH, WTON, USDT supported)</li>
+              <li>• Maximum participants: 1 token = 16, 2 tokens = 8, 3 tokens = 5, 4 tokens = 4</li>
+              <li>• Minimum 3 participants required</li>
+              <li>• Each token can only be used once (no duplicates allowed)</li>
+              <li>• Each participant provides only L1 address during creation</li>
+              <li>• L2 MPT keys provided during token deposits (per token type)</li>
+              <li>• Timeout must be between 1 hour and 365 days</li>
+              <li>• Group public key coordinates required for FROST signatures</li>
+              <li>• 0.001 ETH leader bond required (refunded on successful completion)</li>
+              <li>• All token addresses must be pre-approved via setAllowedTargetContract</li>
             </ul>
           </div>
         </div>
