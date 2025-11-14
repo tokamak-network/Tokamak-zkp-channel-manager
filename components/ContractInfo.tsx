@@ -25,6 +25,7 @@ export function ContractInfo() {
   // Use dynamic hook to check all channels for leadership and participation
   const { hasChannels, isParticipant, isLoading: rolesLoading, totalChannels, participatingChannels, leadingChannels, channelStatsData } = useUserRolesDynamic();
 
+
   // Create dynamic contract calls for user deposits in participating channels
   const depositContracts = participatingChannels.map(channelId => ({
     address: ROLLUP_BRIDGE_ADDRESS,
@@ -44,10 +45,22 @@ export function ContractInfo() {
   
   const tokenContracts = participatingChannels.flatMap(channelId => {
     const channelStats = channelStatsData[channelId];
-    const targetContract = channelStats?.[1] as `0x${string}`;
+    const allowedTokens = channelStats?.[1];
     
-    // Skip ETH channels (zero address or no target contract)
-    if (!targetContract || targetContract === '0x0000000000000000000000000000000000000000' || !isAddress(targetContract)) {
+    
+    // Skip channels without tokens or get first non-ETH token  
+    if (!allowedTokens || !Array.isArray(allowedTokens) || allowedTokens.length === 0) {
+      return [];
+    }
+    
+    // Find first non-ETH token (ETH address is 0x0000000000000000000000000000000000000001)
+    const firstToken = Array.isArray(allowedTokens) ? allowedTokens.find(token => 
+      token !== '0x0000000000000000000000000000000000000001' && 
+      token !== '0x0000000000000000000000000000000000000000' &&
+      isAddress(token)
+    ) : undefined;
+    
+    if (!firstToken) {
       return [];
     }
 
@@ -57,12 +70,12 @@ export function ContractInfo() {
 
     return [
       {
-        address: targetContract,
+        address: firstToken,
         abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }] as const,
         functionName: 'decimals',
       },
       {
-        address: targetContract,
+        address: firstToken,
         abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }] as const,
         functionName: 'symbol',
       }
@@ -129,8 +142,15 @@ export function ContractInfo() {
     participatingChannels.forEach((channelId, index) => {
       const depositAmount = depositData?.[index]?.result as bigint;
       const channelStats = channelStatsData[channelId];
-      const targetContract = channelStats?.[1] as `0x${string}`;
-      const isETH = !targetContract || targetContract === '0x0000000000000000000000000000000000000000' || !isAddress(targetContract);
+      const allowedTokens = channelStats?.[1];
+      
+      
+      const firstToken = Array.isArray(allowedTokens) ? allowedTokens.find(token => 
+        token !== '0x0000000000000000000000000000000000000001' && 
+        token !== '0x0000000000000000000000000000000000000000' &&
+        isAddress(token)
+      ) : undefined;
+      const isETH = !firstToken;
       
       let decimals = 18;
       let symbol = 'ETH';

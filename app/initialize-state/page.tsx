@@ -133,13 +133,27 @@ export default function InitializeStatePage() {
     enabled: isMounted && isConnected && !!hookLeaderChannel,
   });
 
+  // Get first non-ETH token from allowed tokens for debug info
+  const getFirstToken = () => {
+    const allowedTokens = hookLeaderChannel?.stats?.[1] as readonly `0x${string}`[];
+    if (!Array.isArray(allowedTokens)) return null;
+    
+    return allowedTokens.find(token => 
+      token !== '0x0000000000000000000000000000000000000001' && 
+      token !== '0x0000000000000000000000000000000000000000' &&
+      isAddress(token)
+    ) || null;
+  };
+
+  const firstToken = getFirstToken();
+
   // Get token info using debugTokenInfo for consistency with other pages
   const { data: tokenInfo } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'debugTokenInfo',
-    args: hookLeaderChannel?.stats?.[1] && address ? [hookLeaderChannel.stats[1] as `0x${string}`, address] : undefined,
-    enabled: isMounted && isConnected && hookLeaderChannel?.stats?.[1] && isAddress(hookLeaderChannel.stats[1]) && hookLeaderChannel.stats[1] !== '0x0000000000000000000000000000000000000000' && !!address,
+    args: firstToken && address ? [firstToken, address] : undefined,
+    enabled: isMounted && isConnected && !!firstToken && !!address,
   });
 
   // Extract token info with proper fallbacks
@@ -182,7 +196,7 @@ export default function InitializeStatePage() {
     }
   };
 
-  const isETH = !hookLeaderChannel?.stats?.[1] || hookLeaderChannel.stats[1] === '0x0000000000000000000000000000000000000000';
+  const isETH = !firstToken; // If no non-ETH token found, assume ETH channel
   const displayDecimals = isETH ? 18 : tokenDecimals;
   const displaySymbol = isETH ? 'ETH' : (typeof tokenSymbol === 'string' ? tokenSymbol : 'TOKEN');
 

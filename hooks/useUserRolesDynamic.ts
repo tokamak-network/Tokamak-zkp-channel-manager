@@ -10,7 +10,7 @@ export function useUserRolesDynamic() {
   const [totalChannels, setTotalChannels] = useState(0);
   const [participatingChannels, setParticipatingChannels] = useState<number[]>([]);
   const [leadingChannels, setLeadingChannels] = useState<number[]>([]);
-  const [channelStatsData, setChannelStatsData] = useState<Record<number, readonly [bigint, `0x${string}`, number, bigint, bigint, `0x${string}`] | null>>({});
+  const [channelStatsData, setChannelStatsData] = useState<Record<number, readonly [bigint, readonly `0x${string}`[], number, bigint, `0x${string}`] | null>>({});
 
   // First get the total number of channels
   const { data: totalChannelsData, isLoading: totalChannelsLoading } = useContractReads({
@@ -74,53 +74,45 @@ export function useUserRolesDynamic() {
     let foundParticipation = false;
     const participantChannels: number[] = [];
     const leaderChannels: number[] = [];
-    const statsData: Record<number, readonly [bigint, `0x${string}`, number, bigint, bigint, `0x${string}`] | null> = {};
+    const statsData: Record<number, readonly [bigint, readonly `0x${string}`[], number, bigint, `0x${string}`] | null> = {};
 
-    console.log(`Total channels from contract: ${channelCount}, maxChannelsToCheck: ${maxChannelsToCheck}`);
-    console.log(`Checking ${Math.min(channelCount, maxChannelsToCheck)} channels for user roles...`);
 
     // Process the channel data
     for (let i = 0; i < maxChannelsToCheck && i < channelCount; i++) {
       const statsIndex = i * 2;
       const participantsIndex = i * 2 + 1;
       
-      const channelStats = channelData?.[statsIndex]?.result as readonly [bigint, `0x${string}`, number, bigint, bigint, `0x${string}`];
+      const channelStats = channelData?.[statsIndex]?.result as readonly [bigint, readonly `0x${string}`[], number, bigint, `0x${string}`];
       const participants = channelData?.[participantsIndex]?.result as readonly string[];
 
       // Store channel stats data for later use
       statsData[i] = channelStats || null;
 
-      console.log(`Channel ${i}:`, {
-        statsIndex,
-        participantsIndex,
-        channelStats: channelStats ? {
-          id: channelStats[0]?.toString(),
-          targetContract: channelStats[1],
-          state: channelStats[2],
-          leader: channelStats[5]
-        } : null,
-        participants,
-        userAddress: address
-      });
 
-      // Check leadership (index 5 is leader address)
-      if (channelStats && channelStats[5] && channelStats[5].toLowerCase() === address.toLowerCase()) {
+      // Check leadership (index 4 is leader address in new ABI)
+      // Convert BigInt leader address to hex string
+      let leaderAddress = '';
+      if (channelStats && channelStats[4]) {
+        if (typeof channelStats[4] === 'bigint') {
+          // Convert BigInt to hex address
+          leaderAddress = `0x${(channelStats[4] as bigint).toString(16).padStart(40, '0')}`;
+        } else {
+          leaderAddress = String(channelStats[4]);
+        }
+      }
+
+      if (channelStats && channelStats[4] && leaderAddress.toLowerCase() === address.toLowerCase()) {
         foundLeadership = true;
         leaderChannels.push(i);
-        console.log(`✅ User is leader of channel ${i}`);
       }
 
       // Check participation (user can be both leader in some channels and participant in others)
       if (participants && participants.includes(address)) {
         foundParticipation = true;
         participantChannels.push(i);
-        console.log(`✅ User is participant in channel ${i}`);
       }
     }
 
-    console.log(`Final results: hasChannels=${foundLeadership}, isParticipant=${foundParticipation && !foundLeadership}`);
-    console.log(`Participating channels: ${participantChannels.join(', ')}`);
-    console.log(`Leading channels: ${leaderChannels.join(', ')}`);
     
     setHasChannels(foundLeadership);
     setIsParticipant(foundParticipation && !foundLeadership);

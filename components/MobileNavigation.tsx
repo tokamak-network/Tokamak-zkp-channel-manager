@@ -15,14 +15,8 @@ export function MobileNavigation({ showMobileMenu, setShowMobileMenu }: MobileNa
   const router = useRouter();
   const { address, isConnected } = useAccount();
 
-  // Check if user is authorized to create channels
-  const { data: isAuthorized } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'isAuthorizedCreator',
-    args: address ? [address] : undefined,
-    enabled: isConnected && !!address,
-  });
+  // Anyone can create channels now - no authorization required
+  const isAuthorized = true;
 
   // Get total number of channels to check leadership
   const { data: totalChannels } = useContractRead({
@@ -51,8 +45,8 @@ export function MobileNavigation({ showMobileMenu, setShowMobileMenu }: MobileNa
 
   // Check if user is a leader of any channels
   const hasChannels = address && (
-    (channelStats0 && channelStats0[5] && channelStats0[5].toLowerCase() === address.toLowerCase()) ||
-    (channelStats1 && channelStats1[5] && channelStats1[5].toLowerCase() === address.toLowerCase())
+    (channelStats0 && channelStats0[4] && String(channelStats0[4]).toLowerCase() === address.toLowerCase()) ||
+    (channelStats1 && channelStats1[4] && String(channelStats1[4]).toLowerCase() === address.toLowerCase())
   );
 
   // Check if user is a participant (not leader) in channels
