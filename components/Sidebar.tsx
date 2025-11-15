@@ -9,7 +9,7 @@ import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { ClientOnly } from '@/components/ClientOnly';
 import { NetworkDropdown } from '@/components/NetworkDropdown';
-import { Home, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Search, Settings, FileCheck, PenTool, XCircle, Trash2 } from 'lucide-react';
+import { Home, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Search, Settings, FileCheck, PenTool, XCircle, Trash2, Activity } from 'lucide-react';
 
 interface SidebarProps {
   isConnected: boolean;
@@ -38,8 +38,15 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       name: 'Home',
       href: '/',
       icon: Home,
-      description: 'Dashboard and overview',
+      description: 'Main navigation hub',
       requiresConnection: false
+    },
+    {
+      name: 'Dashboard',
+      href: '/dashboard',
+      icon: Activity,
+      description: 'Account status and balances',
+      requiresConnection: true
     },
   ];
 

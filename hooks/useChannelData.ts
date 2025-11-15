@@ -149,8 +149,10 @@ export function useChannelInfo(channelId: number) {
   const isEligible = isUserParticipant && isChannelInitialized;
 
   // Get token info if not ETH
-  const targetContract = channelStats?.[1];
-  const isETH = !targetContract || targetContract === '0x0000000000000000000000000000000000000000';
+  // Note: New contract uses allowedTokens[] at index 1, but for backwards compatibility, use first token
+  const allowedTokens = channelStats?.[1] as readonly `0x${string}`[] | undefined;
+  const targetContract = allowedTokens?.[0]; // Use first allowed token for backwards compatibility
+  const isETH = !targetContract || targetContract === '0x0000000000000000000000000000000000000001';
 
   const { data: tokenDecimals } = useContractRead({
     address: targetContract as `0x${string}`,

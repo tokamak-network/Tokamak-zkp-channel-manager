@@ -45,10 +45,10 @@ export function useUserRoles() {
               abi: ROLLUP_BRIDGE_ABI,
               functionName: 'getChannelStats',
               args: [BigInt(channelId)],
-            }) as readonly [bigint, `0x${string}`, number, bigint, bigint, `0x${string}`];
+            }) as readonly [bigint, readonly `0x${string}`[], number, bigint, `0x${string}`];
 
-            // Check if user is the leader (index 5 is leader address)
-            if (channelStats[5] && channelStats[5].toLowerCase() === address.toLowerCase()) {
+            // Check if user is the leader (index 4 is leader address in new contract)
+            if (channelStats[4] && channelStats[4].toLowerCase() === address.toLowerCase()) {
               foundLeadership = true;
               console.log(`User is leader of channel ${channelId}`);
             }

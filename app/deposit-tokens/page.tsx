@@ -9,6 +9,7 @@ import { ClientOnly } from '@/components/ClientOnly';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { MobileMenuButton } from '@/components/MobileMenuButton';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { ArrowDownCircle, Clock, Inbox, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function DepositTokensPage() {
@@ -22,12 +23,17 @@ export default function DepositTokensPage() {
   }, []);
   const [selectedChannel, setSelectedChannel] = useState<{
     channelId: bigint;
-    targetContract: string;
-    decimals?: number;
-    symbol?: string;
-    isETH?: boolean;
+    allowedTokens: readonly `0x${string}`[];
+    state: number;
+  } | null>(null);
+  const [selectedToken, setSelectedToken] = useState<{
+    address: string;
+    symbol: string;
+    decimals: number;
+    isETH: boolean;
   } | null>(null);
   const [depositAmount, setDepositAmount] = useState('');
+  const [mptKey, setMptKey] = useState('');
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [approvalError, setApprovalError] = useState<string>('');
   const [approvalStep, setApprovalStep] = useState<'idle' | 'reset' | 'approve'>('idle');
@@ -40,617 +46,128 @@ export default function DepositTokensPage() {
   } | null>(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
-  // Get total number of channels
-  const { data: totalChannels } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getTotalChannels',
-    enabled: isMounted && isConnected,
-  });
+  // Use dynamic hook to get channels where user participates
+  const { participatingChannels, channelStatsData } = useUserRolesDynamic();
 
-  // Get channel participants for first few channels to check participation
-  const { data: participantsChannel0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(0)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 0,
-  });
-
-  const { data: participantsChannel1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(1)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 1,
-  });
-
-  const { data: participantsChannel2 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(2)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 2,
-  });
-
-  const { data: participantsChannel3 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(3)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 3,
-  });
-
-  const { data: participantsChannel4 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(4)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 4,
-  });
-
-  const { data: participantsChannel5 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(5)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 5,
-  });
-
-  const { data: participantsChannel6 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(6)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 6,
-  });
-
-  const { data: participantsChannel7 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(7)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 7,
-  });
-
-  const { data: participantsChannel8 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(8)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 8,
-  });
-
-  const { data: participantsChannel9 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelParticipants',
-    args: [BigInt(9)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 9,
-  });
-
-  // Get channel stats to check states and target contracts
-  const { data: channelStats0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(0)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 0,
-  });
-
-  const { data: channelStats1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(1)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 1,
-  });
-
-  const { data: channelStats2 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(2)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 2,
-  });
-
-  const { data: channelStats3 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(3)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 3,
-  });
-
-  const { data: channelStats4 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(4)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 4,
-  });
-
-  const { data: channelStats5 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(5)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 5,
-  });
-
-  const { data: channelStats6 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(6)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 6,
-  });
-
-  const { data: channelStats7 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(7)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 7,
-  });
-
-  const { data: channelStats8 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(8)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 8,
-  });
-
-  const { data: channelStats9 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
-    args: [BigInt(9)],
-    enabled: isMounted && isConnected && !!totalChannels && Number(totalChannels) > 9,
-  });
-
-  // Get token info for each channel's target contract
-  const { data: tokenDecimals0 } = useContractRead({
-    address: channelStats0?.[1] as `0x${string}`,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'decimals',
-    enabled: isMounted && isConnected && channelStats0?.[1] && isAddress(channelStats0[1]) && channelStats0[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenSymbol0 } = useContractRead({
-    address: channelStats0?.[1] as `0x${string}`,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'symbol',
-    enabled: isMounted && isConnected && channelStats0?.[1] && isAddress(channelStats0[1]) && channelStats0[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenDecimals1 } = useContractRead({
-    address: channelStats1?.[1] as `0x${string}`,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'decimals',
-    enabled: isMounted && isConnected && channelStats1?.[1] && isAddress(channelStats1[1]) && channelStats1[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenSymbol1 } = useContractRead({
-    address: channelStats1?.[1] as `0x${string}`,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'symbol',
-    enabled: isMounted && isConnected && channelStats1?.[1] && isAddress(channelStats1[1]) && channelStats1[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenDecimals2 } = useContractRead({
-    address: channelStats2?.[1] as `0x${string}`,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'decimals',
-    enabled: isMounted && isConnected && channelStats2?.[1] && isAddress(channelStats2[1]) && channelStats2[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenSymbol2 } = useContractRead({
-    address: channelStats2?.[1] as `0x${string}`,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'symbol',
-    enabled: isMounted && isConnected && channelStats2?.[1] && isAddress(channelStats2[1]) && channelStats2[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenDecimals3 } = useContractRead({
-    address: channelStats3?.[1] as `0x${string}`,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'decimals',
-    enabled: isMounted && isConnected && channelStats3?.[1] && isAddress(channelStats3[1]) && channelStats3[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenSymbol3 } = useContractRead({
-    address: channelStats3?.[1] as `0x${string}`,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'symbol',
-    enabled: isMounted && isConnected && channelStats3?.[1] && isAddress(channelStats3[1]) && channelStats3[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenDecimals4 } = useContractRead({
-    address: channelStats4?.[1] as `0x${string}`,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'decimals',
-    enabled: isMounted && isConnected && channelStats4?.[1] && isAddress(channelStats4[1]) && channelStats4[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenSymbol4 } = useContractRead({
-    address: channelStats4?.[1] as `0x${string}`,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'symbol',
-    enabled: isMounted && isConnected && channelStats4?.[1] && isAddress(channelStats4[1]) && channelStats4[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenDecimals5 } = useContractRead({
-    address: channelStats5?.[1] as `0x${string}`,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'decimals',
-    enabled: isMounted && isConnected && channelStats5?.[1] && isAddress(channelStats5[1]) && channelStats5[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenSymbol5 } = useContractRead({
-    address: channelStats5?.[1] as `0x${string}`,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'symbol',
-    enabled: isMounted && isConnected && channelStats5?.[1] && isAddress(channelStats5[1]) && channelStats5[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenDecimals6 } = useContractRead({
-    address: channelStats6?.[1] as `0x${string}`,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'decimals',
-    enabled: isMounted && isConnected && channelStats6?.[1] && isAddress(channelStats6[1]) && channelStats6[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenSymbol6 } = useContractRead({
-    address: channelStats6?.[1] as `0x${string}`,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'symbol',
-    enabled: isMounted && isConnected && channelStats6?.[1] && isAddress(channelStats6[1]) && channelStats6[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenDecimals7 } = useContractRead({
-    address: channelStats7?.[1] as `0x${string}`,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'decimals',
-    enabled: isMounted && isConnected && channelStats7?.[1] && isAddress(channelStats7[1]) && channelStats7[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenSymbol7 } = useContractRead({
-    address: channelStats7?.[1] as `0x${string}`,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'symbol',
-    enabled: isMounted && isConnected && channelStats7?.[1] && isAddress(channelStats7[1]) && channelStats7[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenDecimals8 } = useContractRead({
-    address: channelStats8?.[1] as `0x${string}`,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'decimals',
-    enabled: isMounted && isConnected && channelStats8?.[1] && isAddress(channelStats8[1]) && channelStats8[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenSymbol8 } = useContractRead({
-    address: channelStats8?.[1] as `0x${string}`,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'symbol',
-    enabled: isMounted && isConnected && channelStats8?.[1] && isAddress(channelStats8[1]) && channelStats8[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenDecimals9 } = useContractRead({
-    address: channelStats9?.[1] as `0x${string}`,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'decimals',
-    enabled: isMounted && isConnected && channelStats9?.[1] && isAddress(channelStats9[1]) && channelStats9[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  const { data: tokenSymbol9 } = useContractRead({
-    address: channelStats9?.[1] as `0x${string}`,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
-    functionName: 'symbol',
-    enabled: isMounted && isConnected && channelStats9?.[1] && isAddress(channelStats9[1]) && channelStats9[1] !== '0x0000000000000000000000000000000000000000',
-  });
-
-  // Get user's deposits for each channel
-  const { data: userDepositChannel0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address ? [BigInt(0), address] : undefined,
-    enabled: isMounted && isConnected && !!address && participantsChannel0 && participantsChannel0.includes(address),
-  });
-
-  const { data: userDepositChannel1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address ? [BigInt(1), address] : undefined,
-    enabled: isMounted && isConnected && !!address && participantsChannel1 && participantsChannel1.includes(address),
-  });
-
-  const { data: userDepositChannel2 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address ? [BigInt(2), address] : undefined,
-    enabled: isMounted && isConnected && !!address && participantsChannel2 && participantsChannel2.includes(address),
-  });
-
-  const { data: userDepositChannel3 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address ? [BigInt(3), address] : undefined,
-    enabled: isMounted && isConnected && !!address && participantsChannel3 && participantsChannel3.includes(address),
-  });
-
-  const { data: userDepositChannel4 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address ? [BigInt(4), address] : undefined,
-    enabled: isMounted && isConnected && !!address && participantsChannel4 && participantsChannel4.includes(address),
-  });
-
-  const { data: userDepositChannel5 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address ? [BigInt(5), address] : undefined,
-    enabled: isMounted && isConnected && !!address && participantsChannel5 && participantsChannel5.includes(address),
-  });
-
-  const { data: userDepositChannel6 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address ? [BigInt(6), address] : undefined,
-    enabled: isMounted && isConnected && !!address && participantsChannel6 && participantsChannel6.includes(address),
-  });
-
-  const { data: userDepositChannel7 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address ? [BigInt(7), address] : undefined,
-    enabled: isMounted && isConnected && !!address && participantsChannel7 && participantsChannel7.includes(address),
-  });
-
-  const { data: userDepositChannel8 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address ? [BigInt(8), address] : undefined,
-    enabled: isMounted && isConnected && !!address && participantsChannel8 && participantsChannel8.includes(address),
-  });
-
-  const { data: userDepositChannel9 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address ? [BigInt(9), address] : undefined,
-    enabled: isMounted && isConnected && !!address && participantsChannel9 && participantsChannel9.includes(address),
-  });
-
-  // Find channels user can deposit to (participating and in Initialized state - state 1)
-  const availableChannels = [];
-
-  if (isMounted && participantsChannel0 && address && participantsChannel0.includes(address) && channelStats0?.[2] === 1) {
-    const isETH = !channelStats0[1] || channelStats0[1] === '0x0000000000000000000000000000000000000000';
-    availableChannels.push({
-      channelId: BigInt(0),
-      targetContract: channelStats0[1],
-      state: channelStats0[2],
-      totalDeposits: channelStats0[4],
-      userDeposit: userDepositChannel0 || BigInt(0),
-      decimals: isETH ? 18 : tokenDecimals0,
-      symbol: isETH ? 'ETH' : (typeof tokenSymbol0 === 'string' ? tokenSymbol0 : 'TOKEN'),
-      isETH
-    });
-  }
-
-  if (isMounted && participantsChannel1 && address && participantsChannel1.includes(address) && channelStats1?.[2] === 1) {
-    const isETH = !channelStats1[1] || channelStats1[1] === '0x0000000000000000000000000000000000000000';
-    availableChannels.push({
-      channelId: BigInt(1),
-      targetContract: channelStats1[1],
-      state: channelStats1[2],
-      totalDeposits: channelStats1[4],
-      userDeposit: userDepositChannel1 || BigInt(0),
-      decimals: isETH ? 18 : tokenDecimals1,
-      symbol: isETH ? 'ETH' : (typeof tokenSymbol1 === 'string' ? tokenSymbol1 : 'TOKEN'),
-      isETH
-    });
-  }
-
-  if (isMounted && participantsChannel2 && address && participantsChannel2.includes(address) && channelStats2?.[2] === 1) {
-    const isETH = !channelStats2[1] || channelStats2[1] === '0x0000000000000000000000000000000000000000';
-    availableChannels.push({
-      channelId: BigInt(2),
-      targetContract: channelStats2[1],
-      state: channelStats2[2],
-      totalDeposits: channelStats2[4],
-      userDeposit: userDepositChannel2 || BigInt(0),
-      decimals: isETH ? 18 : tokenDecimals2,
-      symbol: isETH ? 'ETH' : (typeof tokenSymbol2 === 'string' ? tokenSymbol2 : 'TOKEN'),
-      isETH
-    });
-  }
-
-  if (isMounted && participantsChannel3 && address && participantsChannel3.includes(address) && channelStats3?.[2] === 1) {
-    const isETH = !channelStats3[1] || channelStats3[1] === '0x0000000000000000000000000000000000000000';
-    availableChannels.push({
-      channelId: BigInt(3),
-      targetContract: channelStats3[1],
-      state: channelStats3[2],
-      totalDeposits: channelStats3[4],
-      userDeposit: userDepositChannel3 || BigInt(0),
-      decimals: isETH ? 18 : tokenDecimals3,
-      symbol: isETH ? 'ETH' : (typeof tokenSymbol3 === 'string' ? tokenSymbol3 : 'TOKEN'),
-      isETH
-    });
-  }
-
-  if (isMounted && participantsChannel4 && address && participantsChannel4.includes(address) && channelStats4?.[2] === 1) {
-    const isETH = !channelStats4[1] || channelStats4[1] === '0x0000000000000000000000000000000000000000';
-    availableChannels.push({
-      channelId: BigInt(4),
-      targetContract: channelStats4[1],
-      state: channelStats4[2],
-      totalDeposits: channelStats4[4],
-      userDeposit: userDepositChannel4 || BigInt(0),
-      decimals: isETH ? 18 : tokenDecimals4,
-      symbol: isETH ? 'ETH' : (typeof tokenSymbol4 === 'string' ? tokenSymbol4 : 'TOKEN'),
-      isETH
-    });
-  }
-
-  if (isMounted && participantsChannel5 && address && participantsChannel5.includes(address) && channelStats5?.[2] === 1) {
-    const isETH = !channelStats5[1] || channelStats5[1] === '0x0000000000000000000000000000000000000000';
-    availableChannels.push({
-      channelId: BigInt(5),
-      targetContract: channelStats5[1],
-      state: channelStats5[2],
-      totalDeposits: channelStats5[4],
-      userDeposit: userDepositChannel5 || BigInt(0),
-      decimals: isETH ? 18 : tokenDecimals5,
-      symbol: isETH ? 'ETH' : (typeof tokenSymbol5 === 'string' ? tokenSymbol5 : 'TOKEN'),
-      isETH
-    });
-  }
-
-  if (isMounted && participantsChannel6 && address && participantsChannel6.includes(address) && channelStats6?.[2] === 1) {
-    const isETH = !channelStats6[1] || channelStats6[1] === '0x0000000000000000000000000000000000000000';
-    availableChannels.push({
-      channelId: BigInt(6),
-      targetContract: channelStats6[1],
-      state: channelStats6[2],
-      totalDeposits: channelStats6[4],
-      userDeposit: userDepositChannel6 || BigInt(0),
-      decimals: isETH ? 18 : tokenDecimals6,
-      symbol: isETH ? 'ETH' : (typeof tokenSymbol6 === 'string' ? tokenSymbol6 : 'TOKEN'),
-      isETH
-    });
-  }
-
-  if (isMounted && participantsChannel7 && address && participantsChannel7.includes(address) && channelStats7?.[2] === 1) {
-    const isETH = !channelStats7[1] || channelStats7[1] === '0x0000000000000000000000000000000000000000';
-    availableChannels.push({
-      channelId: BigInt(7),
-      targetContract: channelStats7[1],
-      state: channelStats7[2],
-      totalDeposits: channelStats7[4],
-      userDeposit: userDepositChannel7 || BigInt(0),
-      decimals: isETH ? 18 : tokenDecimals7,
-      symbol: isETH ? 'ETH' : (typeof tokenSymbol7 === 'string' ? tokenSymbol7 : 'TOKEN'),
-      isETH
-    });
-  }
-
-  if (isMounted && participantsChannel8 && address && participantsChannel8.includes(address) && channelStats8?.[2] === 1) {
-    const isETH = !channelStats8[1] || channelStats8[1] === '0x0000000000000000000000000000000000000000';
-    availableChannels.push({
-      channelId: BigInt(8),
-      targetContract: channelStats8[1],
-      state: channelStats8[2],
-      totalDeposits: channelStats8[4],
-      userDeposit: userDepositChannel8 || BigInt(0),
-      decimals: isETH ? 18 : tokenDecimals8,
-      symbol: isETH ? 'ETH' : (typeof tokenSymbol8 === 'string' ? tokenSymbol8 : 'TOKEN'),
-      isETH
-    });
-  }
-
-  if (isMounted && participantsChannel9 && address && participantsChannel9.includes(address) && channelStats9?.[2] === 1) {
-    const isETH = !channelStats9[1] || channelStats9[1] === '0x0000000000000000000000000000000000000000';
-    availableChannels.push({
-      channelId: BigInt(9),
-      targetContract: channelStats9[1],
-      state: channelStats9[2],
-      totalDeposits: channelStats9[4],
-      userDeposit: userDepositChannel9 || BigInt(0),
-      decimals: isETH ? 18 : tokenDecimals9,
-      symbol: isETH ? 'ETH' : (typeof tokenSymbol9 === 'string' ? tokenSymbol9 : 'TOKEN'),
-      isETH
-    });
-  }
-
-  // Deposit preparation
-  const handleDeposit = async (channel: any, amount: string) => {
-    if (!amount || !channel || !address) return;
-    
-    try {
-      const parsedAmount = parseUnits(amount, channel.decimals);
+  // Get available channels for deposits (state = 1 means initialized)
+  const availableChannels = participatingChannels
+    .map(channelId => {
+      const stats = channelStatsData[channelId];
+      if (!stats || stats[2] !== 1) return null; // Only initialized channels (state = 1)
       
-      if (channel.isETH) {
-        // ETH deposit
-        if (depositETH) await depositETH();
-      } else {
-        // ERC20 token deposit - check allowance first
-        // Force refresh allowance before deposit
-        const { data: freshAllowance } = await refetchAllowance();
+      return {
+        channelId: BigInt(channelId),
+        allowedTokens: stats[1] as readonly `0x${string}`[],
+        state: stats[2],
+        participantCount: stats[3]
+      };
+    })
+    .filter(Boolean) as {
+      channelId: bigint;
+      allowedTokens: readonly `0x${string}`[];
+      state: number;
+      participantCount: bigint;
+    }[];
 
-        // Only proceed with deposit if we have sufficient allowance
-        if (!hasSufficientAllowance || !effectiveAllowance || effectiveAllowance < parsedAmount || !freshAllowance || freshAllowance < parsedAmount) {
-          setApprovalError('Insufficient token allowance. Please approve tokens first and wait for confirmation.');
-          return;
-        }
-        
-        if (depositToken) await depositToken();
-      }
-    } catch (error) {
-      console.error('Deposit error:', error);
+  // Helper function to get basic token info (symbols and known decimals)
+  const getBasicTokenInfo = (tokenAddress: string) => {
+    if (tokenAddress === '0x0000000000000000000000000000000000000001') {
+      return { symbol: 'ETH', decimals: 18, isETH: true, address: tokenAddress };
     }
+    
+    // Known tokens with correct decimals
+    if (tokenAddress.toLowerCase() === '0x79E0d92670106c85E9067b56B8F674340dCa0Bbd'.toLowerCase()) {
+      return { symbol: 'WTON', decimals: 27, isETH: false, address: tokenAddress }; // WTON has 27 decimals
+    }
+    if (tokenAddress.toLowerCase() === '0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A'.toLowerCase()) {
+      return { symbol: 'USDT', decimals: 6, isETH: false, address: tokenAddress }; // USDT has 6 decimals
+    }
+    
+    // For unknown tokens, we'll fetch decimals dynamically
+    return { symbol: 'TOKEN', decimals: 18, isETH: false, address: tokenAddress };
   };
 
-  // Prepare ETH deposit
+  // Create channel and token dropdown data with proper decimal fetching
+  const channelOptions = availableChannels.map(channel => ({
+    channelId: channel.channelId,
+    allowedTokens: channel.allowedTokens,
+    state: channel.state,
+    tokens: channel.allowedTokens.map(tokenAddr => getBasicTokenInfo(tokenAddr))
+  }));
+
+  // Dynamic token metadata fetching for selected token
+  const { data: selectedTokenDecimals } = useContractRead({
+    address: selectedToken && !selectedToken.isETH ? selectedToken.address as `0x${string}` : undefined,
+    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'decimals',
+    enabled: Boolean(selectedToken && !selectedToken.isETH && selectedToken.decimals === 18), // Only fetch if using default decimals
+  });
+
+  const { data: selectedTokenSymbol } = useContractRead({
+    address: selectedToken && !selectedToken.isETH ? selectedToken.address as `0x${string}` : undefined,
+    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    functionName: 'symbol',
+    enabled: Boolean(selectedToken && !selectedToken.isETH && selectedToken.symbol === 'TOKEN'), // Only fetch if using default symbol
+  });
+
+  // Get actual decimals and symbol for selected token
+  const actualTokenDecimals = selectedTokenDecimals || selectedToken?.decimals || 18;
+  const actualTokenSymbol = selectedTokenSymbol || selectedToken?.symbol || 'TOKEN';
+
+  // Dynamic user deposit fetch for available channels
+  const userDeposits: Record<string, bigint | undefined> = {};
+  
+  // Get user deposits for the first few channels
+  const { data: userDeposit0 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getParticipantDeposit',
+    args: address && availableChannels[0] ? [availableChannels[0].channelId, address] : undefined,
+    enabled: isMounted && isConnected && !!address && availableChannels.length > 0,
+  });
+  
+  const { data: userDeposit1 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getParticipantDeposit',
+    args: address && availableChannels[1] ? [availableChannels[1].channelId, address] : undefined,
+    enabled: isMounted && isConnected && !!address && availableChannels.length > 1,
+  });
+  
+  const { data: userDeposit2 } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getParticipantDeposit',
+    args: address && availableChannels[2] ? [availableChannels[2].channelId, address] : undefined,
+    enabled: isMounted && isConnected && !!address && availableChannels.length > 2,
+  });
+  
+  // Map deposits to channels
+  if (availableChannels[0]) userDeposits[availableChannels[0].channelId.toString()] = userDeposit0;
+  if (availableChannels[1]) userDeposits[availableChannels[1].channelId.toString()] = userDeposit1;
+  if (availableChannels[2]) userDeposits[availableChannels[2].channelId.toString()] = userDeposit2;
+
+
+  // Prepare ETH deposit (new interface requires mptKey)
   const { config: depositETHConfig } = usePrepareContractWrite({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'depositETH',
-    args: selectedChannel ? [selectedChannel.channelId] : undefined,
-    value: selectedChannel && depositAmount ? parseUnits(depositAmount, selectedChannel.decimals || 18) : undefined,
-    enabled: Boolean(isMounted && selectedChannel?.isETH && depositAmount && address),
+    args: selectedChannel && mptKey ? [selectedChannel.channelId, mptKey as `0x${string}`] : undefined,
+    value: selectedChannel && selectedToken && depositAmount && selectedToken.isETH ? parseUnits(depositAmount, actualTokenDecimals) : undefined,
+    enabled: Boolean(isMounted && selectedChannel && selectedToken?.isETH && depositAmount && mptKey && address),
   });
 
   const { write: depositETH, isLoading: isDepositingETH } = useContractWrite(depositETHConfig);
 
-  // Get the actual token decimals for the selected channel
-  const getTokenDecimals = (channel: any): number => {
-  if (!channel || channel.isETH) return 18;
-  
-  // Use the specific token decimals loaded for each channel
-  if (channel.channelId === BigInt(0)) {
-  return tokenDecimals0 || 18;
-  }
-  if (channel.channelId === BigInt(1)) {
-  return tokenDecimals1 || 18;
-  }
-  if (channel.channelId === BigInt(2)) {
-  return tokenDecimals2 || 18;
-  }
-  if (channel.channelId === BigInt(3)) {
-  return tokenDecimals3 || 18;
-  }
-  if (channel.channelId === BigInt(4)) {
-  return tokenDecimals4 || 18;
-  }
-  if (channel.channelId === BigInt(5)) {
-  return tokenDecimals5 || 18;
-  }
-  if (channel.channelId === BigInt(6)) {
-  return tokenDecimals6 || 18;
-  }
-  if (channel.channelId === BigInt(7)) {
-  return tokenDecimals7 || 18;
-  }
-  if (channel.channelId === BigInt(8)) {
-  return tokenDecimals8 || 18;
-  }
-  if (channel.channelId === BigInt(9)) {
-  return tokenDecimals9 || 18;
-  }
-  return channel.decimals || 18;
+  // Get the actual token decimals for the selected token
+  const getTokenDecimals = (token: any): number => {
+    if (!token || token.isETH) return 18;
+    // If this is the selected token, use the actual fetched decimals
+    if (selectedToken && token.address === selectedToken.address) {
+      return actualTokenDecimals;
+    }
+    return token.decimals || 18;
   };
 
   // Token deposit preparation moved after needsApproval calculation
@@ -658,24 +175,24 @@ export default function DepositTokensPage() {
   // Watch for deposit transaction completion - moved after deposit preparation
 
   // Determine if we need to reset allowance first (USDT pattern)
-  const isUSDT = selectedChannel && (selectedChannel.targetContract === '0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A' || 
-    selectedChannel.symbol?.toLowerCase().includes('usdt') || 
-    selectedChannel.symbol?.toLowerCase().includes('tether'));
+  const isUSDT = selectedToken && (selectedToken.address === '0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A' || 
+    actualTokenSymbol?.toLowerCase().includes('usdt') || 
+    actualTokenSymbol?.toLowerCase().includes('tether'));
 
   // Approval configurations moved after effectiveAllowance calculation
 
   // Get allowance with refetch capability - enhanced for USDT compatibility
   const { data: allowance, refetch: refetchAllowance, error: allowanceError, isError: isAllowanceError } = useContractRead({
-    address: selectedChannel && !selectedChannel.isETH ? selectedChannel.targetContract as `0x${string}` : undefined,
+    address: selectedToken && !selectedToken.isETH ? selectedToken.address as `0x${string}` : undefined,
     abi: [{ name: 'allowance', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function', inputs: [{ type: 'address' }, { type: 'address' }] }],
     functionName: 'allowance',
-    args: selectedChannel && address ? [address, ROLLUP_BRIDGE_ADDRESS] : undefined,
-    enabled: Boolean(isMounted && selectedChannel && !selectedChannel.isETH && address),
+    args: selectedToken && address ? [address, ROLLUP_BRIDGE_ADDRESS] : undefined,
+    enabled: Boolean(isMounted && selectedToken && !selectedToken.isETH && address),
   });
 
   // USDT-specific allowance check with alternative ABI
   const { data: usdtAllowance } = useContractRead({
-    address: selectedChannel && !selectedChannel.isETH && isUSDT ? selectedChannel.targetContract as `0x${string}` : undefined,
+    address: selectedToken && !selectedToken.isETH && isUSDT ? selectedToken.address as `0x${string}` : undefined,
     abi: [
       {
         constant: true,
@@ -691,19 +208,19 @@ export default function DepositTokensPage() {
       }
     ],
     functionName: 'allowance',
-    args: selectedChannel && address ? [address, ROLLUP_BRIDGE_ADDRESS] : undefined,
-    enabled: Boolean(isMounted && selectedChannel && !selectedChannel.isETH && address && isUSDT),
+    args: selectedToken && address ? [address, ROLLUP_BRIDGE_ADDRESS] : undefined,
+    enabled: Boolean(isMounted && selectedToken && !selectedToken.isETH && address && isUSDT),
   });
 
   // Use USDT-specific allowance if available, fallback to regular allowance
   const effectiveAllowance = (isUSDT && usdtAllowance !== undefined ? usdtAllowance : allowance) as bigint | undefined;
 
   // Determine if we need to reset allowance first (USDT pattern)
-  const needsAllowanceReset = selectedChannel && !selectedChannel.isETH && effectiveAllowance !== undefined && effectiveAllowance > 0 && approvalStep === 'idle';
+  const needsAllowanceReset = selectedToken && !selectedToken.isETH && effectiveAllowance !== undefined && effectiveAllowance > 0 && approvalStep === 'idle';
 
   // Prepare approval reset transaction (approve 0) - for USDT compatibility
   const { config: resetApproveConfig } = usePrepareContractWrite({
-    address: selectedChannel && !selectedChannel.isETH ? selectedChannel.targetContract as `0x${string}` : undefined,
+    address: selectedToken && !selectedToken.isETH ? selectedToken.address as `0x${string}` : undefined,
     abi: [{ name: 'approve', outputs: [], stateMutability: 'nonpayable', type: 'function', inputs: [{ type: 'address' }, { type: 'uint256' }] }],
     functionName: 'approve',
     args: [
@@ -723,14 +240,14 @@ export default function DepositTokensPage() {
 
   // Prepare approval transaction - using ABI without return value for USDT compatibility
   const { config: approveConfig } = usePrepareContractWrite({
-    address: selectedChannel && !selectedChannel.isETH ? selectedChannel.targetContract as `0x${string}` : undefined,
+    address: selectedToken && !selectedToken.isETH ? selectedToken.address as `0x${string}` : undefined,
     abi: [{ name: 'approve', outputs: [], stateMutability: 'nonpayable', type: 'function', inputs: [{ type: 'address' }, { type: 'uint256' }] }],
     functionName: 'approve',
-    args: selectedChannel && depositAmount ? [
+    args: selectedToken && depositAmount ? [
       ROLLUP_BRIDGE_ADDRESS,
-      parseUnits(depositAmount, getTokenDecimals(selectedChannel))
+      parseUnits(depositAmount, actualTokenDecimals)
     ] : undefined,
-    enabled: Boolean(isMounted && selectedChannel && !selectedChannel.isETH && depositAmount && address && getTokenDecimals(selectedChannel) && 
+    enabled: Boolean(isMounted && selectedToken && !selectedToken.isETH && depositAmount && address && actualTokenDecimals && 
       (approvalStep === 'approve' || (!isUSDT && approvalStep === 'idle') || (isUSDT && approvalStep === 'idle' && effectiveAllowance === BigInt(0)))),
   });
 
@@ -814,9 +331,9 @@ export default function DepositTokensPage() {
   };
 
   // Check if USDT has existing allowance that must be spent first  
-  const usdtMustSpendExisting = selectedChannel && !selectedChannel.isETH && depositAmount && isUSDT && effectiveAllowance !== undefined
+  const usdtMustSpendExisting = selectedToken && !selectedToken.isETH && depositAmount && isUSDT && effectiveAllowance !== undefined
     ? (() => {
-        const requiredAmount = parseUnits(depositAmount, getTokenDecimals(selectedChannel));
+        const requiredAmount = parseUnits(depositAmount, getTokenDecimals(selectedToken));
         const hasExistingAllowance = effectiveAllowance > BigInt(0);
         const wantsDifferentAmount = effectiveAllowance !== requiredAmount;
         return hasExistingAllowance && wantsDifferentAmount;
@@ -824,9 +341,9 @@ export default function DepositTokensPage() {
     : false;
 
   // Check if approval is needed - more strict validation
-  const needsApproval = selectedChannel && !selectedChannel.isETH && depositAmount && effectiveAllowance !== undefined
+  const needsApproval = selectedToken && !selectedToken.isETH && depositAmount && effectiveAllowance !== undefined
     ? (() => {
-        const requiredAmount = parseUnits(depositAmount, getTokenDecimals(selectedChannel));
+        const requiredAmount = parseUnits(depositAmount, getTokenDecimals(selectedToken));
         
         // For USDT: if user has existing allowance but wants different amount, they must spend existing first
         if (usdtMustSpendExisting) {
@@ -838,7 +355,7 @@ export default function DepositTokensPage() {
     : true;
 
   // Check if we have sufficient allowance for the exact deposit amount
-  const hasSufficientAllowance = selectedChannel && !selectedChannel.isETH && depositAmount
+  const hasSufficientAllowance = selectedToken && !selectedToken.isETH && depositAmount
     ? (() => {
         // If allowance fetch failed or is undefined, assume no allowance
         if (effectiveAllowance === undefined || isAllowanceError) {
@@ -846,22 +363,23 @@ export default function DepositTokensPage() {
           return false;
         }
         
-        const requiredAmount = parseUnits(depositAmount, getTokenDecimals(selectedChannel));
+        const requiredAmount = parseUnits(depositAmount, getTokenDecimals(selectedToken));
         return effectiveAllowance >= requiredAmount;
       })()
     : false;
 
-  // Prepare Token deposit (after needsApproval and hasSufficientAllowance are calculated)
+  // Prepare Token deposit (new interface requires mptKey)
   const { config: depositTokenConfig } = usePrepareContractWrite({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'depositToken',
-    args: selectedChannel && depositAmount ? [
+    args: selectedChannel && selectedToken && depositAmount && mptKey ? [
       selectedChannel.channelId,
-      selectedChannel.targetContract as `0x${string}`,
-      parseUnits(depositAmount, getTokenDecimals(selectedChannel))
+      selectedToken.address as `0x${string}`,
+      parseUnits(depositAmount, actualTokenDecimals),
+      mptKey as `0x${string}`
     ] : undefined,
-    enabled: Boolean(isMounted && selectedChannel && !selectedChannel.isETH && depositAmount && address && getTokenDecimals(selectedChannel) && !needsApproval && hasSufficientAllowance),
+    enabled: Boolean(isMounted && selectedChannel && selectedToken && !selectedToken.isETH && depositAmount && mptKey && address && !needsApproval && hasSufficientAllowance),
   });
 
   const { write: depositToken, isLoading: isDepositingToken, error: depositError, data: depositData } = useContractWrite(depositTokenConfig);
@@ -874,12 +392,12 @@ export default function DepositTokensPage() {
 
   // Handle deposit success - show popup and reset form
   useEffect(() => {
-    if (depositSuccess && selectedChannel && depositAmount) {
+    if (depositSuccess && selectedChannel && selectedToken && depositAmount) {
       
       // Set success info for popup
       setSuccessDepositInfo({
         channelId: selectedChannel.channelId.toString(),
-        tokenSymbol: selectedChannel.symbol || (selectedChannel.isETH ? 'ETH' : 'Token'),
+        tokenSymbol: actualTokenSymbol,
         amount: depositAmount,
         txHash: depositData?.hash || ''
       });
@@ -890,25 +408,22 @@ export default function DepositTokensPage() {
       // Reset form after a short delay
       setTimeout(() => {
         setSelectedChannel(null);
+        setSelectedToken(null);
         setDepositAmount('');
+        setMptKey('');
         setApprovalError('');
         setApprovalStep('idle');
       }, 1000);
     }
-  }, [depositSuccess, selectedChannel, depositAmount, depositData?.hash]);
-
-  const handleChannelSelect = (channel: any) => {
-    setSelectedChannel(channel);
-    setDepositAmount('');
-  };
+  }, [depositSuccess, selectedChannel, selectedToken, depositAmount, depositData?.hash]);
 
   // Auto-set deposit amount when USDT edge case is detected
   useEffect(() => {
-    if (usdtMustSpendExisting && selectedChannel && effectiveAllowance && !depositAmount) {
-      const forcedAmount = formatUnits(effectiveAllowance, getTokenDecimals(selectedChannel));
+    if (usdtMustSpendExisting && selectedToken && effectiveAllowance && !depositAmount) {
+      const forcedAmount = formatUnits(effectiveAllowance, actualTokenDecimals);
       setDepositAmount(forcedAmount);
     }
-  }, [usdtMustSpendExisting, selectedChannel, effectiveAllowance, depositAmount]);
+  }, [usdtMustSpendExisting, selectedToken, effectiveAllowance, depositAmount, actualTokenDecimals]);
 
   if (!isMounted) {
     return <div className="min-h-screen bg-gray-50 dark:bg-gray-900"></div>;
@@ -962,7 +477,7 @@ export default function DepositTokensPage() {
                 <h1 className="text-3xl font-bold text-white">Deposit Tokens</h1>
               </div>
               <p className="text-gray-300 ml-13">
-                You can only deposit tokens into channels where you're a participant and the channel is in an initialized state.
+                Select a channel and token to deposit. You must provide an L2 MPT key for each token deposit.
               </p>
             </div>
 
@@ -977,7 +492,7 @@ export default function DepositTokensPage() {
                     <h3 className="text-xl font-semibold text-white mb-2">Loading...</h3>
                     <p className="text-gray-300">Fetching channel information...</p>
                   </div>
-                ) : availableChannels.length === 0 ? (
+                ) : channelOptions.length === 0 ? (
                 <div className="text-center py-12">
                   <div className="h-16 w-16 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 flex items-center justify-center mx-auto mb-4">
                     <Inbox className="w-8 h-8 text-[#4fc3f7]" />
@@ -996,251 +511,211 @@ export default function DepositTokensPage() {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {availableChannels.map((channel) => (
-                    <div key={channel.channelId.toString()} className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-6 hover:border-[#4fc3f7] transition-all duration-300">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 flex items-center justify-center">
-                            <span className="text-[#4fc3f7] font-semibold">#{channel.channelId.toString()}</span>
+                <div className="space-y-6">
+                  {/* Step 1: Channel Selection */}
+                  <div className="space-y-4">
+                    <h3 className="text-xl font-semibold text-white mb-4">Step 1: Select Channel</h3>
+                    <div className="grid gap-4">
+                      {channelOptions.map((channelOption) => {
+                        const userDeposit = userDeposits[channelOption.channelId.toString()] || BigInt(0);
+                        return (
+                          <div 
+                            key={channelOption.channelId.toString()}
+                            onClick={() => setSelectedChannel({
+                              channelId: channelOption.channelId,
+                              allowedTokens: channelOption.allowedTokens,
+                              state: channelOption.state
+                            })}
+                            className={`border p-4 cursor-pointer transition-all duration-300 ${
+                              selectedChannel?.channelId === channelOption.channelId
+                                ? 'border-[#4fc3f7] bg-[#4fc3f7]/10'
+                                : 'border-[#4fc3f7]/30 bg-[#0a1930]/50 hover:border-[#4fc3f7]'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="h-10 w-10 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 flex items-center justify-center">
+                                  <span className="text-[#4fc3f7] font-semibold">#{channelOption.channelId.toString()}</span>
+                                </div>
+                                <div>
+                                  <h4 className="text-lg font-semibold text-white">Channel {channelOption.channelId.toString()}</h4>
+                                  <p className="text-sm text-gray-400">
+                                    {channelOption.tokens.length} allowed tokens
+                                  </p>
+                                </div>
+                              </div>
+                              {selectedChannel?.channelId === channelOption.channelId && (
+                                <CheckCircle2 className="w-6 h-6 text-[#4fc3f7]" />
+                              )}
+                            </div>
                           </div>
-                          <div>
-                            <h3 className="text-lg font-semibold text-white">Channel {channel.channelId.toString()}</h3>
-                            <p className="text-sm text-gray-400 flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3" />
-                              Ready for deposits
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-gray-400">Your Deposits</p>
-                          <p className="font-medium text-white">
-                            {formatUnits(channel.userDeposit || BigInt(0), getTokenDecimals(channel))} {channel.symbol}
-                          </p>
-                        </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Step 2: Token Selection */}
+                  {selectedChannel && (
+                    <div className="border-t border-[#4fc3f7]/30 pt-6 space-y-4">
+                      <h3 className="text-xl font-semibold text-white mb-4">Step 2: Select Token</h3>
+                      <div className="grid gap-3">
+                        {channelOptions
+                          .find(ch => ch.channelId === selectedChannel.channelId)?.
+                          tokens.map((token) => (
+                            <div
+                              key={token.address}
+                              onClick={() => setSelectedToken(token)}
+                              className={`border p-3 cursor-pointer transition-all duration-300 ${
+                                selectedToken?.address === token.address
+                                  ? 'border-[#4fc3f7] bg-[#4fc3f7]/10'
+                                  : 'border-[#4fc3f7]/30 bg-[#0a1930]/50 hover:border-[#4fc3f7]'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className="h-8 w-8 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 flex items-center justify-center text-xs">
+                                    {token.symbol.substring(0, 3)}
+                                  </div>
+                                  <div>
+                                    <h5 className="font-semibold text-white">{token.symbol}</h5>
+                                    <p className="text-xs text-gray-400 font-mono">
+                                      {token.isETH ? 'Native ETH' : `${token.address.substring(0, 8)}...${token.address.substring(36)}`}
+                                    </p>
+                                  </div>
+                                </div>
+                                {selectedToken?.address === token.address && (
+                                  <CheckCircle2 className="w-5 h-5 text-[#4fc3f7]" />
+                                )}
+                              </div>
+                            </div>
+                          )) || []}
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm mb-4">
-                        <div>
-                          <span className="text-gray-400">Target Contract:</span>
-                          <p className="font-mono text-xs break-all text-gray-300">
-                            {channel.isETH ? 'ETH (Native)' : channel.targetContract}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-gray-400">State:</span>
-                          <span className="ml-2 px-2 py-1 bg-green-500/20 text-green-400 border border-green-500/50 text-xs font-medium">
-                            Initialized
-                          </span>
+                    </div>
+                  )}
+
+                  {/* Step 3: Deposit Details */}
+                  {selectedChannel && selectedToken && (
+                    <div className="border-t border-[#4fc3f7]/30 pt-6 space-y-6">
+                      <h3 className="text-xl font-semibold text-white mb-4">Step 3: Deposit Details</h3>
+                      
+                      {/* MPT Key Input */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          L2 MPT Key (Required) <span className="text-red-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={mptKey}
+                          onChange={(e) => setMptKey(e.target.value)}
+                          placeholder="0x..."
+                          className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">
+                          Enter your L2 Merkle Patricia Tree key for this deposit
+                        </p>
+                      </div>
+
+                      {/* Amount Input */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Amount to Deposit
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            value={depositAmount}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              if (value && !isNaN(Number(value)) && Number(value) > 1000000) {
+                                return;
+                              }
+                              setDepositAmount(value);
+                            }}
+                            placeholder="0.0"
+                            className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
+                          />
+                          <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                            <span className="text-gray-400 text-sm font-medium">
+                              {actualTokenSymbol}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
-                      {/* Deposit Section */}
-                      <div className="border-t border-[#4fc3f7]/30 pt-4">
-                        <div className="flex items-end gap-3">
-                          <div className="flex-1">
-                            <label className="block text-sm font-medium text-gray-300 mb-1">
-                              Amount to Deposit
-                            </label>
-                            <div className="relative">
-                              <input
-                                type="number"
-                                step="any"
-                                min="0"
-                                value={selectedChannel?.channelId === channel.channelId ? 
-                                  (usdtMustSpendExisting && selectedChannel.channelId === channel.channelId && effectiveAllowance ? 
-                                    formatUnits(effectiveAllowance, getTokenDecimals(selectedChannel)) : 
-                                    depositAmount
-                                  ) : 
-                                  ''
-                                }
-                                onChange={(e) => {
-                                  if (selectedChannel?.channelId !== channel.channelId) {
-                                    handleChannelSelect(channel);
-                                  }
-                                  const value = e.target.value;
-                                  
-                                  // If USDT must spend existing allowance, don't allow changing the amount
-                                  if (usdtMustSpendExisting && selectedChannel?.channelId === channel.channelId) {
-                                    return; // Keep the enforced amount
-                                  }
-                                  
-                                  // Prevent entering extremely large numbers
-                                  if (value && !isNaN(Number(value)) && Number(value) > 1000000) {
-                                    return; // Don't update if over 1M
-                                  }
-                                  setDepositAmount(value);
-                                }}
-                                disabled={usdtMustSpendExisting && selectedChannel?.channelId === channel.channelId}
-                                placeholder={usdtMustSpendExisting && selectedChannel?.channelId === channel.channelId ? 
-                                  `Must deposit ${effectiveAllowance ? formatUnits(effectiveAllowance, getTokenDecimals(selectedChannel)) : '0'} ${channel.symbol}` :
-                                  `0.0 (max 1,000,000)`
-                                }
-                                className={`w-full px-3 py-2 border focus:outline-none focus:ring-2 transition-colors duration-200 ${
-                                  usdtMustSpendExisting && selectedChannel?.channelId === channel.channelId ?
-                                    'border-amber-500/50 bg-amber-900/20 text-amber-100 cursor-not-allowed focus:ring-amber-500 focus:border-amber-500' :
-                                    'border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7]'
-                                }`}
-                              />
-                              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                                <span className="text-gray-400 text-sm font-medium">
-                                  {channel.symbol}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                          {/* Approval/Deposit buttons */}
-                          {(() => {
-                            return selectedChannel?.channelId === channel.channelId && !channel.isETH && needsApproval;
-                          })() ? (
-                            <div className="flex flex-col gap-2">
-                              <button
-                                onClick={() => {
-                                  setApprovalError(''); // Clear previous errors
-                                  
-                                  // Check if this is USDT and we need to reset allowance first
-                                  const isUSDTToken = channel.targetContract === '0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A' || 
-                                  (typeof channel.symbol === 'string' && channel.symbol.toLowerCase().includes('usdt')) || 
-                                  (typeof channel.symbol === 'string' && channel.symbol.toLowerCase().includes('tether'));
-                                  
-                                  if (isUSDTToken && allowance && allowance > 0 && approvalStep === 'idle') {
-                                  setApprovalStep('reset');
-                                  setTimeout(() => {
-                                  resetApproveToken?.();
-                                  }, 100);
-                                  } else if (approvalStep === 'approve' || (!isUSDTToken && approvalStep === 'idle') || (isUSDTToken && (!allowance || allowance === BigInt(0)) && approvalStep === 'idle')) {
-                                  approveToken?.();
-                                  }
-                                }}
-disabled={
-                                  !depositAmount || isApproving || isWaitingApproval || isResettingApproval || isWaitingResetApproval || (!approveToken && !resetApproveToken) || channel.state !== 1
-                                }
-                                className="px-6 py-2 bg-[#4fc3f7] text-white hover:bg-[#029bee] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] transition-colors duration-200"
-                              >
-                                {isResettingApproval ? 'Resetting...' : 
-                                 isWaitingResetApproval ? 'Confirming Reset...' :
-                                 isApproving ? 'Approving...' : 
-                                 isWaitingApproval ? 'Confirming...' : 
-                                 (approvalStep === 'reset' ? 'Reset Allowance' : 'Approve')}
-                              </button>
-                              {approvalError && (
-                                <p className="text-xs text-red-400 flex items-center gap-1">
-                                  <AlertCircle className="w-3 h-3" />
-                                  {approvalError}
-                                </p>
-                              )}
-                              {channel.state !== 1 && (
-                                <p className="text-xs text-red-400 flex items-center gap-1">
-                                  <AlertCircle className="w-3 h-3" />
-                                  Channel must be in "Initialized" state for approvals.
-                                </p>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="flex flex-col gap-2">
-                              <button
-                                onClick={() => {
-                                  const amountToDeposit = selectedChannel?.channelId === channel.channelId ? 
-                                    (usdtMustSpendExisting && effectiveAllowance ? 
-                                      formatUnits(effectiveAllowance, getTokenDecimals(selectedChannel)) : 
-                                      depositAmount
-                                    ) : 
-                                    '';
-                                  handleDeposit(channel, amountToDeposit);
-                                }}
-                                disabled={
-                                  (!depositAmount && !usdtMustSpendExisting) || 
-                                  (selectedChannel?.channelId !== channel.channelId) || 
-                                  isDepositingETH || 
-                                  isDepositingToken ||
-                                  isWaitingDeposit ||
-                                  (!channel.isETH && needsApproval) ||
-                                  (!channel.isETH && !hasSufficientAllowance) ||
-                                  (!usdtMustSpendExisting && !isDepositAmountValid(depositAmount, getTokenDecimals(channel))) ||
-                                  channel.state !== 1
-                                }
-                                className={`px-6 py-2 text-white disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 transition-colors duration-200 ${
-                                  usdtMustSpendExisting && selectedChannel?.channelId === channel.channelId ?
-                                    'bg-amber-600 hover:bg-amber-700 focus:ring-amber-500' :
-                                    'bg-[#4fc3f7] hover:bg-[#029bee] focus:ring-[#4fc3f7]'
-                                }`}
-                              >
-                                {(isDepositingETH || isDepositingToken) ? 'Depositing...' : isWaitingDeposit ? 'Confirming...' : 
-                                 (usdtMustSpendExisting && selectedChannel?.channelId === channel.channelId ? 'Spend Existing Allowance' : 'Deposit')}
-                              </button>
-                              {/* Validation messages */}
-                              {selectedChannel?.channelId === channel.channelId && depositAmount && (
-                                <div className="text-xs space-y-1">
-                                  {channel.state !== 1 && (
-                                    <p className="text-red-400 flex items-center gap-1">
-                                      <AlertCircle className="w-3 h-3" />
-                                      Channel must be in "Initialized" state for deposits.
-                                    </p>
-                                  )}
-                                  {!isDepositAmountValid(depositAmount, getTokenDecimals(channel)) && (
-                                    <p className="text-red-400 flex items-center gap-1">
-                                      <AlertCircle className="w-3 h-3" />
-                                      Invalid amount. Maximum 1,000,000 tokens allowed.
-                                    </p>
-                                  )}
-                                  {!channel.isETH && !needsApproval && !hasSufficientAllowance && (
-                                    <p className="text-orange-400 flex items-center gap-1">
-                                      <AlertCircle className="w-3 h-3" />
-                                      Insufficient allowance. Current: {allowance ? formatUnits(allowance, getTokenDecimals(channel)) : '0'} {channel.symbol}
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        {channel.isETH ? (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            Depositing native ETH to the bridge contract
-                          </p>
-                        ) : (
-                          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                            {selectedChannel?.channelId === channel.channelId && usdtMustSpendExisting ? (
-                              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-md">
-                                <p className="text-amber-800 dark:text-amber-300 font-medium mb-1">
-                                  🚨 USDT Allowance Must Be Spent First
-                                </p>
-                                <p className="text-amber-700 dark:text-amber-400 mb-2">
-                                  You have {effectiveAllowance ? formatUnits(effectiveAllowance, getTokenDecimals(channel)) : '0'} {typeof channel.symbol === 'string' ? channel.symbol : 'USDT'} approved. 
-                                  USDT requires spending this amount before approving a new amount.
-                                </p>
-                                <p className="text-amber-600 dark:text-amber-500 text-xs">
-                                  💡 Solution: First deposit the approved amount ({effectiveAllowance ? formatUnits(effectiveAllowance, getTokenDecimals(channel)) : '0'} {typeof channel.symbol === 'string' ? channel.symbol : 'USDT'}), 
-                                  then you can approve and deposit the new amount.
-                                </p>
-                              </div>
-                            ) : selectedChannel?.channelId === channel.channelId && needsApproval ? (
-                              <div>
-                                <p className="text-orange-400 flex items-center gap-1">
-                                  <AlertCircle className="w-3 h-3" />
-                                  First approve the bridge contract to spend your {typeof channel.symbol === 'string' ? channel.symbol : 'token'} tokens
-                                </p>
-                                {((typeof channel.symbol === 'string' && channel.symbol === 'USDT') || (typeof channel.symbol === 'string' && channel.symbol.toLowerCase().includes('usdt')) || (typeof channel.symbol === 'string' && channel.symbol.toLowerCase().includes('tether'))) && (
-                                  <p className="text-[#4fc3f7] mt-1 flex items-center gap-1">
-                                    <AlertCircle className="w-3 h-3" />
-                                    USDT may show "no data" error but approval can still succeed. Wait for confirmation.
-                                  </p>
-                                )}
-                              </div>
-                            ) : selectedChannel?.channelId === channel.channelId && !needsApproval && effectiveAllowance !== undefined ? (
-                              <p className="text-green-400 flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3" />
-                                Bridge contract approved to spend your {typeof channel.symbol === 'string' ? channel.symbol : 'token'} tokens
-                              </p>
-                            ) : (
-                              <p>
-                                ERC20 token deposit requires approval first
-                              </p>
-                            )}
-                          </div>
+                      {/* Action Buttons */}
+                      <div className="flex gap-3">
+                        {/* Approval button for ERC20 tokens */}
+                        {!selectedToken.isETH && needsApproval && (
+                          <button
+                            onClick={() => {
+                              setApprovalError('');
+                              if (isUSDT && allowance && allowance > 0 && approvalStep === 'idle') {
+                                setApprovalStep('reset');
+                                setTimeout(() => resetApproveToken?.(), 100);
+                              } else if (approvalStep === 'approve' || (!isUSDT && approvalStep === 'idle') || (isUSDT && (!allowance || allowance === BigInt(0)) && approvalStep === 'idle')) {
+                                approveToken?.();
+                              }
+                            }}
+                            disabled={!depositAmount || !mptKey || isApproving || isWaitingApproval || isResettingApproval || isWaitingResetApproval || (!approveToken && !resetApproveToken)}
+                            className="px-6 py-3 bg-[#4fc3f7] text-white hover:bg-[#029bee] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {isResettingApproval ? 'Resetting...' : 
+                             isWaitingResetApproval ? 'Confirming Reset...' :
+                             isApproving ? 'Approving...' : 
+                             isWaitingApproval ? 'Confirming...' : 
+                             (approvalStep === 'reset' ? 'Reset Allowance' : 'Approve')}
+                          </button>
                         )}
+
+                        {/* Deposit button */}
+                        <button
+                          onClick={() => {
+                            if (selectedToken.isETH) {
+                              depositETH?.();
+                            } else {
+                              depositToken?.();
+                            }
+                          }}
+                          disabled={
+                            !depositAmount || 
+                            !mptKey ||
+                            isDepositingETH || 
+                            isDepositingToken ||
+                            isWaitingDeposit ||
+                            (!selectedToken.isETH && needsApproval) ||
+                            (!selectedToken.isETH && !hasSufficientAllowance) ||
+                            !isDepositAmountValid(depositAmount, actualTokenDecimals)
+                          }
+                          className="flex-1 px-6 py-3 bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {(isDepositingETH || isDepositingToken) ? 'Depositing...' : 
+                           isWaitingDeposit ? 'Confirming...' : 
+                           'Deposit'}
+                        </button>
+                      </div>
+
+                      {/* Error Messages */}
+                      {approvalError && (
+                        <p className="text-red-400 text-sm flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4" />
+                          {approvalError}
+                        </p>
+                      )}
+
+                      {/* Status Messages */}
+                      <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-4">
+                        <h4 className="font-semibold text-[#4fc3f7] mb-2">Deposit Summary</h4>
+                        <div className="space-y-1 text-sm text-gray-300">
+                          <p>Channel: #{selectedChannel.channelId.toString()}</p>
+                          <p>Token: {actualTokenSymbol}</p>
+                          <p>Amount: {depositAmount || '0'} {actualTokenSymbol}</p>
+                          <p>MPT Key: {mptKey || 'Not set'}</p>
+                        </div>
                       </div>
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
               </ClientOnly>
