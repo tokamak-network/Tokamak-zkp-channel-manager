@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount, useContractRead } from 'wagmi';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
-import { Home, PlusCircle, FileCheck, ArrowDownCircle, ArrowUpCircle, Settings, PenTool, XCircle, Trash2 } from 'lucide-react';
+import { Home, PlusCircle, FileCheck, ArrowDownCircle, ArrowUpCircle, Settings, PenTool, XCircle, Trash2, Activity } from 'lucide-react';
 
 interface MobileNavigationProps {
   showMobileMenu: boolean;
@@ -88,8 +88,18 @@ export function MobileNavigation({ showMobileMenu, setShowMobileMenu }: MobileNa
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
         >
           <Home className="w-5 h-5" />
-          <span className="font-medium">Dashboard</span>
+          <span className="font-medium">Home</span>
         </div>
+        
+        {isConnected && (
+          <div
+            onClick={() => handleNavigation('/dashboard')}
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+          >
+            <Activity className="w-5 h-5" />
+            <span className="font-medium">Dashboard</span>
+          </div>
+        )}
         
         {isConnected && isAuthorized && !isParticipant && (
           <div 

@@ -221,7 +221,7 @@ export function useChannelLeadership(): UseChannelLeadershipReturn {
     // Check leadership in any available channel
     for (let i = 0; i < allChannelStats.length && i < totalChannelCount; i++) {
       const stats = allChannelStats[i];
-      if (stats && stats[5] && stats[5].toLowerCase() === address.toLowerCase()) {
+      if (stats && stats[4] && stats[4].toLowerCase() === address.toLowerCase()) {
         foundLeadership = true;
         break;
       }
@@ -273,8 +273,8 @@ export function useChannelLeadershipInfo(channelId: number) {
   });
 
   const isLeader = useMemo(() => {
-    if (!address || !channelStats || !channelStats[5]) return false;
-    return channelStats[5].toLowerCase() === address.toLowerCase();
+    if (!address || !channelStats || !channelStats[4]) return false;
+    return channelStats[4].toLowerCase() === address.toLowerCase();
   }, [address, channelStats]);
 
   const isParticipant = useMemo(() => {

@@ -33,7 +33,10 @@ export const ROLLUP_BRIDGE_ABI = [
 
   // Deposits
   {
-    inputs: [{ name: '_channelId', type: 'uint256' }],
+    inputs: [
+      { name: '_channelId', type: 'uint256' },
+      { name: '_mptKey', type: 'bytes32' }
+    ],
     name: 'depositETH',
     outputs: [],
     stateMutability: 'payable',
@@ -43,7 +46,8 @@ export const ROLLUP_BRIDGE_ABI = [
     inputs: [
       { name: '_channelId', type: 'uint256' },
       { name: '_token', type: 'address' },
-      { name: '_amount', type: 'uint256' }
+      { name: '_amount', type: 'uint256' },
+      { name: '_mptKey', type: 'bytes32' }
     ],
     name: 'depositToken',
     outputs: [],
@@ -169,10 +173,9 @@ export const ROLLUP_BRIDGE_ABI = [
     name: 'getChannelStats',
     outputs: [
       { name: 'id', type: 'uint256' },
-      { name: 'targetContract', type: 'address' },
+      { name: 'allowedTokens', type: 'address[]' },
       { name: 'state', type: 'uint8' },
       { name: 'participantCount', type: 'uint256' },
-      { name: 'totalDeposits', type: 'uint256' },
       { name: 'leader', type: 'address' }
     ],
     stateMutability: 'view',
@@ -212,6 +215,17 @@ export const ROLLUP_BRIDGE_ABI = [
       { name: 'participant', type: 'address' }
     ],
     name: 'getParticipantDeposit',
+    outputs: [{ name: 'amount', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [
+      { name: 'channelId', type: 'uint256' },
+      { name: 'participant', type: 'address' },
+      { name: 'token', type: 'address' }
+    ],
+    name: 'getParticipantTokenDeposit',
     outputs: [{ name: 'amount', type: 'uint256' }],
     stateMutability: 'view',
     type: 'function'
