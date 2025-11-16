@@ -47,4 +47,5 @@ Thumbs.db
 # Claude
 /.claude/
 
-/Tokamak-zk-EVM-landing-page
+# Cursor
+.cursor/
