@@ -1,7 +1,7 @@
 import { Address } from 'wagmi';
 
 // Contract addresses - update these with actual deployed contract addresses
-export const ROLLUP_BRIDGE_ADDRESS: Address = '0x23f7b07686866d5bcbfc6c0815aeb02bcbd1ac46' as Address; 
+export const ROLLUP_BRIDGE_ADDRESS: Address = '0x61d4618911487c65aa49ab22db57691b4d94a6bf' as Address; 
 export const VERIFIER_ADDRESS: Address = '0x708fbfE3acC1F65948304015f1789a05383a674b' as Address; 
 export const ZECFROST_ADDRESS: Address = '0x0829fa48016a19efd87b3d24efb8e07ec5cc2482' as Address; 
 
@@ -57,7 +57,19 @@ export const ROLLUP_BRIDGE_ABI = [
 
   // Channel State Management
   {
-    inputs: [{ name: 'channelId', type: 'uint256' }],
+    inputs: [
+      { name: 'channelId', type: 'uint256' },
+      {
+        name: 'proof',
+        type: 'tuple',
+        components: [
+          { name: 'pA', type: 'uint256[4]' },
+          { name: 'pB', type: 'uint256[8]' },
+          { name: 'pC', type: 'uint256[4]' },
+          { name: 'merkleRoot', type: 'bytes32' }
+        ]
+      }
+    ],
     name: 'initializeChannelState',
     outputs: [],
     stateMutability: 'nonpayable',
@@ -227,6 +239,30 @@ export const ROLLUP_BRIDGE_ABI = [
     ],
     name: 'getParticipantTokenDeposit',
     outputs: [{ name: 'amount', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [
+      { name: 'channelId', type: 'uint256' },
+      { name: 'participant', type: 'address' },
+      { name: 'token', type: 'address' }
+    ],
+    name: 'getL2MptKey',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [
+      { name: 'channelId', type: 'uint256' },
+      { name: 'token', type: 'address' }
+    ],
+    name: 'getL2MptKeysList',
+    outputs: [
+      { name: 'participants', type: 'address[]' },
+      { name: 'l2MptKeys', type: 'uint256[]' }
+    ],
     stateMutability: 'view',
     type: 'function'
   },
