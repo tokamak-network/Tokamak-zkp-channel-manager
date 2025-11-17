@@ -5,6 +5,12 @@ const nextConfig = {
     config.externals.push('pino-pretty', 'lokijs', 'encoding');
     return config;
   },
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+  experimental: {
+    externalDir: true
+  }
 };
 
 module.exports = nextConfig;

@@ -4,3 +4,8 @@
 [submodule "frost-dkg"]
 	path = frost-dkg
 	url = https://github.com/tokamak-network/threshold-signature-Frost.git
+
+[submodule "Tokamak-Zk-EVM"]
+	path = Tokamak-Zk-EVM
+	url = https://github.com/tokamak-network/Tokamak-zk-EVM.git
+	branch = groth16-circom
