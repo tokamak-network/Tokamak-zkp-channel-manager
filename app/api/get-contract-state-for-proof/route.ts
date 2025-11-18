@@ -75,9 +75,10 @@ export async function GET(request: NextRequest) {
               l2MptKey = l2MptKeys[participantIndex].toString();
             }
           } catch (keyError) {
-            console.warn(`Could not fetch L2 MPT keys list for token ${token}:`, keyError.message);
+            const errorMessage = keyError instanceof Error ? keyError.message : 'Unknown error';
+            console.warn(`Could not fetch L2 MPT keys list for token ${token}:`, errorMessage);
             // Fallback to individual key fetch
-            if (balance > 0n) {
+            if (balance > BigInt(0)) {
               try {
                 const key = await publicClient.readContract({
                   address: ROLLUP_BRIDGE_ADDRESS,
@@ -105,7 +106,8 @@ export async function GET(request: NextRequest) {
           entryIndex++;
 
         } catch (error) {
-          console.warn(`Error fetching data for ${participant}:${token}:`, error.message);
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          console.warn(`Error fetching data for ${participant}:${token}:`, errorMessage);
           // Add zero entry
           stateData.push({
             participant,

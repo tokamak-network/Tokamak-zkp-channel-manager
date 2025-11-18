@@ -29,8 +29,9 @@ export async function GET(request: NextRequest) {
       results.totalChannels = totalChannels.toString();
       console.log('✓ getTotalChannels works:', totalChannels);
     } catch (error) {
-      results.totalChannelsError = error.message;
-      console.log('✗ getTotalChannels failed:', error.message);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      results.totalChannelsError = errorMessage;
+      console.log('✗ getTotalChannels failed:', errorMessage);
     }
 
     // Test getChannelParticipants
@@ -44,8 +45,9 @@ export async function GET(request: NextRequest) {
       results.participants = participants;
       console.log('✓ getChannelParticipants works:', participants);
     } catch (error) {
-      results.participantsError = error.message;
-      console.log('✗ getChannelParticipants failed:', error.message);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      results.participantsError = errorMessage;
+      console.log('✗ getChannelParticipants failed:', errorMessage);
     }
 
     // Test getL2MptKey (individual)
@@ -63,8 +65,9 @@ export async function GET(request: NextRequest) {
         results.l2MptKey = l2MptKey.toString();
         console.log('✓ getL2MptKey works:', l2MptKey);
       } catch (error) {
-        results.l2MptKeyError = error.message;
-        console.log('✗ getL2MptKey failed:', error.message);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        results.l2MptKeyError = errorMessage;
+        console.log('✗ getL2MptKey failed:', errorMessage);
       }
     }
 
@@ -81,8 +84,9 @@ export async function GET(request: NextRequest) {
       results.l2MptKeysList = keysList;
       console.log('✓ getL2MptKeysList works:', keysList);
     } catch (error) {
-      results.l2MptKeysListError = error.message;
-      console.log('✗ getL2MptKeysList failed:', error.message);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      results.l2MptKeysListError = errorMessage;
+      console.log('✗ getL2MptKeysList failed:', errorMessage);
     }
 
     return NextResponse.json({

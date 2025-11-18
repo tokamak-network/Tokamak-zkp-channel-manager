@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
             participant: participant,
             token: token,
             entryIndex: entryIndex,
-            error: error.message
+            error: error instanceof Error ? error.message : 'Unknown error'
           });
           entryIndex++;
         }
