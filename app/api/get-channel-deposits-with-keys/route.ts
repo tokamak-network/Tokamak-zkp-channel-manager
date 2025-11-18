@@ -52,7 +52,8 @@ export async function GET(request: NextRequest) {
           mptKey
         });
       } catch (error) {
-        console.warn(`Failed to fetch deposit for ${participant}:`, error.message);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.warn(`Failed to fetch deposit for ${participant}:`, errorMessage);
         // Include participant with 0 deposit and deterministic MPT key
         const hash = BigInt(`0x${Buffer.from(participant + token).toString('hex').slice(0, 64).padStart(64, '0')}`);
         const mptKey = (hash % BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE')).toString();

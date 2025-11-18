@@ -244,7 +244,8 @@ export default function InitializeStatePage() {
               }
             } catch (keyError) {
               console.error(`Individual L2 MPT key fetch failed for ${participant}-${token}:`, keyError);
-              throw new Error(`Failed to fetch L2 MPT key for participant ${participant} and token ${token}: ${keyError.message}`);
+              const errorMessage = keyError instanceof Error ? keyError.message : 'Unknown error';
+              throw new Error(`Failed to fetch L2 MPT key for participant ${participant} and token ${token}: ${errorMessage}`);
             }
           }
           
@@ -259,7 +260,8 @@ export default function InitializeStatePage() {
             }
           } catch (depositError) {
             console.error(`Deposit fetch failed for ${participant}-${token}:`, depositError);
-            throw new Error(`Failed to fetch deposit for participant ${participant} and token ${token}: ${depositError.message}`);
+            const errorMessage = depositError instanceof Error ? depositError.message : 'Unknown error';
+            throw new Error(`Failed to fetch deposit for participant ${participant} and token ${token}: ${errorMessage}`);
           }
           
           storageKeysL2MPT.push(l2MptKey);
