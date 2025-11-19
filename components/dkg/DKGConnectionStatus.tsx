@@ -1,9 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ChevronDown, ChevronUp, Wifi, WifiOff, ClipboardCopy, Check, Lightbulb } from 'lucide-react';
 
 interface DKGConnectionStatusProps {
   connectionStatus: 'disconnected' | 'connecting' | 'connected';
@@ -33,96 +35,178 @@ export function DKGConnectionStatus({
   onAuthenticate,
   onClearAuth
 }: DKGConnectionStatusProps) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   return (
-    <Card className="p-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100">DKG Server Connection</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Status: <Badge className={connectionStatus === 'connected' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300'}>
-              {connectionStatus}
-            </Badge>
-          </p>
-          {connectionStatus === 'disconnected' && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Connect to DKG server to create or join sessions
-            </p>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <Input
-            placeholder="Server URL (e.g., ws://127.0.0.1:9000/ws)"
-            value={serverUrl}
-            onChange={(e) => setServerUrl(e.target.value)}
-            className="w-80"
-          />
+    <Card className="p-4 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]/50">
+      {/* Simple Status Display (when connected) */}
+      {connectionStatus === 'connected' && !showAdvanced && (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Wifi className="w-5 h-5 text-green-400" />
+            <div>
+              <h3 className="font-semibold text-white">Connected to DKG Server</h3>
+              <p className="text-sm text-gray-400">
+                Ready to create or join sessions
+              </p>
+            </div>
+          </div>
           <Button 
-            onClick={connectToServer}
-            disabled={connectionStatus === 'connecting'}
+            variant="ghost" 
+            size="sm"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="text-gray-400 hover:text-white"
           >
-            {connectionStatus === 'connecting' ? 'Connecting...' : 'Connect'}
+            Advanced
+            <ChevronDown className="w-4 h-4 ml-1" />
           </Button>
         </div>
-      </div>
+      )}
+
+      {/* Show connection UI when disconnected OR when advanced is toggled */}
+      {(connectionStatus !== 'connected' || showAdvanced) && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              {connectionStatus === 'connected' ? (
+                <Wifi className="w-5 h-5 text-green-400" />
+              ) : (
+                <WifiOff className="w-5 h-5 text-gray-400" />
+              )}
+              <div>
+                <h3 className="font-semibold text-white">DKG Server Connection</h3>
+                <p className="text-sm text-gray-400">
+                  Status: <Badge className={connectionStatus === 'connected' ? 'bg-green-500/20 text-green-300 border-green-500/30' : connectionStatus === 'connecting' ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30' : 'bg-red-500/20 text-red-300 border-red-500/30'}>
+                    {connectionStatus}
+                  </Badge>
+                </p>
+              </div>
+            </div>
+            {showAdvanced && (
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setShowAdvanced(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                Hide
+                <ChevronUp className="w-4 h-4 ml-1" />
+              </Button>
+            )}
+          </div>
+
+          {connectionStatus !== 'connected' && (
+            <div className="flex gap-2">
+              <Input
+                placeholder="Server URL (e.g., ws://127.0.0.1:9000/ws)"
+                value={serverUrl}
+                onChange={(e) => setServerUrl(e.target.value)}
+                className="flex-1 bg-[#0a1930] border-[#4fc3f7]/30 text-white"
+              />
+              <Button 
+                onClick={connectToServer}
+                disabled={connectionStatus === 'connecting'}
+                className="bg-[#028bee] hover:bg-[#0277d4]"
+              >
+                {connectionStatus === 'connecting' ? 'Connecting...' : 'Connect'}
+              </Button>
+            </div>
+          )}
+
+          {showAdvanced && connectionStatus === 'connected' && (
+            <div className="mt-3 p-3 bg-[#0a1930]/50 rounded border border-[#4fc3f7]/20">
+              <p className="text-xs text-gray-400 mb-2">Server URL:</p>
+              <code className="text-xs text-[#4fc3f7]">{serverUrl}</code>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Authentication Status */}
       {connectionStatus === 'connected' && (
-        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <div className="mt-4 pt-4 border-t border-[#4fc3f7]/30">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Authentication: <Badge className={authState.isAuthenticated ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300'}>
-                  {authState.isAuthenticated ? 'Authenticated' : 'Required'}
+            <div className="flex-1">
+              <p className="text-sm text-gray-300 mb-3">
+                Authentication: <Badge className={authState.isAuthenticated ? 'bg-green-500/20 text-green-300 border-green-500/30' : 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'}>
+                  {authState.isAuthenticated ? 'Authenticated ✓' : 'Required'}
                 </Badge>
-                {authState.userId && (
-                  <span className="ml-2">User ID: {authState.userId}</span>
-                )}
               </p>
+              
               {authState.publicKeyHex && (
-                <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                  <h4 className="font-medium text-green-800 dark:text-green-200 mb-2">Your ECDSA Public Key</h4>
-                  <div className="bg-white dark:bg-gray-800 p-2 rounded border">
-                    <span className="font-mono text-xs text-gray-800 dark:text-gray-200 break-all select-all cursor-pointer">{authState.publicKeyHex}</span>
+                <div className="mt-3 p-3 bg-green-900/20 rounded border border-green-500/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium text-green-300 text-sm">Your ECDSA Public Key</h4>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(authState.publicKeyHex!);
+                        setCopied(true);
+                          setTimeout(() => {
+                          setCopied(false);
+                          }, 2000);
+                      }}
+                      className="bg-[#028bee] hover:bg-[#0277d4] text-white h-6 text-xs px-2 flex items-center gap-1"
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          Copied!
+                        </>
+                      ) : (
+                        <>
+                          <ClipboardCopy className="w-3.5 h-3.5" />
+                          Copy
+                        </>
+                      )}
+                    </Button>
                   </div>
-                  <p className="text-xs text-green-600 dark:text-green-400 mt-1">Share this 33-byte compressed SEC1 public key with DKG session creators</p>
+                  <div className="bg-[#0a1930] p-2 rounded border border-green-500/20">
+                    <span className="font-mono text-xs text-green-400 break-all select-all cursor-pointer">{authState.publicKeyHex}</span>
+                  </div>
+                  <p className="text-xs text-yellow-400 mt-2 font-semibold flex items-center gap-1">
+                    <Lightbulb className="w-3.5 h-3.5" />
+                    Share this with the session creator so they can add you to the roster BEFORE creating the session
+                  </p>
                 </div>
               )}
             </div>
-            <div className="flex gap-2">
-              {!authState.publicKeyHex && (
+            
+            <div className="flex flex-col gap-2 ml-4">
+              {/* Only show "Get My Public Key" button if not authenticated yet */}
+              {!authState.isAuthenticated && !authState.publicKeyHex && (
                 <Button 
                   onClick={onGetPublicKey}
-                  variant="outline"
                   size="sm"
+                  className="bg-[#028bee] hover:bg-[#0277d4]"
                 >
                   Get My Public Key
                 </Button>
               )}
-              {!authState.isAuthenticated && (
-                <>
-                  <Button 
-                    onClick={onRequestChallenge}
-                    disabled={!!authState.challenge}
-                    size="sm"
-                  >
-                    {authState.challenge ? 'Challenge Received' : 'Request Challenge'}
-                  </Button>
-                  {authState.challenge && (
-                    <Button 
-                      onClick={onAuthenticate}
-                      size="sm"
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      Authenticate
-                    </Button>
-                  )}
-                </>
+              
+              {/* Show authenticating status */}
+              {authState.publicKeyHex && !authState.isAuthenticated && (
+                <div className="text-sm text-yellow-300 flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-yellow-300 border-t-transparent rounded-full animate-spin"></div>
+                  Authenticating...
+                </div>
               )}
-              {authState.isAuthenticated && (
+              
+              {/* Show authenticated status */}
+              {/* {authState.isAuthenticated && (
+                <div className="text-sm text-green-300 flex items-center gap-2">
+                  ✓ Ready
+                </div>
+              )} */}
+              
+              {/* Advanced: Show clear auth button */}
+              {authState.isAuthenticated && showAdvanced && (
                 <Button 
                   onClick={onClearAuth}
                   variant="outline"
-                  className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  size="sm"
+                  className="text-red-400 border-red-500/30 hover:bg-red-900/20"
                 >
                   Clear Auth
                 </Button>

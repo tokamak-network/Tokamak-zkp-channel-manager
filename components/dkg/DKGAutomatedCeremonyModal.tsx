@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Bot, Loader, RefreshCw, CheckCircle2, XCircle, Sparkles, Download, Folder, Rocket } from 'lucide-react';
 
 interface DKGSession {
   id: string;
@@ -170,12 +171,13 @@ export function DKGAutomatedCeremonyModal({
   };
 
   const getStepIcon = (status: CeremonyStep['status']) => {
+    const iconProps = { className: "w-5 h-5" };
     switch (status) {
-      case 'pending': return '⏳';
-      case 'in_progress': return '🔄';
-      case 'completed': return '✅';
-      case 'failed': return '❌';
-      default: return '⏳';
+      case 'pending': return <Loader {...iconProps} className="w-5 h-5 text-gray-500" />;
+      case 'in_progress': return <RefreshCw {...iconProps} className="w-5 h-5 text-blue-500 animate-spin" />;
+      case 'completed': return <CheckCircle2 {...iconProps} className="w-5 h-5 text-green-500" />;
+      case 'failed': return <XCircle {...iconProps} className="w-5 h-5 text-red-500" />;
+      default: return <Loader {...iconProps} className="w-5 h-5 text-gray-500" />;
     }
   };
 
@@ -192,13 +194,14 @@ export function DKGAutomatedCeremonyModal({
   if (!isOpen || !session) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden border border-gray-200 dark:border-gray-700">
         <div className="p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                🤖 Automated DKG Ceremony
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <Bot className="w-5 h-5" />
+                Automated DKG Ceremony
               </h3>
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 Session {session.id} • {session.roster.length} participants • {session.minSigners}-of-{session.maxSigners} threshold
@@ -220,7 +223,7 @@ export function DKGAutomatedCeremonyModal({
               <div className="space-y-3">
                 {steps.map((step, index) => (
                   <div key={step.id} className="flex items-center gap-3">
-                    <span className="text-xl">{getStepIcon(step.status)}</span>
+                    {getStepIcon(step.status)}
                     <div className="flex-1">
                       <div className={`font-medium ${getStepColor(step.status)}`}>
                         {step.name}
@@ -265,7 +268,8 @@ export function DKGAutomatedCeremonyModal({
           {results && (
             <Card className="p-4 mt-6 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
               <h4 className="font-medium text-green-800 dark:text-green-300 mb-4 flex items-center gap-2">
-                🎉 Ceremony Results
+                <Sparkles className="w-5 h-5" />
+                Ceremony Results
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div>
@@ -288,11 +292,13 @@ export function DKGAutomatedCeremonyModal({
                 </div>
               </div>
               <div className="mt-4 flex gap-2">
-                <Button onClick={downloadResults} className="bg-green-600 hover:bg-green-700 text-white">
-                  📥 Download group.json
+                <Button onClick={downloadResults} className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2">
+                  <Download className="w-4 h-4" />
+                  Download group.json
                 </Button>
-                <Button variant="outline" onClick={() => addLog('All ceremony files available in output directory')}>
-                  📂 View All Files
+                <Button variant="outline" onClick={() => addLog('All ceremony files available in output directory')} className="flex items-center gap-2">
+                  <Folder className="w-4 h-4" />
+                  View All Files
                 </Button>
               </div>
             </Card>
@@ -308,15 +314,19 @@ export function DKGAutomatedCeremonyModal({
                   Ceremony in progress...
                 </span>
               ) : results ? (
-                <span className="text-green-600 dark:text-green-400">✅ Ceremony completed successfully</span>
+                <span className="text-green-600 dark:text-green-400 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Ceremony completed successfully
+                </span>
               ) : (
                 'Ready to start automated ceremony'
               )}
             </div>
             <div className="flex gap-2">
               {!isRunning && !results && (
-                <Button onClick={handleStartCeremony} className="bg-purple-600 hover:bg-purple-700 text-white">
-                  🚀 Start Automated Ceremony
+                <Button onClick={handleStartCeremony} className="bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-2">
+                  <Rocket className="w-4 h-4" />
+                  Start Automated Ceremony
                 </Button>
               )}
               <Button variant="outline" onClick={onClose}>

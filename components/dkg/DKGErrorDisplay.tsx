@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DKGErrorHandler } from '@/lib/dkg-error-handler';
+import { Plug, KeyRound, Users, Lock, Clock, AlertTriangle, Settings, Globe, XCircle, Lightbulb } from 'lucide-react';
 
 interface DKGErrorDisplayProps {
   error: string;
@@ -17,25 +18,26 @@ export function DKGErrorDisplay({ error, onDismiss, onRetry }: DKGErrorDisplayPr
   const formattedError = DKGErrorHandler.formatErrorForUser(parsedError);
 
   const getErrorIcon = () => {
+    const iconProps = { className: "w-6 h-6" };
     switch (parsedError.type) {
       case 'CONNECTION_ERROR':
-        return '🔌';
+        return <Plug {...iconProps} />;
       case 'AUTHENTICATION_ERROR':
-        return '🔐';
+        return <KeyRound {...iconProps} />;
       case 'SESSION_ERROR':
-        return '👥';
+        return <Users {...iconProps} />;
       case 'ENCRYPTION_ERROR':
-        return '🔒';
+        return <Lock {...iconProps} />;
       case 'TIMEOUT_ERROR':
-        return '⏰';
+        return <Clock {...iconProps} />;
       case 'VALIDATION_ERROR':
-        return '⚠️';
+        return <AlertTriangle {...iconProps} />;
       case 'PROTOCOL_ERROR':
-        return '⚙️';
+        return <Settings {...iconProps} />;
       case 'NETWORK_ERROR':
-        return '🌐';
+        return <Globe {...iconProps} />;
       default:
-        return '❌';
+        return <XCircle {...iconProps} />;
     }
   };
 
@@ -54,7 +56,7 @@ export function DKGErrorDisplay({ error, onDismiss, onRetry }: DKGErrorDisplayPr
   return (
     <Card className={`p-4 ${getErrorColor()}`}>
       <div className="flex items-start gap-3">
-        <div className="text-2xl flex-shrink-0 mt-1">
+        <div className="flex-shrink-0 mt-1">
           {getErrorIcon()}
         </div>
         
@@ -74,8 +76,9 @@ export function DKGErrorDisplay({ error, onDismiss, onRetry }: DKGErrorDisplayPr
 
           {formattedError.suggestions.length > 0 && (
             <div className="mb-3">
-              <p className={`text-xs font-medium ${getTitleColor()} mb-2`}>
-                💡 Suggested Solutions:
+              <p className={`text-xs font-medium ${getTitleColor()} mb-2 flex items-center gap-1.5`}>
+                <Lightbulb className="w-3.5 h-3.5" />
+                Suggested Solutions:
               </p>
               <ul className={`text-xs ${getTextColor()} space-y-1`}>
                 {formattedError.suggestions.map((suggestion, index) => (
