@@ -3,6 +3,8 @@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { useState } from 'react';
+import { CheckCircle, Copy, X, Users, Key, Download, Hash } from 'lucide-react';
 
 interface DKGSession {
   id: string;
@@ -39,17 +41,19 @@ export function DKGSessionDetailsModal({
   frostIdMap = {},
   isNewlyCreated = false
 }: DKGSessionDetailsModalProps) {
+  const [copiedItems, setCopiedItems] = useState<Set<string>>(new Set());
+
   if (!isOpen || !session) return null;
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'waiting': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
-      case 'round1': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
-      case 'round2': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300';
-      case 'finalizing': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300';
-      case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
-      case 'failed': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
+      case 'waiting': return 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30';
+      case 'round1': return 'bg-[#4fc3f7]/20 text-[#4fc3f7] border border-[#4fc3f7]/30';
+      case 'round2': return 'bg-purple-500/20 text-purple-300 border border-purple-500/30';
+      case 'finalizing': return 'bg-orange-500/20 text-orange-300 border border-orange-500/30';
+      case 'completed': return 'bg-green-500/20 text-green-300 border border-green-500/30';
+      case 'failed': return 'bg-red-500/20 text-red-300 border border-red-500/30';
+      default: return 'bg-gray-500/20 text-gray-300 border border-gray-500/30';
     }
   };
 
@@ -65,261 +69,231 @@ export function DKGSessionDetailsModal({
     }
   };
 
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = (text: string, itemId: string) => {
     navigator.clipboard.writeText(text);
+    setCopiedItems(prev => new Set(prev).add(itemId));
+    setTimeout(() => {
+      setCopiedItems(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(itemId);
+        return newSet;
+      });
+    }, 2000);
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-2xl w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            {isNewlyCreated && (
-              <div className="flex items-center justify-center h-8 w-8 rounded-full bg-green-100 dark:bg-green-900/30">
-                <span className="text-lg">🎉</span>
+    <div className="fixed inset-0 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+      <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7]/30 shadow-2xl shadow-[#4fc3f7]/20 max-w-3xl w-full max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-4 duration-300">
+        {/* Header */}
+        <div className="sticky top-0 bg-gradient-to-r from-[#1a2347] to-[#1a2347]/95 backdrop-blur-sm border-b border-[#4fc3f7]/30 p-6 z-10">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              {isNewlyCreated && (
+                <div className="flex items-center justify-center h-12 w-12 bg-green-500/20 border border-green-500/50 animate-pulse">
+                  <CheckCircle className="w-7 h-7 text-green-400" />
+                </div>
+              )}
+              <div>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-2xl font-bold text-white">
+                    {isNewlyCreated ? 'Session Created!' : 'Session Details'}
+                  </h2>
+                  <span className={`inline-flex items-center px-2 py-1 text-xs font-medium ${getStatusColor(session.status)}`}>
+                    {getStatusText(session.status)}
+                  </span>
+                  {session.myRole && (
+                    <span className={`inline-flex items-center px-2 py-1 text-xs font-medium ${
+                      session.myRole === 'creator' 
+                        ? "bg-[#4fc3f7]/20 text-[#4fc3f7] border border-[#4fc3f7]/30"
+                        : "bg-green-500/20 text-green-300 border border-green-500/30"
+                    }`}>
+                      {session.myRole === 'creator' ? 'Creator' : 'Participant'}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-400 mt-1">
+                  Threshold: <span className="text-white font-medium">{session.minSigners}/{session.maxSigners}</span> signers
+                  {session.currentParticipants > 0 && (
+                    <span className="ml-3">• Participants: <span className="text-white font-medium">{session.currentParticipants}</span></span>
+                  )}
+                </p>
               </div>
-            )}
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-              {isNewlyCreated ? 'Session Created Successfully!' : 'Session Details'}
-            </h2>
+            </div>
+            <button
+              onClick={onClose}
+              className="flex items-center justify-center h-10 w-10 text-gray-400 hover:text-white hover:bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 hover:border-[#4fc3f7]/50 transition-all"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          >
-            ✕
-          </Button>
         </div>
 
         {isNewlyCreated && (
-          <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-            <p className="text-sm text-green-800 dark:text-green-200 mb-2">
-              🎉 Your DKG session has been created! Share the Session ID below with participants to get started.
-            </p>
+          <div className="mx-6 mt-6 p-4 bg-green-500/10 border border-green-500/30 backdrop-blur-sm animate-in slide-in-from-top duration-500">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="w-6 h-6 text-green-400 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-green-300 font-medium">Success!</p>
+                <p className="text-sm text-green-200/80 mt-1">
+                  Share the Session ID below with participants to start the DKG ceremony.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
-        <div className="space-y-6">
-          {/* Session Overview */}
-          <Card className="p-4">
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
-              <span>📋</span> Session Overview
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                  Session ID
-                </label>
-                <div className="mt-1 flex items-center gap-2">
-                  <code className="text-sm font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-900 dark:text-gray-100 select-all flex-1">
-                    {session.id}
-                  </code>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => copyToClipboard(session.id)}
-                    className="px-2 py-1 h-7"
-                  >
-                    📋
-                  </Button>
-                </div>
-              </div>
-              
-              <div>
-                <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                  Status
-                </label>
-                <div className="mt-1">
-                  <Badge className={getStatusColor(session.status)}>
-                    {getStatusText(session.status)}
-                  </Badge>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                  Your Role
-                </label>
-                <div className="mt-1">
-                  <Badge className={session.myRole === 'creator' 
-                    ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                    : "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                  }>
-                    {session.myRole === 'creator' ? '👑 Creator' : '🤝 Participant'}
-                  </Badge>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                  Created
-                </label>
-                <div className="mt-1 text-sm text-gray-900 dark:text-gray-100">
-                  {session.createdAt.toLocaleDateString()} at {session.createdAt.toLocaleTimeString()}
-                </div>
-              </div>
-
-              {frostIdMap[session.id] && (
-                <div className="md:col-span-2">
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                    FROST Identifier
-                  </label>
-                  <div className="mt-1 flex items-center gap-2">
-                    <code className="text-sm font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-900 dark:text-gray-100 select-all flex-1">
-                      {frostIdMap[session.id]}
-                    </code>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => copyToClipboard(frostIdMap[session.id])}
-                      className="px-2 py-1 h-7"
-                    >
-                      📋
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {session.description && (
-                <div className="md:col-span-2">
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                    Description
-                  </label>
-                  <div className="mt-1 text-sm text-gray-900 dark:text-gray-100">
-                    {session.description}
-                  </div>
-                </div>
-              )}
+        <div className="p-6 space-y-5">
+          {/* Session ID - Compact Single Line */}
+          <div className="bg-[#0f1729]/50 border border-[#4fc3f7]/20 p-4">
+            <div className="flex items-center gap-2">
+              <Hash className="w-4 h-4 text-[#4fc3f7] shrink-0" />
+              <label className="text-xs font-medium text-gray-400 uppercase tracking-wider shrink-0">
+                Session ID
+              </label>
+              <code className="text-xs font-mono border border-[#4fc3f7]/20 px-2 py-1.5 text-[#4fc3f7] truncate flex-1">
+                {session.id}
+              </code>
+              <button
+                onClick={() => copyToClipboard(session.id, 'session-id')}
+                className="flex items-center justify-center h-8 w-8 bg-[#4fc3f7]/10 hover:bg-[#4fc3f7]/20 border border-[#4fc3f7]/30 hover:border-[#4fc3f7]/50 text-[#4fc3f7] transition-all shrink-0"
+              >
+                {copiedItems.has('session-id') ? (
+                  <CheckCircle className="w-3.5 h-3.5 text-green-400" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
             </div>
-          </Card>
+          </div>
 
-          {/* Threshold Configuration */}
-          <Card className="p-4">
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
-              <span>⚙️</span> Threshold Configuration
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                  {session.minSigners}
-                </div>
-                <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Required Signers
-                </div>
-              </div>
-              
-              <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                  {session.maxSigners}
-                </div>
-                <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Maximum Signers
-                </div>
-              </div>
-              
-              <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                  {session.currentParticipants}
-                </div>
-                <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Current Participants
-                </div>
+          {/* FROST Identifier - Only if exists */}
+          {frostIdMap[session.id] && (
+            <div className="bg-[#0f1729]/50 border border-[#4fc3f7]/20 p-4">
+              <div className="flex items-center gap-2">
+                <Key className="w-4 h-4 text-[#4fc3f7] shrink-0" />
+                <label className="text-xs font-medium text-gray-400 uppercase tracking-wider shrink-0">
+                  FROST ID
+                </label>
+                <code className="text-xs font-mono border border-[#4fc3f7]/20 px-2 py-1.5 text-[#4fc3f7] truncate flex-1">
+                  {frostIdMap[session.id]}
+                </code>
+                <button
+                  onClick={() => copyToClipboard(frostIdMap[session.id], 'frost-id')}
+                  className="flex items-center justify-center h-8 w-8 bg-[#4fc3f7]/10 hover:bg-[#4fc3f7]/20 border border-[#4fc3f7]/30 hover:border-[#4fc3f7]/50 text-[#4fc3f7] transition-all shrink-0"
+                >
+                  {copiedItems.has('frost-id') ? (
+                    <CheckCircle className="w-3.5 h-3.5 text-green-400" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                </button>
               </div>
             </div>
-            
-            <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
-              <p>
-                📝 This session requires <strong>{session.minSigners}</strong> signatures out of <strong>{session.maxSigners}</strong> participants to create valid threshold signatures.
-              </p>
-            </div>
-          </Card>
+          )}
+
 
           {/* Participants */}
           {session.roster && session.roster.length > 0 && (
-            <Card className="p-4">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
-                <span>👥</span> Participants ({session.roster.length})
+            <div className="bg-[#0f1729]/50 border border-[#4fc3f7]/20 p-5">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <Users className="w-5 h-5 text-[#4fc3f7]" />
+                Participants ({session.roster.length})
               </h3>
-              <div className="space-y-2 max-h-40 overflow-y-auto">
+              <div className="space-y-3 max-h-60 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-[#4fc3f7]/20 scrollbar-track-transparent">
                 {session.roster.map(([uid, participantId, publicKey], index) => (
-                  <div key={uid} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                    <Badge variant="outline" className="shrink-0">
+                  <div key={uid} className="flex items-center gap-3 p-3 border border-[#4fc3f7]/10 hover:border-[#4fc3f7]/30 transition-all">
+                    <span className="flex items-center justify-center h-8 w-8 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 text-[#4fc3f7] text-xs font-bold shrink-0">
                       #{uid}
-                    </Badge>
+                    </span>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                      <div className="text-xs font-medium text-gray-400 mb-1">
                         ID: {participantId}
                       </div>
-                      <div className="text-xs font-mono text-gray-600 dark:text-gray-300 truncate">
+                      <div className="text-xs font-mono text-gray-300 truncate">
                         {publicKey}
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => copyToClipboard(publicKey)}
-                      className="px-2 py-1 h-7 shrink-0"
+                    <button
+                      onClick={() => copyToClipboard(publicKey, `participant-${uid}`)}
+                      className="flex items-center justify-center h-8 w-8 bg-[#4fc3f7]/10 hover:bg-[#4fc3f7]/20 border border-[#4fc3f7]/30 hover:border-[#4fc3f7]/50 text-[#4fc3f7] transition-all shrink-0"
                     >
-                      📋
-                    </Button>
+                      {copiedItems.has(`participant-${uid}`) ? (
+                        <CheckCircle className="w-3.5 h-3.5 text-green-400" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
                   </div>
                 ))}
               </div>
-            </Card>
+            </div>
           )}
 
           {/* Group Verifying Key (for completed sessions) */}
           {session.status === 'completed' && session.groupVerifyingKey && (
-            <Card className="p-4">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
-                <span>🔐</span> Group Verifying Key
+            <div className="bg-green-500/5 border border-green-500/30 p-5">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <Key className="w-5 h-5 text-green-400" />
+                Group Verifying Key
               </h3>
               <div className="flex items-center gap-2">
-                <code className="text-sm font-mono bg-gray-100 dark:bg-gray-700 px-3 py-2 rounded text-gray-900 dark:text-gray-100 select-all flex-1 break-all">
+                <code className="text-sm font-mono bg-black/40 border border-green-500/20 px-3 py-2 text-green-300 select-all flex-1 break-all">
                   {session.groupVerifyingKey}
                 </code>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => copyToClipboard(session.groupVerifyingKey!)}
-                  className="px-2 py-1 shrink-0"
+                <button
+                  onClick={() => copyToClipboard(session.groupVerifyingKey!, 'group-key')}
+                  className="flex items-center justify-center h-9 w-9 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 hover:border-green-500/50 text-green-400 transition-all shrink-0"
                 >
-                  📋
-                </Button>
+                  {copiedItems.has('group-key') ? (
+                    <CheckCircle className="w-4 h-4" />
+                  ) : (
+                    <Copy className="w-4 h-4" />
+                  )}
+                </button>
               </div>
-            </Card>
+            </div>
           )}
         </div>
 
         {/* Action Buttons */}
-        <div className="flex gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-600">
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="flex-1"
-          >
-            Close
-          </Button>
-          
-          {session.status === 'completed' && onDownloadKeyShare && (
-            <Button
-              onClick={onDownloadKeyShare}
-              className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+        <div className="sticky bottom-0 bg-gradient-to-t from-[#1a2347] to-[#1a2347]/95 backdrop-blur-sm border-t border-[#4fc3f7]/30 p-6">
+          <div className="flex gap-3">
+            {isNewlyCreated && (
+              <button
+                onClick={() => copyToClipboard(session.id, 'footer-session-id')}
+                className="flex-1 h-11 flex items-center justify-center gap-2 bg-[#028bee] hover:bg-[#0277d4] text-white font-semibold transition-all shadow-lg shadow-[#028bee]/20"
+              >
+                {copiedItems.has('footer-session-id') ? (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    Copy Session ID
+                  </>
+                )}
+              </button>
+            )}
+            
+            {session.status === 'completed' && onDownloadKeyShare && (
+              <button
+                onClick={onDownloadKeyShare}
+                className="flex-1 h-11 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-medium transition-all"
+              >
+                <Download className="w-4 h-4" />
+                Download Key Share
+              </button>
+            )}
+            
+            <button
+              onClick={onClose}
+              className="flex-1 h-11 flex items-center justify-center gap-2 bg-transparent hover:bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 hover:border-[#4fc3f7]/50 text-white font-medium transition-all"
             >
-              📥 Download Key Share
-            </Button>
-          )}
-          
-          {isNewlyCreated && (
-            <Button
-              onClick={() => copyToClipboard(session.id)}
-              className="flex-1"
-            >
-              📋 Copy Session ID
-            </Button>
-          )}
+              Close
+            </button>
+          </div>
         </div>
       </div>
     </div>

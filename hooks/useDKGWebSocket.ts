@@ -22,6 +22,7 @@ interface DKGSession {
   roster: Array<[number, string, string]>;
   groupVerifyingKey?: string;
   automationMode?: 'manual' | 'automatic';
+  _serverMissing?: boolean; // Flag when session exists locally but not on server
 }
 
 interface AuthState {
@@ -93,10 +94,13 @@ export function useDKGWebSocket(
           .map((session: any) => ({
             ...session,
             createdAt: new Date(session.createdAt),
-            automationMode: session.automationMode || 'manual' // Ensure automation mode exists
+            automationMode: session.automationMode || 'manual', // Ensure automation mode exists
+            creator: session.creator, // Keep creator field from storage - crucial for role assignment
+            myRole: undefined // Clear myRole on load - will be reassigned based on current wallet
           }))
           .filter((session: any) => session.minSigners && session.maxSigners);
         
+        console.log('📦 Loaded sessions from storage:', migratedSessions.map((s: any) => ({ id: s.id.slice(0, 8), creator: s.creator?.slice(0, 8) })));
         setSessions(migratedSessions);
       } catch (error) {
         console.error('Error loading sessions from localStorage:', error);
@@ -110,6 +114,7 @@ export function useDKGWebSocket(
     if (savedJoinedSessions) {
       try {
         const parsedJoinedSessions = JSON.parse(savedJoinedSessions);
+        console.log('📦 Loaded joined sessions:', parsedJoinedSessions);
         setJoinedSessions(new Set(parsedJoinedSessions));
       } catch (error) {
         console.error('Error loading joined sessions from localStorage:', error);
@@ -134,14 +139,101 @@ export function useDKGWebSocket(
     }
   }, [wsConnection, authState.isAuthenticated, sessions.length]);
 
-  // Update session roles when address or joined sessions change
+  // Update session roles when address, joined sessions, or sessions change
   useEffect(() => {
+    if (!address) {
+      console.log('⚠️ No address available for role evaluation');
+      return;
+    }
+    
+    console.log('🔍 Role evaluation check:', {
+      address,
+      sessionsCount: sessions.length,
+      joinedSessionsCount: joinedSessions.size,
+      sessions: sessions.map(s => ({ id: s.id.slice(0, 8), creator: s.creator?.slice(0, 8), myRole: s.myRole }))
+    });
+    
+    if (sessions.length === 0) {
+      console.log('ℹ️ No sessions to evaluate roles for');
+      return;
+    }
+    
     if (address && sessions.length > 0) {
-      // Only assign myRole if user is creator OR has joined the session
+      console.log('🔄 Evaluating session roles for address:', address);
+      console.log('📋 Sessions:', sessions.map(s => ({ id: s.id.slice(0, 8), creator: s.creator?.slice(0, 8), myRole: s.myRole })));
+      console.log('📦 Joined sessions:', Array.from(joinedSessions));
+      
+      // Store address in a const to help TypeScript narrow the type in the callback
+      // Convert to string first to handle viem's Address type
+      const userAddress = String(address).toLowerCase();
+      
+      // Check if any session needs role assignment
+      const needsRoleUpdate = sessions.some(session => {
+        const isCreator = session.creator?.toLowerCase() === userAddress;
+        const hasJoined = joinedSessions.has(session.id);
+        
+        // Check if user's public key is in the participants roster
+        const isInRoster = session.participants?.some((p: any) => 
+          p.publicKey?.toLowerCase() === authState.publicKeyHex?.toLowerCase()
+        ) || false;
+        
+        const isParticipant = hasJoined || isInRoster;
+        const shouldHaveRole = isCreator || isParticipant;
+        const currentRole = session.myRole;
+        
+        console.log(`  🔍 Checking session ${session.id.slice(0, 8)}:`, {
+          creator: session.creator?.slice(0, 10),
+          address: String(address).slice(0, 10),
+          isCreator,
+          hasJoined,
+          isInRoster,
+          isParticipant,
+          currentRole,
+          shouldHaveRole,
+          participantsCount: session.participants?.length || 0
+        });
+        
+        // Need update if should have role but doesn't, or has wrong role
+        if (shouldHaveRole && !currentRole) {
+          console.log(`    → Needs update: should have role but doesn't`);
+          return true;
+        }
+        if (isCreator && currentRole !== 'creator') {
+          console.log(`    → Needs update: is creator but role is ${currentRole}`);
+          return true;
+        }
+        if (isParticipant && !isCreator && currentRole !== 'participant') {
+          console.log(`    → Needs update: is participant but role is ${currentRole}`);
+          return true;
+        }
+        if (!shouldHaveRole && currentRole) {
+          console.log(`    → Needs update: shouldn't have role but has ${currentRole}`);
+          return true;
+        }
+        
+        return false;
+      });
+      
+      if (!needsRoleUpdate) {
+        console.log('✅ All session roles already correct, skipping update');
+        return;
+      }
+      
+      // Assign myRole if user is creator, has joined, OR is in the participants roster
       const updatedSessions = sessions.map(session => {
-        if (session.creator === address) {
+        const isCreator = session.creator?.toLowerCase() === userAddress;
+        const hasJoined = joinedSessions.has(session.id);
+        
+        // Check if user's public key is in the participants roster
+        const isInRoster = session.participants?.some((p: any) => 
+          p.publicKey?.toLowerCase() === authState.publicKeyHex?.toLowerCase()
+        ) || false;
+        
+        const isParticipant = hasJoined || isInRoster;
+        
+        if (isCreator) {
           return { ...session, myRole: 'creator' as const };
-        } else if (joinedSessions.has(session.id)) {
+        } else if (isParticipant) {
           return { ...session, myRole: 'participant' as const };
         } else {
           // User has no role in this session - remove myRole to hide it
@@ -150,18 +242,22 @@ export function useDKGWebSocket(
         }
       });
       
-      // Only update if roles actually changed
-      const rolesChanged = updatedSessions.some((session, index) => 
-        session.myRole !== sessions[index].myRole
-      );
-      
-      if (rolesChanged) {
-        console.log(`🔄 Updated session roles for wallet ${address}`);
-        setSessions(updatedSessions);
-        saveSessionsToStorage(updatedSessions);
-      }
+      console.log('✅ Updated session roles:', updatedSessions.map(s => ({ id: s.id.slice(0, 8), creator: s.creator?.slice(0, 8), myRole: s.myRole })));
+      setSessions(updatedSessions);
+      // Don't save immediately - let the debounced save effect handle it
     }
-  }, [address, sessions, joinedSessions, saveSessionsToStorage]);
+  }, [address, joinedSessions, sessions, authState.publicKeyHex]);
+  
+  // Debug: Log when sessions or address changes
+  useEffect(() => {
+    console.log('📊 State Update:', {
+      address,
+      sessionsCount: sessions.length,
+      joinedSessionsCount: joinedSessions.size,
+      isAuthenticated: authState.isAuthenticated,
+      hasPublicKey: !!authState.publicKeyHex
+    });
+  }, [address, sessions.length, joinedSessions.size, authState.isAuthenticated, authState.publicKeyHex]);
 
   // Save sessions to localStorage whenever sessions change (with debouncing to avoid excessive saves)
   useEffect(() => {
@@ -186,6 +282,7 @@ export function useDKGWebSocket(
           challenge: message.payload.challenge,
           uuid: message.payload.challenge
         }));
+        // Auto-authenticate will happen in the useEffect below
         break;
         
       case 'Authenticated':
@@ -198,11 +295,20 @@ export function useDKGWebSocket(
           dkgPrivateKey: prev.dkgPrivateKey
         }));
         setError('');
+        
+        // Automatically request session list after authentication
+        if (wsConnection) {
+          console.log('📋 Authenticated - requesting pending sessions list');
+          const listMessage = { type: 'ListPendingDKGSessions' };
+          wsConnection.send(JSON.stringify(listMessage));
+        }
         break;
         
       case 'SessionCreated':
         // Use ref as fallback if state is null
         const paramsToUse = pendingSessionParams || pendingSessionParamsRef.current;
+        
+        console.log('🎉 Session created! Current address:', address);
         
         const newSession: DKGSession = {
           id: message.payload.session,
@@ -220,16 +326,34 @@ export function useDKGWebSocket(
           roster: [],
           automationMode: paramsToUse?.automationMode || 'manual'
         };
-        setSessions(prev => [...prev, newSession]);
-        saveSessionsToStorage([...sessions, newSession]);
+        console.log('💾 Adding new session to state:', {
+          id: newSession.id.slice(0, 8),
+          creator: newSession.creator,
+          myRole: newSession.myRole
+        });
+        
+        setSessions(prev => {
+          const updated = [...prev, newSession];
+          console.log('📋 Updated sessions:', updated.map(s => ({ id: s.id.slice(0, 8), creator: s.creator?.slice(0, 8), myRole: s.myRole })));
+          return updated;
+        });
+        
         setPendingSessionParams(null); // Clear pending params
         pendingSessionParamsRef.current = null; // Clear ref too
         
         // Creator automatically joins their own session
         addJoinedSession(newSession.id);
         
+        console.log('✅ Session added and joined');
+        
         if (setIsCreatingSession) setIsCreatingSession(false);
         if (setNewlyCreatedSession) setNewlyCreatedSession(newSession);
+        
+        // Immediately request updated session list so others can see it
+        if (wsConnection) {
+          const listMessage = { type: 'ListPendingDKGSessions' };
+          wsConnection.send(JSON.stringify(listMessage));
+        }
         break;
         
       case 'Error':
@@ -427,6 +551,157 @@ export function useDKGWebSocket(
           console.log(`❌ Session ${sessionId} failed`);
         }
         break;
+
+      case 'PendingDKGSessions':
+        // Server sends list of available DKG sessions
+        if (message.payload?.sessions && Array.isArray(message.payload.sessions)) {
+          console.log('📋 Received pending DKG sessions from server:', message.payload.sessions.length);
+          console.log('📋 Raw server sessions:', message.payload.sessions);
+          console.log('📋 Server session IDs:', message.payload.sessions.map((s: any) => s.session));
+          
+          // Update sessions - merge with existing to keep local state
+          setSessions(prev => {
+            console.log('📦 Merging server sessions. Current local sessions:', prev.length);
+            console.log('📦 Local sessions before merge:', prev.map(s => ({
+              id: s.id.slice(0, 8),
+              creator: s.creator?.slice(0, 10),
+              myRole: s.myRole
+            })));
+            console.log('📦 Joined sessions Set has:', Array.from(joinedSessions));
+            
+            // Merge server sessions with local sessions
+            const serverSessions = message.payload.sessions.map((serverSession: any) => {
+              // Check if we already have this session locally (use prev, not sessions)
+              const existingSession = prev.find(s => s.id === serverSession.session);
+              
+              console.log('  Processing server session:', {
+                id: serverSession.session?.slice(0, 8),
+                serverCreator: serverSession.creator,
+                existingCreator: existingSession?.creator?.slice(0, 10),
+                existingRole: existingSession?.myRole
+              });
+              
+              // IMPORTANT: Prioritize existing data from localStorage over server
+              // The server (fserver) doesn't track:
+              // - creator: not tracked by server
+              // - participants with public keys: server only has numeric UIDs [1,2,3]
+              // - roster: only available after Round 1 starts
+              const merged = {
+                id: serverSession.session,
+                creator: existingSession?.creator || serverSession.creator || 'unknown',
+                minSigners: serverSession.min_signers,
+                maxSigners: serverSession.max_signers,
+                currentParticipants: serverSession.joined?.length || 0,
+                status: existingSession?.status || 'waiting' as const,
+                groupId: serverSession.group_id,
+                topic: serverSession.topic || `topic_${serverSession.session}`,
+                createdAt: existingSession?.createdAt || new Date(serverSession.created_at),
+                myRole: existingSession?.myRole, // Preserve from localStorage
+                description: existingSession?.description || 'DKG Key Generation Ceremony',
+                // CRITICAL: Preserve local participants array with public keys
+                // Server only provides numeric UIDs [1,2,3], not {uid, publicKey} objects
+                participants: existingSession?.participants || serverSession.participants || [],
+                roster: existingSession?.roster || [],
+                groupVerifyingKey: existingSession?.groupVerifyingKey,
+                automationMode: existingSession?.automationMode || 'manual' as const,
+              };
+              
+              console.log('  ✓ Merged session:', {
+                id: merged.id.slice(0, 8),
+                creator: merged.creator?.slice(0, 10),
+                myRole: merged.myRole,
+                wasExisting: !!existingSession,
+                participantsCount: merged.participants?.length,
+                participantsType: Array.isArray(merged.participants) && merged.participants.length > 0 
+                  ? (typeof merged.participants[0] === 'object' ? 'objects' : 'numbers')
+                  : 'empty'
+              });
+              
+              return merged;
+            });
+            
+            // Keep sessions from localStorage that weren't returned by server
+            // This includes:
+            // 1. Sessions the user joined but server lost (e.g., server restart)
+            // 2. Sessions that are in-progress or completed
+            const localOnlySessions = prev.filter(s => 
+              !serverSessions.find((ss: any) => ss.id === s.id)
+            );
+            
+            console.log('⚠️  Sessions in localStorage but NOT on server:', {
+              count: localOnlySessions.length,
+              sessions: localOnlySessions.map(s => ({
+                id: s.id.slice(0, 8),
+                myRole: s.myRole,
+                status: s.status,
+                inJoinedSet: joinedSessions.has(s.id)
+              }))
+            });
+            
+            // Mark local-only sessions as potentially stale
+            const markedLocalSessions = localOnlySessions.map(s => ({
+              ...s,
+              _serverMissing: true // Flag to indicate server doesn't have this session
+            }));
+            
+            console.log('✅ Final merge:', {
+              localOnly: markedLocalSessions.length,
+              fromServer: serverSessions.length,
+              total: markedLocalSessions.length + serverSessions.length,
+              finalIds: [...markedLocalSessions, ...serverSessions].map(s => s.id.slice(0, 8))
+            });
+            
+            return [...markedLocalSessions, ...serverSessions];
+          });
+        }
+        break;
+
+      case 'Round1All':
+        // Server sends all Round 1 packages after everyone has submitted
+        // Format: { session, packages: [[id_hex, pkg_hex, sig_hex], ...] }
+        if (message.payload?.session && message.payload?.packages) {
+          console.log('📦 Round1All received:', {
+            session: message.payload.session,
+            packageCount: message.payload.packages.length
+          });
+          // This will be handled by useDKGRounds hook through external handler
+          // For now, just log it - the actual handling happens in the DKG page component
+        }
+        break;
+
+      case 'Round2All':
+        // Server sends encrypted Round 2 packages for this participant
+        // Format: { session, packages: [[from_id_hex, eph_pub_hex, nonce_hex, ct_hex, sig_hex], ...] }
+        if (message.payload?.session && message.payload?.packages) {
+          console.log('📦 Round2All received:', {
+            session: message.payload.session,
+            packageCount: message.payload.packages.length
+          });
+          // This will be handled by useDKGRounds hook through external handler
+          // The actual decryption happens in the DKG page component
+        }
+        break;
+
+      case 'Finalized':
+        // Server confirms DKG finalization is complete
+        if (message.payload?.session) {
+          const sessionId = message.payload.session;
+          const groupVkHex = message.payload.group_vk_sec1_hex;
+          
+          setSessions(prev => prev.map(session => 
+            session.id === sessionId ? {
+              ...session,
+              status: 'completed' as const,
+              groupVerifyingKey: groupVkHex
+            } : session
+          ));
+          
+          console.log(`✅ DKG ceremony finalized for session ${sessionId}`);
+          console.log(`   Group VK: ${groupVkHex?.slice(0, 16)}...`);
+          
+          setSuccessMessage('🎉 DKG ceremony completed! Group verification key generated.');
+        }
+        break;
         
       default:
         break;
@@ -522,7 +797,7 @@ export function useDKGWebSocket(
       const ec = new EC('secp256k1');
       
       // Create a deterministic seed by signing a fixed message
-      const seedMessage = "DKG_KEYPAIR_SEED";
+      const seedMessage = "Welcome to Tokamak DKG!\n\nSign this message to generate your DKG keypair.\n\nThis is a one-time signature to create your cryptographic identity for threshold signatures.\n\nNo gas fees required.";
       const seedSignature = await signMessageAsync({ message: seedMessage });
       
       // Use the signature as entropy to derive a private key
@@ -536,7 +811,8 @@ export function useDKGWebSocket(
       const publicKeyHex = keyPair.getPublic(true, 'hex');
       const privateKeyHex = keyPair.getPrivate('hex');
       
-      console.log('✅ Generated keypair:', { publicKey: publicKeyHex });
+      console.log('✅ Generated keypair:', { publicKey: publicKeyHex, address });
+      console.log('📋 Current sessions before keypair update:', sessions.map(s => ({ id: s.id.slice(0, 8), creator: s.creator?.slice(0, 8), myRole: s.myRole })));
       
       // Update auth state with both public and private keys
       setAuthState(prev => ({ 
@@ -545,6 +821,8 @@ export function useDKGWebSocket(
         dkgPrivateKey: privateKeyHex,
         dkgPublicKey: publicKeyHex
       }));
+      
+      console.log('🔑 Keypair updated in authState');
       
       return { publicKey: publicKeyHex, privateKey: privateKeyHex };
     } catch (error) {
@@ -557,8 +835,17 @@ export function useDKGWebSocket(
   // Wrapper for backward compatibility
   const getDeterministicPublicKey = useCallback(async () => {
     const keypair = await getDeterministicKeypair();
+    
+    // After getting keypair, automatically request challenge
+    if (keypair && wsConnection) {
+      console.log('🔑 Keypair generated, requesting challenge...');
+      setTimeout(() => {
+        requestChallenge();
+      }, 300);
+    }
+    
     return keypair?.publicKey || '';
-  }, [getDeterministicKeypair]);
+  }, [getDeterministicKeypair, wsConnection, requestChallenge]);
 
   // Authentication
   const authenticate = useCallback(async () => {
@@ -567,19 +854,23 @@ export function useDKGWebSocket(
     console.log('🔐 Starting authentication process...');
     
     try {
-      // 1. Always ensure we have consistent keypair
+      // 1. Use existing keypair from state (already signed once during "Get My Public Key")
       let pubkeyHex = authState.publicKeyHex;
       let privateKeyHex = authState.dkgPrivateKey;
       
-      // Always regenerate to ensure consistency
-      console.log('🔄 Ensuring consistent keypair for authentication...');
-      const keypair = await getDeterministicKeypair();
-      if (!keypair) {
-        setError('Failed to generate DKG keypair for authentication');
-        return;
+      // Only regenerate if we don't have them in state
+      if (!privateKeyHex || !pubkeyHex) {
+        console.log('🔄 Keypair not in state, regenerating...');
+        const keypair = await getDeterministicKeypair();
+        if (!keypair) {
+          setError('Failed to generate DKG keypair for authentication');
+          return;
+        }
+        pubkeyHex = keypair.publicKey;
+        privateKeyHex = keypair.privateKey;
+      } else {
+        console.log('✅ Using existing keypair from state (no additional signature needed)');
       }
-      pubkeyHex = keypair.publicKey;
-      privateKeyHex = keypair.privateKey;
       
       console.log('🔑 Using keypair:', {
         publicKey: pubkeyHex,
@@ -711,24 +1002,123 @@ export function useDKGWebSocket(
     }
   }, [wsConnection, authState.uuid, authState.publicKeyHex, authState.dkgPrivateKey, address, getDeterministicKeypair]);
 
+  // Auto-authenticate when we have a challenge
+  useEffect(() => {
+    if (authState.uuid && authState.publicKeyHex && !authState.isAuthenticated && wsConnection) {
+      console.log('🔐 Challenge available, auto-authenticating...');
+      // Small delay to ensure state is fully updated
+      const timer = setTimeout(() => {
+        authenticate();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [authState.uuid, authState.publicKeyHex, authState.isAuthenticated, wsConnection, authenticate]);
+
+  // Handle wallet changes - clear auth when address changes
+  useEffect(() => {
+    // Only clear if we had an authenticated wallet and it changed
+    if (authState.publicKeyHex && address) {
+      const previousAddress = localStorage.getItem('dkg_last_wallet_address');
+      
+      if (previousAddress && previousAddress !== address) {
+        console.log('🔄 Wallet changed from', previousAddress, 'to', address);
+        
+        // Clear authentication state
+        setAuthState({
+          isAuthenticated: false,
+          challenge: '',
+          uuid: '',
+          publicKeyHex: '',
+          dkgPrivateKey: '',
+          userId: null
+        });
+        
+        // Clear stored keypairs
+        localStorage.removeItem('dkg_last_public_key');
+        localStorage.removeItem('dkg_last_private_key');
+        
+        // Force re-evaluation of session roles by reloading from storage
+        const savedSessions = localStorage.getItem('dkg-sessions');
+        if (savedSessions) {
+          try {
+            const parsedSessions = JSON.parse(savedSessions);
+            const reloadedSessions = parsedSessions.map((session: any) => ({
+              ...session,
+              createdAt: new Date(session.createdAt),
+              myRole: undefined // Clear myRole, will be reassigned based on new address
+            }));
+            setSessions(reloadedSessions);
+            console.log('🔄 Reloaded sessions for new wallet');
+          } catch (error) {
+            console.error('Failed to reload sessions:', error);
+          }
+        }
+        
+        setSuccessMessage('Wallet changed. Please sign with your new wallet.');
+      }
+      
+      // Store current address
+      localStorage.setItem('dkg_last_wallet_address', address);
+    }
+  }, [address, authState.publicKeyHex]);
+
   // Join session
   const joinSession = useCallback((sessionId: string) => {
-    if (!wsConnection || !sessionId) return;
+    if (!wsConnection) {
+      console.error('❌ Cannot join session: No WebSocket connection');
+      setError('Not connected to DKG server. Please connect first.');
+      return;
+    }
+    
+    if (!sessionId || sessionId.trim() === '') {
+      console.error('❌ Cannot join session: No session ID provided');
+      setError('Please provide a valid session ID');
+      return;
+    }
+
+    if (!authState.isAuthenticated) {
+      console.error('❌ Cannot join session: Not authenticated');
+      setError('You must be authenticated before joining a session. Please click "Get My Public Key" first.');
+      return;
+    }
+
+    if (!authState.publicKeyHex) {
+      console.error('❌ Cannot join session: No public key');
+      setError('Public key not found. Please authenticate again.');
+      return;
+    }
+
+    console.log('🚀 Attempting to join session:', {
+      sessionId: sessionId.trim(),
+      publicKey: authState.publicKeyHex?.slice(0, 16) + '...',
+      isAuthenticated: authState.isAuthenticated,
+      connectionStatus: wsConnection.readyState === WebSocket.OPEN ? 'open' : 'closed'
+    });
 
     setIsJoiningSession(true);
-    setJustJoinedSession(sessionId);
-    joinSessionRef.current = sessionId;
+    setJustJoinedSession(sessionId.trim());
+    joinSessionRef.current = sessionId.trim();
     setError('');
     setSuccessMessage('');
     setHasShownJoinSuccess(false);
 
     const message = {
       type: 'JoinSession',
-      payload: { session: sessionId }
+      payload: { session: sessionId.trim() }
     };
 
+    console.log('📤 Sending JoinSession message:', message);
     wsConnection.send(JSON.stringify(message));
-  }, [wsConnection]);
+    
+    // Set a timeout in case the server doesn't respond
+    setTimeout(() => {
+      if (isJoiningSession) {
+        console.log('⏱️ Join session timeout - no response from server');
+        setIsJoiningSession(false);
+        setError('Join session timed out. The server may not be responding, or the session ID may be invalid.');
+      }
+    }, 10000); // 10 second timeout
+  }, [wsConnection, authState.isAuthenticated, authState.publicKeyHex, isJoiningSession]);
 
   // Clear authentication
   const clearAuth = useCallback(() => {
