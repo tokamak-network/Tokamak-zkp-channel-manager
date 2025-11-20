@@ -3,6 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Clipboard, Settings, Users, CheckCircle2, Key, Sparkles } from 'lucide-react';
 
 interface DKGSession {
   id: string;
@@ -60,8 +61,8 @@ export function DKGSessionDetails({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-4xl overflow-y-auto">
         <div className="p-6">
           <div className="flex justify-between items-start mb-6">
             <div>
@@ -85,7 +86,10 @@ export function DKGSessionDetails({
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Basic Information */}
             <Card className="p-4">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">📋 Basic Information</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
+                <Clipboard className="w-4 h-4" />
+                Basic Information
+              </h3>
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-gray-600 dark:text-gray-400">Session ID:</span>
@@ -123,7 +127,7 @@ export function DKGSessionDetails({
                 {session.description && (
                   <div>
                     <span className="text-gray-600 dark:text-gray-400 block mb-1">Description:</span>
-                    <p className="text-sm text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                    <p className="text-sm text-gray-900 dark:text-gray-100 p-2 rounded border border-[#4fc3f7]/20">
                       {session.description}
                     </p>
                   </div>
@@ -133,7 +137,10 @@ export function DKGSessionDetails({
 
             {/* Threshold Configuration */}
             <Card className="p-4">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">⚙️ Threshold Configuration</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                Threshold Configuration
+              </h3>
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-gray-600 dark:text-gray-400">Total Participants:</span>
@@ -170,11 +177,14 @@ export function DKGSessionDetails({
 
             {/* Participants List */}
             <Card className="p-4 lg:col-span-2">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">👥 Participants</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                Participants
+              </h3>
               {session.roster && session.roster.length > 0 ? (
                 <div className="space-y-2">
                   {session.roster.map(([uid, idHex, ecdsaPubHex]) => (
-                    <div key={uid} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <div key={uid} className="flex items-center gap-3 p-3 border border-[#4fc3f7]/10 rounded-lg">
                       <Badge variant="outline">#{uid}</Badge>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -203,11 +213,14 @@ export function DKGSessionDetails({
             {/* Session Results */}
             {session.status === 'completed' && (
               <Card className="p-4 lg:col-span-2">
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">🎉 Session Results</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4" />
+                  Session Results
+                </h3>
                 
                 <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg mb-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-green-600 dark:text-green-400 text-lg">✅</span>
+                    <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
                     <h4 className="font-medium text-green-800 dark:text-green-200">
                       DKG Ceremony Completed Successfully
                     </h4>
@@ -221,7 +234,7 @@ export function DKGSessionDetails({
                 {session.groupVerifyingKey && (
                   <div className="mb-4">
                     <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Group Verification Key</h4>
-                    <div className="bg-white dark:bg-gray-800 p-3 rounded border">
+                    <div className="p-3 rounded border border-[#4fc3f7]/20">
                       <span className="font-mono text-xs text-gray-800 dark:text-gray-200 break-all select-all cursor-pointer">
                         {session.groupVerifyingKey}
                       </span>
@@ -235,10 +248,11 @@ export function DKGSessionDetails({
                 <div className="flex gap-3">
                   <Button
                     onClick={onDownloadKeyShare}
-                    className="bg-green-600 hover:bg-green-700"
+                    className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
                     disabled={!session.groupVerifyingKey}
                   >
-                    🔑 Download Key Share (share_{session.id.slice(0, 8)}.json)
+                    <Key className="w-4 h-4" />
+                    Download Key Share (share_{session.id.slice(0, 8)}.json)
                   </Button>
                 </div>
               </Card>
