@@ -1,13 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Flame, Plus, Link2, ClipboardList, CheckCircle, X } from 'lucide-react';
+import { Flame, Plus, Link2, ClipboardList, CheckCircle, X, Trash2 } from 'lucide-react';
+import { initWasm } from '@/lib/frost-wasm';
+import { DKG_CONFIG, getDKGServerUrl, shouldAutoConnect, debugLog } from '@/lib/dkg-config';
 
 // Import our new DKG components
 import { DKGConnectionStatus } from '@/components/dkg/DKGConnectionStatus';
@@ -20,6 +22,8 @@ import { DKGSessionDetailsModal } from '@/components/dkg/DKGSessionDetailsModal'
 import { DKGAutomationStatus } from '@/components/dkg/DKGAutomationStatus';
 import { DKGErrorDisplay } from '@/components/dkg/DKGErrorDisplay';
 import { DKGConsoleSettings } from '@/components/dkg/DKGConsoleSettings';
+import { DKGWasmStatus } from '@/components/dkg/DKGWasmStatus';
+import { DKGSessionInfo } from '@/components/dkg/DKGSessionInfo';
 
 // Import our custom hooks
 import { useDKGWebSocket } from '@/hooks/useDKGWebSocket';
@@ -54,8 +58,8 @@ export default function DKGManagementPage() {
   const { address, isConnected } = useAccount();
   
   // UI state
-  const [activeTab, setActiveTab] = useState('active');
-  const [serverUrl, setServerUrl] = useState('ws://127.0.0.1:9000/ws');
+  const [activeTab, setActiveTab] = useState('sessions');
+  const [serverUrl, setServerUrl] = useState(getDKGServerUrl()); // Use config
   const [selectedSession, setSelectedSession] = useState<DKGSession | null>(null);
   const [showSessionDetails, setShowSessionDetails] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
@@ -91,14 +95,96 @@ export default function DKGManagementPage() {
     isSubmittingRound1,
     isSubmittingRound2,
     isSubmittingFinalize,
+    wasmReady,
     showCommitmentModal,
     selectedSessionForCommitment,
     submitRound1,
     submitRound2,
     submitFinalization,
     openCommitmentModal,
-    closeCommitmentModal
+    closeCommitmentModal,
+    handleRound1All,
+    handleRound2All,
   } = useDKGRounds(wsConnection, authState, frostIdMap, setSuccessMessage, setError);
+
+  // Initialize WASM module on mount
+  useEffect(() => {
+    debugLog('Initializing FROST WASM module...');
+    initWasm()
+      .then(() => {
+        debugLog('FROST WASM module initialized successfully');
+      })
+      .catch(err => {
+        console.error('❌ Failed to initialize FROST WASM:', err);
+        setError('Failed to initialize cryptographic module. Please refresh the page.');
+      });
+  }, []);
+
+  // Auto-connect to DKG server on mount (if enabled in config)
+  useEffect(() => {
+    if (shouldAutoConnect() && connectionStatus === 'disconnected' && isConnected) {
+      debugLog('Auto-connecting to DKG server:', serverUrl);
+      const timer = setTimeout(() => {
+        connectToServer(serverUrl);
+      }, 1000); // Small delay to ensure wallet is ready
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isConnected, connectionStatus, serverUrl, connectToServer]);
+
+  // Auto-refresh sessions periodically when connected and authenticated
+  useEffect(() => {
+    if (connectionStatus === 'connected' && authState.isAuthenticated && wsConnection) {
+      debugLog('Setting up auto-refresh for sessions');
+      
+      const refreshSessions = () => {
+        if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+          debugLog('Auto-refreshing session list');
+          const message = { type: 'ListPendingDKGSessions' };
+          wsConnection.send(JSON.stringify(message));
+        }
+      };
+
+      // Refresh immediately
+      refreshSessions();
+      
+      // Then refresh periodically
+      const interval = setInterval(refreshSessions, DKG_CONFIG.SESSION_REFRESH_INTERVAL);
+      
+      return () => clearInterval(interval);
+    }
+  }, [connectionStatus, authState.isAuthenticated, wsConnection]);
+
+  // Listen for WebSocket messages and handle DKG rounds
+  useEffect(() => {
+    if (!wsConnection) return;
+
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        const message = JSON.parse(event.data);
+        
+        // Handle Round1All - all participants' Round 1 packages
+        if (message.type === 'Round1All' && message.payload?.session && message.payload?.packages) {
+          console.log('📦 Handling Round1All message');
+          handleRound1All(message.payload.session, message.payload.packages);
+        }
+        
+        // Handle Round2All - encrypted Round 2 packages for this participant
+        if (message.type === 'Round2All' && message.payload?.session && message.payload?.packages) {
+          console.log('📦 Handling Round2All message');
+          handleRound2All(message.payload.session, message.payload.packages);
+        }
+      } catch (error) {
+        console.error('Error handling WebSocket message:', error);
+      }
+    };
+
+    wsConnection.addEventListener('message', handleMessage);
+
+    return () => {
+      wsConnection.removeEventListener('message', handleMessage);
+    };
+  }, [wsConnection, handleRound1All, handleRound2All]);
 
   // Automated DKG ceremony flow
   const {
@@ -194,9 +280,14 @@ export default function DKGManagementPage() {
     }
   };
 
-  const handleSubmitCommitment = (commitment: string) => {
+  const handleSubmitCommitment = (publicPackage: string, secretPackage: string) => {
     if (selectedSessionForCommitment) {
-      submitRound1(selectedSessionForCommitment, commitment);
+      console.log('📦 Commitment modal submitted:', {
+        sessionId: selectedSessionForCommitment.id.slice(0, 8),
+        publicLength: publicPackage.length,
+        secretLength: secretPackage.length
+      });
+      submitRound1(selectedSessionForCommitment, publicPackage, secretPackage);
     }
   };
 
@@ -257,6 +348,43 @@ export default function DKGManagementPage() {
     }
   };
 
+  const handleClearAllData = () => {
+    // Confirm before clearing
+    const confirmed = window.confirm(
+      '⚠️ Clear All DKG Data?\n\n' +
+      'This will permanently delete:\n' +
+      '• All DKG sessions from localStorage\n' +
+      '• All joined session records\n' +
+      '• Wallet keypair cache\n' +
+      '• Cannot be undone!\n\n' +
+      'Are you sure you want to continue?'
+    );
+
+    if (confirmed) {
+      console.log('🗑️  Clearing all DKG data from localStorage...');
+      
+      // Clear DKG sessions and joined sessions
+      clearAllSessions();
+      
+      // Also clear any other DKG-related localStorage items
+      localStorage.removeItem('dkg_last_wallet_address');
+      localStorage.removeItem('dkg_last_public_key');
+      localStorage.removeItem('dkg_last_private_key');
+      
+      // Show success message
+      setSuccessMessage('✅ All DKG data cleared successfully! Refresh recommended.');
+      
+      console.log('✅ All DKG localStorage data cleared');
+      
+      // Optionally refresh the page after a short delay
+      setTimeout(() => {
+        if (window.confirm('Data cleared! Would you like to refresh the page now?')) {
+          window.location.reload();
+        }
+      }, 1000);
+    }
+  };
+
   if (!isConnected) {
     return (
       <Layout title="DKG Management">
@@ -281,8 +409,18 @@ export default function DKGManagementPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">
+            <h1 className="text-2xl font-bold text-white flex items-center gap-3">
               DKG Management
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClearAllData}
+                className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 border-red-300 dark:border-red-700 flex items-center gap-2"
+                title="Clear all DKG data from localStorage"
+              >
+                <Trash2 className="w-4 h-4" />
+                Clear All Data
+              </Button>
             </h1>
             <p className="text-gray-300 mt-1">
               Distributed Key Generation for FROST Threshold Signatures
@@ -299,6 +437,9 @@ export default function DKGManagementPage() {
             )}
           </div>
         </div>
+
+        {/* WASM Status Indicator */}
+        <DKGWasmStatus isReady={wasmReady} />
 
         {/* Statistics */}
         <Card className="p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]">
@@ -379,10 +520,9 @@ export default function DKGManagementPage() {
         {/* Tab Navigation */}
         <div className="flex space-x-1 bg-[#0a1930] border border-[#4fc3f7]/30 p-1">
           {[
-            { id: 'active', label: 'Active Sessions', icon: Flame },
+            { id: 'sessions', label: 'Sessions', icon: ClipboardList },
             { id: 'create', label: 'Create Session', icon: Plus },
-            { id: 'join', label: 'Join Session', icon: Link2 },
-            { id: 'history', label: 'History', icon: ClipboardList }
+            { id: 'join', label: 'Join Session', icon: Link2 }
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -400,32 +540,42 @@ export default function DKGManagementPage() {
         </div>
 
         {/* Tab Content */}
-        {activeTab === 'active' && (
-          <DKGSessionsList
-            sessions={sessions}
-            address={address}
-            activeTab={activeTab}
-            frostIdMap={frostIdMap}
-            joinedSessions={joinedSessions}
-            onSelectSession={setSelectedSession}
-            onViewMore={handleViewMore}
-            onRefreshSession={handleRefreshSession}
-            onSubmitRound1={openCommitmentModal}
-            onSubmitRound2={submitRound2}
-            onSubmitFinalization={submitFinalization}
-            onStartAutomatedCeremony={startAutomatedCeremony}
-            isSubmittingRound1={isSubmittingRound1}
-            isSubmittingRound2={isSubmittingRound2}
-            isSubmittingFinalize={isSubmittingFinalize}
-            authState={authState}
-            wsConnection={wsConnection}
-          />
+        {activeTab === 'sessions' && (
+          <div className="space-y-6">
+            <DKGSessionsList
+              sessions={sessions}
+              address={address}
+              activeTab={activeTab}
+              frostIdMap={frostIdMap}
+              joinedSessions={joinedSessions}
+              onSelectSession={(session) => {
+                setSelectedSession(session);
+                setShowSessionDetails(true);
+              }}
+              onViewMore={handleViewMore}
+              onRefreshSession={handleRefreshSession}
+              onSubmitRound1={openCommitmentModal}
+              onSubmitRound2={submitRound2}
+              onSubmitFinalization={submitFinalization}
+              onStartAutomatedCeremony={startAutomatedCeremony}
+              onJoinSession={handleJoinSession}
+              isSubmittingRound1={isSubmittingRound1}
+              isSubmittingRound2={isSubmittingRound2}
+              isSubmittingFinalize={isSubmittingFinalize}
+              isJoiningSession={isJoiningSession}
+              authState={authState}
+              wsConnection={wsConnection}
+            />
+          </div>
         )}
 
         {activeTab === 'create' && (
           <DKGSessionCreator
             connectionStatus={connectionStatus}
-            authState={authState}
+            authState={{
+              isAuthenticated: authState.isAuthenticated,
+              publicKeyHex: authState.publicKeyHex
+            }}
             isCreatingSession={isCreatingSession}
             onCreateSession={handleCreateSession}
           />
@@ -437,33 +587,9 @@ export default function DKGManagementPage() {
             authState={authState}
             isJoiningSession={isJoiningSession}
             successMessage={successMessage}
+            error={error}
             onJoinSession={handleJoinSession}
             onDismissSuccess={() => setSuccessMessage('')}
-          />
-        )}
-
-        {activeTab === 'history' && (
-          <DKGSessionsList
-            sessions={sessions}
-            address={address}
-            activeTab={activeTab}
-            frostIdMap={frostIdMap}
-            joinedSessions={joinedSessions}
-            onSelectSession={(session) => {
-              setSelectedSession(session);
-              setShowSessionDetails(true);
-            }}
-            onViewMore={handleViewMore}
-            onRefreshSession={handleRefreshSession}
-            onSubmitRound1={openCommitmentModal}
-            onSubmitRound2={submitRound2}
-            onSubmitFinalization={submitFinalization}
-            onStartAutomatedCeremony={startAutomatedCeremony}
-            isSubmittingRound1={isSubmittingRound1}
-            isSubmittingRound2={isSubmittingRound2}
-            isSubmittingFinalize={isSubmittingFinalize}
-            authState={authState}
-            wsConnection={wsConnection}
           />
         )}
 
@@ -472,6 +598,8 @@ export default function DKGManagementPage() {
           isOpen={showCommitmentModal}
           session={selectedSessionForCommitment}
           isSubmitting={isSubmittingRound1}
+          frostIdMap={frostIdMap}
+          authState={authState}
           onClose={closeCommitmentModal}
           onSubmit={handleSubmitCommitment}
         />
