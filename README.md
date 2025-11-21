@@ -54,14 +54,12 @@ A user-friendly and attractive interface for interacting with the Tokamak ZK Rol
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd Tokamak-Zk-Rollup-UI
+   cd Tokamak-zkp-channel-manager
    ```
 
 2. **Install dependencies**
    ```bash
    npm install
-   # or
-   yarn install
    ```
 
 3. **Environment Setup**
@@ -82,8 +80,6 @@ A user-friendly and attractive interface for interacting with the Tokamak ZK Rol
 4. **Run the development server**
    ```bash
    npm run dev
-   # or
-   yarn dev
    ```
 
 5. **Open your browser**

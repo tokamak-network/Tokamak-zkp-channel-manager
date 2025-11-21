@@ -574,7 +574,7 @@ export default function DKGManagementPage() {
             connectionStatus={connectionStatus}
             authState={{
               isAuthenticated: authState.isAuthenticated,
-              publicKeyHex: authState.publicKeyHex
+              publicKeyHex: authState.publicKeyHex ?? undefined
             }}
             isCreatingSession={isCreatingSession}
             onCreateSession={handleCreateSession}
@@ -599,7 +599,10 @@ export default function DKGManagementPage() {
           session={selectedSessionForCommitment}
           isSubmitting={isSubmittingRound1}
           frostIdMap={frostIdMap}
-          authState={authState}
+          authState={{
+            isAuthenticated: authState.isAuthenticated,
+            publicKeyHex: authState.publicKeyHex ?? undefined
+          }}
           onClose={closeCommitmentModal}
           onSubmit={handleSubmitCommitment}
         />
