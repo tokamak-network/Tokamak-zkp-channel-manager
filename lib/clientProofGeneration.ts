@@ -52,15 +52,36 @@ export async function generateClientSideProof(
 
     onProgress?.('Loading circuit files...');
 
-    // For now, use 16-leaf circuit for all sizes until external hosting is properly set up
-    // All circuits fall back to 16-leaf with proper input sizing
+    // Use appropriate circuit for each tree size (now that we have all WASM files locally)
     const getCircuitConfig = (size: number) => {
-      return {
-        wasmUrl: '/zk-assets/wasm/circuit_N4.wasm',
-        zkeyUrl: `/zk-assets/zkey/circuit_final_16.zkey`,
-        circuitName: 'circuit_N4',
-        actualTreeSize: 16 // Always use 16-leaf circuit
+      const configs = {
+        16: {
+          wasmUrl: '/zk-assets/wasm/circuit_N4.wasm',
+          zkeyUrl: `/zk-assets/zkey/circuit_final_16.zkey`,
+          circuitName: 'circuit_N4',
+          actualTreeSize: 16
+        },
+        32: {
+          wasmUrl: '/zk-assets/wasm/circuit_N5.wasm',
+          zkeyUrl: `/zk-assets/zkey/circuit_final_32.zkey`,
+          circuitName: 'circuit_N5',
+          actualTreeSize: 32
+        },
+        64: {
+          wasmUrl: '/zk-assets/wasm/circuit_N6.wasm',
+          zkeyUrl: `/zk-assets/zkey/circuit_final_64.zkey`,
+          circuitName: 'circuit_N6', 
+          actualTreeSize: 64
+        },
+        128: {
+          wasmUrl: '/zk-assets/wasm/circuit_N7.wasm',
+          zkeyUrl: `/zk-assets/zkey/circuit_final_128.zkey`,
+          circuitName: 'circuit_N7',
+          actualTreeSize: 128
+        }
       };
+      
+      return configs[size as keyof typeof configs] || configs[16]; // Fallback to 16 if unsupported size
     };
 
     const config = getCircuitConfig(treeSize);
@@ -68,23 +89,68 @@ export async function generateClientSideProof(
       throw new Error(`Unsupported tree size: ${treeSize}`);
     }
 
-    // Always use 16-leaf circuit for now
+    // Use the circuit that matches the requested tree size
     const actualConfig = config;
     
+    // Verify file accessibility for larger circuits
     if (treeSize > 16) {
-      onProgress?.(`⚠️ Using 16-leaf circuit instead of ${treeSize}-leaf (large circuits not yet available)`);
+      console.log('🔍 VERIFYING LARGE CIRCUIT FILES:');
+      console.log(`  WASM file: ${actualConfig.wasmUrl}`);
+      console.log(`  zkey file: ${actualConfig.zkeyUrl}`);
+      console.log(`  Expected tree size: ${treeSize} leaves`);
+      
+      // Warn about missing large files due to GitHub limits
+      if (treeSize >= 64) {
+        console.log('⚠️ NOTE: Large zkey files (64+ leaves) are not included in git due to GitHub file size limits');
+        console.log('📋 For production use, these files need to be:');
+        console.log('   1. Generated locally from Tokamak-Zk-EVM circuits');
+        console.log('   2. Hosted externally (AWS S3, IPFS, etc.)');
+        console.log('   3. Downloaded at runtime or build time');
+      }
+    }
+    
+    console.log('🔍 CLIENT PROOF GENERATION DEBUG:');
+    console.log('  Requested Tree Size:', treeSize);
+    console.log('  Input Keys Length:', input.storage_keys_L2MPT.length);
+    console.log('  Input Values Length:', input.storage_values.length);
+    console.log('  Using Config:', actualConfig);
+    
+    // Check if we're using the correct circuit size
+    if (actualConfig.actualTreeSize === treeSize) {
+      console.log('✅ PERFECT MATCH: Using', treeSize, '-leaf circuit for', treeSize, '-leaf tree');
+      onProgress?.(`Using ${treeSize}-leaf circuit (perfect match)`);
+      
+      // Add performance warnings for larger circuits
+      if (treeSize >= 64) {
+        console.warn('⚠️ PERFORMANCE WARNING: Large circuit detected');
+        console.warn(`  ${treeSize}-leaf proof generation requires ${getMemoryRequirement(treeSize)} and may take 5-15 minutes`);
+        console.warn('  Please ensure sufficient RAM and close other applications');
+        onProgress?.(`⚠️ Large circuit: ${getMemoryRequirement(treeSize)} required, this will take several minutes...`);
+      }
+    } else {
+      console.warn('⚠️ TREE SIZE MISMATCH: Requested', treeSize, 'but using', actualConfig.actualTreeSize, '-leaf circuit');
+      onProgress?.(`⚠️ Using ${actualConfig.actualTreeSize}-leaf circuit instead of ${treeSize}-leaf`);
     }
 
     onProgress?.('Preparing circuit input...');
     
-    // Always use 16 as the actual tree size for now
-    const actualTreeSize = 16;
+    // Use the actual tree size from the config
+    const actualTreeSize = actualConfig.actualTreeSize;
+    
+    console.log('  Actual Tree Size Used:', actualTreeSize);
+    console.log('  Original Input Keys (first 5):', input.storage_keys_L2MPT.slice(0, 5));
+    console.log('  Original Input Values (first 5):', input.storage_values.slice(0, 5));
     
     // Prepare circuit input with proper size for the actual circuit being used
     const circuitInput = {
       storage_keys_L2MPT: input.storage_keys_L2MPT.slice(0, actualTreeSize),
       storage_values: input.storage_values.slice(0, actualTreeSize)
     };
+    
+    console.log('  Truncated Input Keys Length:', circuitInput.storage_keys_L2MPT.length);
+    console.log('  Truncated Input Values Length:', circuitInput.storage_values.length);
+    console.log('  Truncated Keys (first 5):', circuitInput.storage_keys_L2MPT.slice(0, 5));
+    console.log('  Truncated Values (first 5):', circuitInput.storage_values.slice(0, 5));
     
     if (actualTreeSize !== treeSize) {
       onProgress?.(`⚠️ Using ${actualTreeSize}-leaf circuit instead of ${treeSize}-leaf (input truncated)`);
@@ -138,6 +204,15 @@ export async function generateClientSideProof(
       merkleRoot: `0x${BigInt(publicSignals[0]).toString(16).padStart(64, '0')}` as `0x${string}`
     };
 
+    console.log('🔍 PROOF GENERATION COMPLETED:');
+    console.log('  Raw Proof:', proof);
+    console.log('  Public Signals:', publicSignals);
+    console.log('  Formatted Proof pA:', formattedProof.pA);
+    console.log('  Formatted Proof pB:', formattedProof.pB);
+    console.log('  Formatted Proof pC:', formattedProof.pC);
+    console.log('  Merkle Root:', formattedProof.merkleRoot);
+    console.log('  Public Signals Count:', publicSignals.length);
+
     onProgress?.('Proof generated successfully!');
 
     return {
@@ -167,27 +242,86 @@ export function isClientProofGenerationSupported(): boolean {
 
 /**
  * Estimate memory requirements for proof generation
- * Note: Currently all proofs use 16-leaf circuit regardless of requested size
  */
 export function getMemoryRequirement(treeSize: number): string {
-  if (treeSize > 16) {
-    return '~512MB RAM (using 16-leaf fallback)';
-  }
-  return '~512MB RAM';
+  const requirements = {
+    16: '~512MB RAM',
+    32: '~1GB RAM',
+    64: '~2GB RAM',
+    128: '~4GB RAM'
+  };
+  return requirements[treeSize as keyof typeof requirements] || '~512MB RAM';
 }
 
 /**
  * Check if large circuit files need to be downloaded
- * Currently returns false as we only use local 16-leaf circuit
+ * Large files (64+ leaves) are not stored in git due to size limits
  */
 export function requiresExternalDownload(treeSize: number): boolean {
-  return false; // No external downloads for now
+  return treeSize >= 64; // Large files need external download/setup
 }
 
 /**
  * Get estimated download size for circuit
- * Currently always 0MB as we use local files
+ * Large files require external setup due to GitHub size limits
  */
 export function getDownloadSize(treeSize: number): string {
-  return '0MB (local)';
+  const sizes = {
+    16: '0MB (local)',
+    32: '0MB (local)', 
+    64: '~51MB (requires setup)',
+    128: '~102MB (requires setup)'
+  };
+  return sizes[treeSize as keyof typeof sizes] || '0MB (local)';
+}
+
+/**
+ * Verify that all required circuit files are available
+ * Useful for testing and debugging
+ */
+export async function verifyCircuitFiles(): Promise<{
+  available: number[];
+  missing: number[];
+  details: Record<number, {wasmUrl: string, zkeyUrl: string, wasmExists?: boolean, zkeyExists?: boolean}>;
+}> {
+  const sizes = [16, 32, 64, 128];
+  const available: number[] = [];
+  const missing: number[] = [];
+  const details: Record<number, any> = {};
+  
+  for (const size of sizes) {
+    const configs = {
+      16: { wasmUrl: '/zk-assets/wasm/circuit_N4.wasm', zkeyUrl: '/zk-assets/zkey/circuit_final_16.zkey' },
+      32: { wasmUrl: '/zk-assets/wasm/circuit_N5.wasm', zkeyUrl: '/zk-assets/zkey/circuit_final_32.zkey' },
+      64: { wasmUrl: '/zk-assets/wasm/circuit_N6.wasm', zkeyUrl: '/zk-assets/zkey/circuit_final_64.zkey' },
+      128: { wasmUrl: '/zk-assets/wasm/circuit_N7.wasm', zkeyUrl: '/zk-assets/zkey/circuit_final_128.zkey' }
+    };
+    
+    const config = configs[size as keyof typeof configs];
+    details[size] = {
+      wasmUrl: config.wasmUrl,
+      zkeyUrl: config.zkeyUrl
+    };
+    
+    try {
+      // Check if files are accessible
+      const wasmResponse = await fetch(config.wasmUrl, { method: 'HEAD' });
+      const zkeyResponse = await fetch(config.zkeyUrl, { method: 'HEAD' });
+      
+      details[size].wasmExists = wasmResponse.ok;
+      details[size].zkeyExists = zkeyResponse.ok;
+      
+      if (wasmResponse.ok && zkeyResponse.ok) {
+        available.push(size);
+      } else {
+        missing.push(size);
+      }
+    } catch (error) {
+      details[size].wasmExists = false;
+      details[size].zkeyExists = false;
+      missing.push(size);
+    }
+  }
+  
+  return { available, missing, details };
 }

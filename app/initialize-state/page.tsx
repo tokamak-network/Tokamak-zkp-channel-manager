@@ -323,11 +323,35 @@ export default function InitializeStatePage() {
     
     setProofGenerationStatus('Preparing circuit input...');
     
+    console.log('🔍 PROOF GENERATION DEBUG:');
+    console.log('  Channel ID:', hookLeaderChannel.id);
+    console.log('  Channel Tree Size:', channelTreeSize);
+    console.log('  Requested Tree Size:', treeSize);
+    console.log('  Storage Keys Length:', storageKeysL2MPT.length);
+    console.log('  Storage Values Length:', storageValues.length);
+    console.log('  First 5 Storage Keys:', storageKeysL2MPT.slice(0, 5));
+    console.log('  First 5 Storage Values:', storageValues.slice(0, 5));
+    
+    // CRITICAL WARNING: Check for tree size mismatch
+    if (treeSize > 16) {
+      console.error('🚨 CRITICAL ISSUE: Tree size mismatch detected!');
+      console.error('  Channel expects:', treeSize, 'leaves');
+      console.error('  We can only generate: 16 leaves');
+      console.error('  This will likely cause "Invalid Groth16 proof" error in contract');
+      console.error('  Contract verifier was compiled for', treeSize, 'leaves, but we\'re providing 16-leaf proof');
+    }
+    
     const circuitInput = {
       storage_keys_L2MPT: storageKeysL2MPT,
       storage_values: storageValues,
       treeSize: treeSize
     };
+    
+    console.log('  Circuit Input:', {
+      keysLength: circuitInput.storage_keys_L2MPT.length,
+      valuesLength: circuitInput.storage_values.length,
+      treeSize: circuitInput.treeSize
+    });
     
     // Check if client-side proof generation is supported
     if (!isClientProofGenerationSupported()) {
@@ -344,6 +368,11 @@ export default function InitializeStatePage() {
       setProofGenerationStatus(status);
     });
     
+    console.log('🔍 PROOF RESULT DEBUG:');
+    console.log('  Generated Proof:', result.proof);
+    console.log('  Public Signals:', result.publicSignals);
+    console.log('  Merkle Root:', result.proof.merkleRoot);
+    
     setProofGenerationStatus('Proof generated successfully!');
     
     return result.proof;
@@ -357,12 +386,27 @@ export default function InitializeStatePage() {
     
     try {
       // First generate the Groth16 proof
+      console.log('🔍 STARTING PROOF GENERATION FOR CONTRACT SUBMISSION');
       const proof = await generateGroth16Proof();
       setGeneratedProof(proof);
+      
+      console.log('🔍 CONTRACT SUBMISSION DEBUG:');
+      console.log('  Channel ID:', hookLeaderChannel.id);
+      console.log('  Channel Tree Size:', channelTreeSize);
+      console.log('  Generated Proof:', proof);
+      console.log('  Proof Structure:', {
+        pA: proof.pA,
+        pB: proof.pB,
+        pC: proof.pC,
+        merkleRoot: proof.merkleRoot
+      });
       
       setProofGenerationStatus('Submitting to blockchain...');
       
       // Then submit to contract with proof
+      console.log('🔍 CALLING CONTRACT: initializeChannelState');
+      console.log('  Args:', [BigInt(hookLeaderChannel.id), proof]);
+      
       initializeChannelState({
         args: [BigInt(hookLeaderChannel.id), proof]
       });
