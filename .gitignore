@@ -57,6 +57,6 @@ proof-generation/**/proof.json
 proof-generation/**/public.json
 proof-generation/**/circuit_input.json
 
-# Public ZK assets (large files, can be regenerated)
-public/zk-assets/**/*.zkey
-public/zk-assets/**/*.wasm
+# Public ZK assets - these files need to be committed for client-side proof generation
+# public/zk-assets/**/*.zkey
+# public/zk-assets/**/*.wasm
