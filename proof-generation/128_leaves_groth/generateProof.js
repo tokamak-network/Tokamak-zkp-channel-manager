@@ -2,7 +2,6 @@
 
 const { execSync } = require('child_process');
 const fs = require('fs');
-const path = require('path');
 
 async function generateProof() {
     try {
@@ -38,8 +37,6 @@ async function generateProof() {
         async function createPublicSignalFiles() {
             const wc = await witnessCalculator(wasm);
             const witness = await wc.calculateWitness(input, 0);
-            const merkleRoot = witness[witness.length - 1].toString();
-            
             // Extract the 64 circuit public signals (witness[1] to witness[64])
             const circuitPublicSignals = [];
             for (let i = 1; i <= 257; i++) {
@@ -64,7 +61,6 @@ async function generateProof() {
             console.log(`  - Public signals: ${publicPath}`);
             
             // Display proof summary
-            const proof = JSON.parse(fs.readFileSync(proofPath, 'utf8'));
             const publicSignals = JSON.parse(fs.readFileSync(publicPath, 'utf8'));
             
             console.log('\n📊 Proof Summary:');
