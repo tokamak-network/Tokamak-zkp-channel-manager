@@ -54,7 +54,7 @@ export async function generateClientSideProof(
     // External storage configuration for large zkey files
     const externalStorage: ExternalStorageConfig = {
       provider: 'github-releases',
-      baseUrl: 'https://github.com/tokamak-network/Tokamak-zkp-channel-manager/releases/download/zkey-files',
+      baseUrl: 'https://github.com/mehdi-defiesta/channel-manager/releases/download/zkey-files',
       fallbackUrls: [
         // Add additional URLs here as backups
         // 'https://ipfs.io/ipfs/YOUR_HASH',
