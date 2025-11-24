@@ -50,3 +50,9 @@ Thumbs.db
 /Tokamak-zk-EVM-landing-page
 /threshold-signature-Frost
 /docs
+
+# ZK proof generation temporary files (keep zkey files but ignore generated outputs)
+proof-generation/**/*.wtns
+proof-generation/**/proof.json
+proof-generation/**/public.json
+proof-generation/**/circuit_input.json
