@@ -18,7 +18,7 @@ import {
   getGroth16VerifierAddress
 } from '@/lib/contracts';
 import { getTokenSymbol, getTokenDecimals } from '@/lib/tokenUtils';
-import { generateClientSideProof, isClientProofGenerationSupported, getMemoryRequirement } from '@/lib/clientProofGeneration';
+import { generateClientSideProof, isClientProofGenerationSupported, getMemoryRequirement, requiresExternalDownload, getDownloadSize } from '@/lib/clientProofGeneration';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 import { Settings, Link, ShieldOff, Users, CheckCircle2, XCircle, Calculator } from 'lucide-react';
 
@@ -335,7 +335,9 @@ export default function InitializeStatePage() {
     }
     
     const memoryReq = getMemoryRequirement(treeSize);
-    setProofGenerationStatus(`Generating Groth16 proof for ${treeSize}-leaf tree (${memoryReq} RAM required, this may take a few minutes)...`);
+    const needsDownload = requiresExternalDownload(treeSize);
+    const downloadInfo = needsDownload ? ` + ${getDownloadSize(treeSize)} download` : '';
+    setProofGenerationStatus(`Generating Groth16 proof for ${treeSize}-leaf tree (${memoryReq}${downloadInfo}, this may take a few minutes)...`);
     
     // Generate proof client-side using snarkjs
     const result = await generateClientSideProof(circuitInput, (status) => {
@@ -587,7 +589,7 @@ export default function InitializeStatePage() {
                           <span className="font-medium">High Memory Usage</span>
                         </div>
                         <p className="text-yellow-300 text-xs mt-1">
-                          {Number(channelTreeSize)}-leaf proof generation requires {getMemoryRequirement(Number(channelTreeSize))} of RAM. 
+                          {Number(channelTreeSize)}-leaf proof generation requires {getMemoryRequirement(Number(channelTreeSize))}. 
                           Make sure to close other tabs and applications before proceeding.
                         </p>
                       </div>

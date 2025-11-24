@@ -6,6 +6,12 @@ export interface CircuitInput {
   treeSize?: number;
 }
 
+export interface ExternalStorageConfig {
+  provider: 'github-releases' | 'aws-s3' | 'ipfs' | 'vercel-blob';
+  baseUrl: string;
+  fallbackUrls?: string[];
+}
+
 export interface ProofResult {
   proof: {
     pA: readonly [bigint, bigint, bigint, bigint];
@@ -45,27 +51,38 @@ export async function generateClientSideProof(
 
     onProgress?.('Loading circuit files...');
 
-    // Get circuit configuration
+    // External storage configuration for large zkey files
+    const externalStorage: ExternalStorageConfig = {
+      provider: 'github-releases',
+      baseUrl: 'https://github.com/tokamak-network/Tokamak-zkp-channel-manager/releases/download/zkey-files',
+      fallbackUrls: [
+        // Add additional URLs here as backups
+        // 'https://ipfs.io/ipfs/YOUR_HASH',
+        // 'https://your-cdn.com/zkey-files'
+      ]
+    };
+    
+    // Get circuit configuration with external URLs for large files
     const getCircuitConfig = (size: number) => {
       const configs = {
         16: {
           wasmUrl: '/zk-assets/wasm/circuit_N4.wasm',
-          zkeyUrl: `/zk-assets/zkey/circuit_final_16.zkey`,
+          zkeyUrl: `/zk-assets/zkey/circuit_final_16.zkey`, // Local file (small)
           circuitName: 'circuit_N4'
         },
         32: {
-          wasmUrl: '/zk-assets/wasm/circuit_N5.wasm',
-          zkeyUrl: `/zk-assets/zkey/circuit_final_32.zkey`,
+          wasmUrl: '/zk-assets/wasm/circuit_N4.wasm', // Use N4 WASM for now
+          zkeyUrl: `${externalStorage.baseUrl}/circuit_final_32.zkey`, // External
           circuitName: 'circuit_N5'
         },
         64: {
-          wasmUrl: '/zk-assets/wasm/circuit_N6.wasm',
-          zkeyUrl: `/zk-assets/zkey/circuit_final_64.zkey`,
+          wasmUrl: '/zk-assets/wasm/circuit_N4.wasm', // Use N4 WASM for now
+          zkeyUrl: `${externalStorage.baseUrl}/circuit_final_64.zkey`, // External
           circuitName: 'circuit_N6'
         },
         128: {
-          wasmUrl: '/zk-assets/wasm/circuit_N7.wasm',
-          zkeyUrl: `/zk-assets/zkey/circuit_final_128.zkey`,
+          wasmUrl: '/zk-assets/wasm/circuit_N4.wasm', // Use N4 WASM for now
+          zkeyUrl: `${externalStorage.baseUrl}/circuit_final_128.zkey`, // External
           circuitName: 'circuit_N7'
         }
       };
@@ -77,13 +94,28 @@ export async function generateClientSideProof(
       throw new Error(`Unsupported tree size: ${treeSize}`);
     }
 
-    // For now, only 16-leaf circuits are available (N4)
-    // For other sizes, we'll use N4 until other circuits are built
-    const actualConfig = treeSize === 16 ? config : {
-      wasmUrl: '/zk-assets/wasm/circuit_N4.wasm',
-      zkeyUrl: `/zk-assets/zkey/circuit_final_16.zkey`,
-      circuitName: 'circuit_N4'
-    };
+    // Try to use the specified config, with fallback to 16-leaf circuit
+    let actualConfig = config;
+    
+    // For larger circuits, verify the external file exists before proceeding
+    if (treeSize > 16) {
+      try {
+        onProgress?.(`Checking availability of ${treeSize}-leaf circuit...`);
+        const response = await fetch(config.zkeyUrl, { method: 'HEAD' });
+        if (!response.ok) {
+          throw new Error(`External zkey file not available: ${response.status}`);
+        }
+        onProgress?.(`✓ ${treeSize}-leaf circuit available from external source`);
+      } catch (error) {
+        console.warn(`Large circuit not available, falling back to 16-leaf: ${error}`);
+        onProgress?.(`⚠️ ${treeSize}-leaf circuit unavailable, using 16-leaf fallback`);
+        actualConfig = {
+          wasmUrl: '/zk-assets/wasm/circuit_N4.wasm',
+          zkeyUrl: `/zk-assets/zkey/circuit_final_16.zkey`,
+          circuitName: 'circuit_N4'
+        };
+      }
+    }
 
     onProgress?.('Preparing circuit input...');
     
@@ -169,14 +201,34 @@ export function isClientProofGenerationSupported(): boolean {
 }
 
 /**
- * Estimate memory requirements for proof generation
+ * Estimate memory requirements and download size for proof generation
  */
 export function getMemoryRequirement(treeSize: number): string {
   const requirements = {
-    16: '~512MB',
-    32: '~1GB',
-    64: '~2GB',
-    128: '~4GB'
+    16: '~512MB RAM',
+    32: '~1GB RAM + 25MB download',
+    64: '~2GB RAM + 51MB download', 
+    128: '~4GB RAM + 102MB download'
   };
   return requirements[treeSize as keyof typeof requirements] || 'Unknown';
+}
+
+/**
+ * Check if large circuit files need to be downloaded
+ */
+export function requiresExternalDownload(treeSize: number): boolean {
+  return treeSize > 16;
+}
+
+/**
+ * Get estimated download size for circuit
+ */
+export function getDownloadSize(treeSize: number): string {
+  const sizes = {
+    16: '0MB (local)',
+    32: '25MB', 
+    64: '51MB',
+    128: '102MB'
+  };
+  return sizes[treeSize as keyof typeof sizes] || 'Unknown';
 }
