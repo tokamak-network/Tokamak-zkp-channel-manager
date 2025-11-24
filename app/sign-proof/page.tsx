@@ -10,6 +10,7 @@ import { MobileNavigation } from '@/components/MobileNavigation';
 import { Footer } from '@/components/Footer';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { getTokenSymbol, getTokenDecimals } from '@/lib/tokenUtils';
 import { PenTool, Link, ShieldOff, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
 import { ETH_TOKEN_ADDRESS } from '@/lib/contracts';
 
@@ -42,7 +43,7 @@ export default function SignProofPage() {
   const { data: channelTimeoutInfo } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelTimeoutInfo',
+    functionName: 'getChannelTimeout',
     args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
     enabled: Boolean(leaderChannel?.id !== undefined)
   });
@@ -55,29 +56,17 @@ export default function SignProofPage() {
     enabled: Boolean(leaderChannel?.id !== undefined)
   });
   
-  const { data: isChannelReadyToClose } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'isChannelReadyToClose',
-    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
-    enabled: Boolean(leaderChannel?.id !== undefined)
-  });
+  // Check if channel is ready to close based on state (signatures submitted)
+  const isChannelReadyToClose = channelInfo ? Number(channelInfo[1]) === 2 : false; // State 2 = Closing/Ready to close
 
   // Get token information for the channel
   const tokenAddress = channelInfo?.[0] as `0x${string}` | undefined; // targetContract from getChannelInfo
   const participantCount = channelInfo?.[2] ? Number(channelInfo[2]) : 0;
   
-  const { data: tokenInfo } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'debugTokenInfo',
-    args: tokenAddress && address ? [tokenAddress, address] : undefined,
-    enabled: Boolean(tokenAddress && address)
-  });
-  
-  // Extract token metadata
-  const tokenSymbol = tokenInfo?.[5] || 'TOKEN';
-  const tokenDecimals = tokenInfo?.[6] || 18;
+  // TODO: debugTokenInfo function removed from new contract architecture
+  // Using centralized token mapping functions
+  const tokenSymbol = tokenAddress ? getTokenSymbol(tokenAddress) : 'TOKEN';
+  const tokenDecimals = tokenAddress ? getTokenDecimals(tokenAddress) : 18;
   const isETH = tokenAddress === ETH_TOKEN_ADDRESS;
   
   // Helper function to get channel state display name
@@ -106,22 +95,15 @@ export default function SignProofPage() {
     return colors[stateNumber as keyof typeof colors] || 'text-gray-500 dark:text-gray-400';
   };
   
+  // TODO: signAggregatedProof function not available in current contract ABI
   // Prepare the signAggregatedProof transaction
-  const { config, error: prepareError } = usePrepareContractWrite({
+  const config = {
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'signAggregatedProof',
-    args: leaderChannel && signatureData.message ? [
-      BigInt(leaderChannel.id),
-      {
-        message: signatureData.message as `0x${string}`,
-        rx: signatureData.rx ? BigInt(signatureData.rx) : BigInt(0),
-        ry: signatureData.ry ? BigInt(signatureData.ry) : BigInt(0),
-        z: signatureData.z ? BigInt(signatureData.z) : BigInt(0)
-      }
-    ] : undefined,
-    enabled: Boolean(leaderChannel && signatureData.message && signatureData.rx && signatureData.ry && signatureData.z)
-  });
+    functionName: 'openChannel',
+    enabled: false, // Disabled since signAggregatedProof not available
+  } as const;
+  const prepareError = new Error('signAggregatedProof function not available in current contract ABI');
   
   const { data, write } = useContractWrite(config);
   

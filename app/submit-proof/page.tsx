@@ -8,11 +8,11 @@ import { ClientOnly } from '@/components/ClientOnly';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { Footer } from '@/components/Footer';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI, ETH_TOKEN_ADDRESS } from '@/lib/contracts';
+import { getTokenSymbol, getTokenDecimals } from '@/lib/tokenUtils';
 import { FileText, Link, ShieldOff, CheckCircle2, Clock, AlertCircle, Users } from 'lucide-react';
 import { generateMPTLeavesFromToken, tokenToSmallestUnit, validateBalanceConservation } from '@/lib/mptHelper';
 import { computeFinalStateRoot } from '@/lib/merkleProofGenerator';
-import { ETH_TOKEN_ADDRESS } from '@/lib/contracts';
 
 export default function SubmitProofPage() {
   const { isConnected, hasAccess, isMounted, leaderChannel } = useLeaderAccess();
@@ -62,7 +62,7 @@ export default function SubmitProofPage() {
   const { data: channelTimeoutInfo } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelTimeoutInfo',
+    functionName: 'getChannelTimeout',
     args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
     enabled: Boolean(leaderChannel?.id !== undefined)
   });
@@ -101,37 +101,21 @@ export default function SubmitProofPage() {
   const [showManualAddressInput, setShowManualAddressInput] = useState(false);
   const [manualAddresses, setManualAddresses] = useState<string>('');
   
-  const { data: isChannelReadyToClose } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'isChannelReadyToClose',
-    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
-    enabled: Boolean(leaderChannel?.id !== undefined)
-  });
+  // Check if channel is ready to close based on state (signatures submitted)
+  const isChannelReadyToClose = channelInfo ? Number(channelInfo[1]) === 2 : false; // State 2 = Closing/Ready to close
   
-  const { data: channelDeposits } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelDeposits',
-    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
-    enabled: Boolean(leaderChannel?.id !== undefined)
-  });
+  // TODO: getChannelDeposits function not available in current contract ABI
+  // Use placeholder data - original function expected array but getChannelTotalDeposits returns single uint256
+  const channelDeposits = undefined;
 
   // Get token information for the channel
   const tokenAddress = channelInfo?.[0] as `0x${string}` | undefined; // targetContract from getChannelInfo
   const participantCount = channelInfo?.[2] ? Number(channelInfo[2]) : 0;
   
-  const { data: tokenInfo } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'debugTokenInfo',
-    args: tokenAddress && address ? [tokenAddress, address] : undefined,
-    enabled: Boolean(tokenAddress && address)
-  });
-  
-  // Extract token metadata
-  const tokenSymbol = tokenInfo?.[5] || 'TOKEN';
-  const tokenDecimals = tokenInfo?.[6] || 18;
+  // TODO: debugTokenInfo function removed from new contract architecture
+  // Using centralized token mapping functions
+  const tokenSymbol = tokenAddress ? getTokenSymbol(tokenAddress) : 'TOKEN';
+  const tokenDecimals = tokenAddress ? getTokenDecimals(tokenAddress) : 18;
   const isETH = tokenAddress === ETH_TOKEN_ADDRESS;
   
   // Helper function to get channel state display name
@@ -327,34 +311,44 @@ export default function SubmitProofPage() {
     return finalData;
   };
 
+  // TODO: submitAggregatedProof function not available in current contract ABI
   // Prepare the submitAggregatedProof transaction
-  const { config, error: prepareError } = usePrepareContractWrite({
+  const config = {
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'submitAggregatedProof',
-    args: (() => {
-      if (!leaderChannel) return undefined;
-      
-      const finalData = prepareFinalSubmissionData();
-      if (!finalData.aggregatedProofHash || !finalData.finalStateRoot) return undefined;
-      
-      return [
-        BigInt(leaderChannel.id),
-        {
-          aggregatedProofHash: finalData.aggregatedProofHash as `0x${string}`,
-          finalStateRoot: finalData.finalStateRoot as `0x${string}`,
-          proofPart1: finalData.proofPart1,
-          proofPart2: finalData.proofPart2,
-          publicInputs: finalData.publicInputs,
-          smax: finalData.smax ? BigInt(finalData.smax) : BigInt(0),
-          initialMPTLeaves: finalData.initialMPTLeaves,
-          finalMPTLeaves: finalData.finalMPTLeaves,
-          participantRoots: finalData.participantRoots
-        }
-      ];
-    })(),
-    enabled: Boolean(leaderChannel && (proofData.aggregatedProofHash || computedFinalStateRoot))
-  });
+    functionName: 'openChannel',
+    enabled: false, // Disabled since submitAggregatedProof not available
+  } as const;
+  const prepareError = new Error('submitAggregatedProof function not available in current contract ABI');
+  
+  // Original implementation (commented out):
+  // const { config, error: prepareError } = usePrepareContractWrite({
+  //   address: ROLLUP_BRIDGE_ADDRESS,
+  //   abi: ROLLUP_BRIDGE_ABI,
+  //   functionName: 'submitAggregatedProof',
+  //   args: (() => {
+  //     if (!leaderChannel) return undefined;
+  //     
+  //     const finalData = prepareFinalSubmissionData();
+  //     if (!finalData.aggregatedProofHash || !finalData.finalStateRoot) return undefined;
+  //     
+  //     return [
+  //       BigInt(leaderChannel.id),
+  //       {
+  //         aggregatedProofHash: finalData.aggregatedProofHash as `0x${string}`,
+  //         finalStateRoot: finalData.finalStateRoot as `0x${string}`,
+  //         proofPart1: finalData.proofPart1,
+  //         proofPart2: finalData.proofPart2,
+  //         publicInputs: finalData.publicInputs,
+  //         smax: finalData.smax ? BigInt(finalData.smax) : BigInt(0),
+  //         initialMPTLeaves: finalData.initialMPTLeaves,
+  //         finalMPTLeaves: finalData.finalMPTLeaves,
+  //         participantRoots: finalData.participantRoots
+  //       }
+  //     ];
+  //   })(),
+  //   enabled: Boolean(leaderChannel && (proofData.aggregatedProofHash || computedFinalStateRoot))
+  // });
   
   const { data, write } = useContractWrite(config);
   
@@ -1051,7 +1045,7 @@ export default function SubmitProofPage() {
                                   </span>
                                   <input
                                     type="number"
-                                    step={tokenDecimals === 6 ? "0.000001" : "0.000000000000000001"}
+                                    step="0.000000000000000001"
                                     value={balance}
                                     onChange={(e) => {
                                       const newBalances = [...participantBalances];
@@ -1266,7 +1260,7 @@ export default function SubmitProofPage() {
                                   </span>
                                   <input
                                     type="number"
-                                    step={tokenDecimals === 6 ? "0.000001" : "0.000000000000000001"}
+                                    step="0.000000000000000001"
                                     value={balance}
                                     onChange={(e) => {
                                       const newBalances = [...initialBalances];
@@ -1294,7 +1288,7 @@ export default function SubmitProofPage() {
                                   </span>
                                   <input
                                     type="number"
-                                    step={tokenDecimals === 6 ? "0.000001" : "0.000000000000000001"}
+                                    step="0.000000000000000001"
                                     value={balance}
                                     onChange={(e) => {
                                       const newBalances = [...finalBalances];

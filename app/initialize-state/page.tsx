@@ -8,7 +8,16 @@ import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { Footer } from '@/components/Footer';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import {
+  ROLLUP_BRIDGE_CORE_ADDRESS,
+  ROLLUP_BRIDGE_ADDRESS,
+  ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS,
+  ROLLUP_BRIDGE_CORE_ABI,
+  ROLLUP_BRIDGE_ABI,
+  ROLLUP_BRIDGE_PROOF_MANAGER_ABI,
+  getGroth16VerifierAddress
+} from '@/lib/contracts';
+import { getTokenSymbol, getTokenDecimals } from '@/lib/tokenUtils';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 import { Settings, Link, ShieldOff, Users, CheckCircle2, XCircle, Calculator } from 'lucide-react';
 
@@ -87,21 +96,21 @@ export default function InitializeStatePage() {
   const [proofGenerationStatus, setProofGenerationStatus] = useState('');
   const [generatedProof, setGeneratedProof] = useState<any>(null);
 
-  // Get total number of channels
+  // Get total number of channels from Core contract
   const { data: totalChannels } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getTotalChannels',
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'nextChannelId',
     enabled: isMounted && isConnected,
   });
 
   // Note: Channel stats are handled by useLeaderAccess hook
 
 
-  // Initialize channel state transaction
+  // Initialize channel state transaction - now uses ProofManager
   const { write: initializeChannelState, data: initializeData } = useContractWrite({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS,
+    abi: ROLLUP_BRIDGE_PROOF_MANAGER_ABI,
     functionName: 'initializeChannelState',
   });
 
@@ -129,10 +138,10 @@ export default function InitializeStatePage() {
   }, [isMounted, hookLeaderChannel]);
 
 
-  // Get participants for leader channel
+  // Get participants for leader channel from Core contract
   const { data: channelParticipants } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelParticipants',
     args: hookLeaderChannel ? [BigInt(hookLeaderChannel.id)] : undefined,
     enabled: isMounted && isConnected && !!hookLeaderChannel,
@@ -152,18 +161,19 @@ export default function InitializeStatePage() {
 
   const firstToken = getFirstToken();
 
-  // Get token info using debugTokenInfo for consistency with other pages
-  const { data: tokenInfo } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'debugTokenInfo',
-    args: firstToken && address ? [firstToken, address] : undefined,
-    enabled: isMounted && isConnected && !!firstToken && !!address,
+  // Get tree size for the channel to determine circuit size
+  const { data: channelTreeSize } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelTreeSize',
+    args: hookLeaderChannel ? [BigInt(hookLeaderChannel.id)] : undefined,
+    enabled: isMounted && isConnected && !!hookLeaderChannel,
   });
 
-  // Extract token info with proper fallbacks
-  const tokenDecimals = tokenInfo?.[6] || 18;
-  const tokenSymbol = tokenInfo?.[5] || 'TOKEN';
+  // TODO: debugTokenInfo function removed from new contract architecture
+  // Using centralized token mapping functions
+  const tokenDecimals = firstToken ? getTokenDecimals(firstToken) : 18;
+  const tokenSymbol = firstToken ? getTokenSymbol(firstToken) : 'TOKEN';
 
   // Note: We'll fetch individual participant deposits during proof generation
   // since there's no single function to get all channel deposits
@@ -189,14 +199,37 @@ export default function InitializeStatePage() {
 
     setProofGenerationStatus('Collecting channel data...');
     
+    // Determine required tree size first from contract or calculate based on channel data
+    const participantCount = channelParticipants.length;
+    const allowedTokens = hookLeaderChannel.stats[1] as readonly `0x${string}`[];
+    const tokenCount = allowedTokens.length;
+    
+    // Calculate expected number of entries (participants × tokens)
+    const expectedEntries = participantCount * tokenCount;
+    
+    // Determine tree size from contract or calculate based on expected entries
+    let treeSize: number;
+    if (channelTreeSize) {
+      treeSize = Number(channelTreeSize);
+    } else {
+      // Find the smallest tree size that can accommodate all entries
+      const minTreeSize = Math.max(16, Math.min(128, 2 ** Math.ceil(Math.log2(expectedEntries))));
+      treeSize = [16, 32, 64, 128].find(size => size >= minTreeSize) || 128;
+    }
+    
+    // Validate tree size is supported
+    if (![16, 32, 64, 128].includes(treeSize)) {
+      throw new Error(`Unsupported tree size: ${treeSize}. Channel tree size from contract: ${channelTreeSize}`);
+    }
+    
+    setProofGenerationStatus(`Collecting data for ${treeSize}-leaf merkle tree (${participantCount} participants × ${tokenCount} tokens)...`);
+    
     // Collect storage keys (L2 MPT keys) and values (deposits)
     const storageKeysL2MPT: string[] = [];
     const storageValues: string[] = [];
     
-    const allowedTokens = hookLeaderChannel.stats[1] as readonly `0x${string}`[];
-    
-    // Build participant-token combinations with fallback strategy
-    for (let j = 0; j < allowedTokens.length && storageKeysL2MPT.length < 16; j++) {
+    // Build participant-token combinations - collect up to tree size
+    for (let j = 0; j < allowedTokens.length && storageKeysL2MPT.length < treeSize; j++) {
       const token = allowedTokens[j];
       
       setProofGenerationStatus(`Fetching L2 MPT keys for token ${j + 1} of ${allowedTokens.length}...`);
@@ -220,7 +253,7 @@ export default function InitializeStatePage() {
       }
       
       // Process each participant for this token
-      for (let i = 0; i < channelParticipants.length && storageKeysL2MPT.length < 16; i++) {
+      for (let i = 0; i < channelParticipants.length && storageKeysL2MPT.length < treeSize; i++) {
         const participant = channelParticipants[i];
         
         setProofGenerationStatus(`Processing participant ${i + 1}, token ${j + 1}...`);
@@ -273,8 +306,10 @@ export default function InitializeStatePage() {
       }
     }
     
-    // Pad arrays to exactly 16 elements (circuit requirement)
-    while (storageKeysL2MPT.length < 16) {
+    // Tree size was determined earlier in the function
+    
+    // Pad arrays to exactly treeSize elements (circuit requirement)
+    while (storageKeysL2MPT.length < treeSize) {
       storageKeysL2MPT.push('0');
       storageValues.push('0');
     }
@@ -283,11 +318,13 @@ export default function InitializeStatePage() {
     
     const circuitInput = {
       storage_keys_L2MPT: storageKeysL2MPT,
-      storage_values: storageValues
+      storage_values: storageValues,
+      treeSize: treeSize
     };
     
     console.log('Circuit input:', circuitInput);
-    setProofGenerationStatus('Generating Groth16 proof (this may take a few minutes)...');
+    console.log('Tree size for proof generation:', treeSize);
+    setProofGenerationStatus(`Generating Groth16 proof for ${treeSize}-leaf tree (this may take a few minutes)...`);
     
     // Call proof generation API that uses generateProof.js
     const response = await fetch('/api/generate-groth16-proof', {
@@ -568,8 +605,30 @@ export default function InitializeStatePage() {
                       )}
                     </button>
 
+                    {/* Tree Size and Verifier Info */}
+                    <div className="mt-4 p-3 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 text-center">
+                      <div className="text-sm text-gray-300 mb-2">Proof Generation Details:</div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-gray-400">Tree Size:</span>
+                          <div className="text-[#4fc3f7] font-medium">
+                            {channelTreeSize ? Number(channelTreeSize) : 'Auto-detect'} leaves
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Verifier:</span>
+                          <div className="text-[#4fc3f7] font-medium font-mono text-xs">
+                            {channelTreeSize && getGroth16VerifierAddress(Number(channelTreeSize)).slice(0, 8)}...
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        Participants × Tokens = {channelParticipants?.length || 0} × {(hookLeaderChannel?.stats?.[1] as any[])?.length || 0} = {(channelParticipants?.length || 0) * ((hookLeaderChannel?.stats?.[1] as any[])?.length || 0)} entries
+                      </div>
+                    </div>
+                    
                     <p className="text-xs text-gray-400 mt-2 sm:mt-3">
-                      This will generate a Groth16 proof using the 16-leaf merkle tree circuit and submit it to initialize the channel
+                      This will generate a Groth16 proof using the appropriate merkle tree circuit and submit it to initialize the channel
                     </p>
                   </div>
                 </div>

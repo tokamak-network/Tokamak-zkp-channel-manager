@@ -8,7 +8,8 @@ import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { MobileMenuButton } from '@/components/MobileMenuButton';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI, ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS, ROLLUP_BRIDGE_DEPOSIT_MANAGER_ABI, ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { getTokenSymbol, getTokenDecimals } from '@/lib/tokenUtils';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { ArrowDownCircle, Clock, Inbox, CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -71,20 +72,12 @@ export default function DepositTokensPage() {
 
   // Helper function to get basic token info (symbols and known decimals)
   const getBasicTokenInfo = (tokenAddress: string) => {
-    if (tokenAddress === '0x0000000000000000000000000000000000000001') {
-      return { symbol: 'ETH', decimals: 18, isETH: true, address: tokenAddress };
-    }
+    // Use our centralized token mapping functions
+    const symbol = getTokenSymbol(tokenAddress);
+    const decimals = getTokenDecimals(tokenAddress);
+    const isETH = tokenAddress === '0x0000000000000000000000000000000000000001';
     
-    // Known tokens with correct decimals
-    if (tokenAddress.toLowerCase() === '0x79E0d92670106c85E9067b56B8F674340dCa0Bbd'.toLowerCase()) {
-      return { symbol: 'WTON', decimals: 27, isETH: false, address: tokenAddress }; // WTON has 27 decimals
-    }
-    if (tokenAddress.toLowerCase() === '0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A'.toLowerCase()) {
-      return { symbol: 'USDT', decimals: 6, isETH: false, address: tokenAddress }; // USDT has 6 decimals
-    }
-    
-    // For unknown tokens, we'll fetch decimals dynamically
-    return { symbol: 'TOKEN', decimals: 18, isETH: false, address: tokenAddress };
+    return { symbol, decimals, isETH, address: tokenAddress };
   };
 
   // Create channel and token dropdown data with proper decimal fetching
@@ -117,30 +110,33 @@ export default function DepositTokensPage() {
   // Dynamic user deposit fetch for available channels
   const userDeposits: Record<string, bigint | undefined> = {};
   
-  // Get user deposits for the first few channels
-  const { data: userDeposit0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address && availableChannels[0] ? [availableChannels[0].channelId, address] : undefined,
-    enabled: isMounted && isConnected && !!address && availableChannels.length > 0,
-  });
+  // TODO: Fix deposit queries - getParticipantTokenDeposit requires token address parameter
+  // const { data: userDeposit0 } = useContractRead({
+  //   address: ROLLUP_BRIDGE_ADDRESS,
+  //   abi: ROLLUP_BRIDGE_ABI,
+  //   functionName: 'getParticipantTokenDeposit',
+  //   args: address && availableChannels[0] && tokenAddress ? [availableChannels[0].channelId, address, tokenAddress] : undefined,
+  //   enabled: isMounted && isConnected && !!address && availableChannels.length > 0,
+  // });
+  const userDeposit0 = undefined;
   
-  const { data: userDeposit1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address && availableChannels[1] ? [availableChannels[1].channelId, address] : undefined,
-    enabled: isMounted && isConnected && !!address && availableChannels.length > 1,
-  });
+  // const { data: userDeposit1 } = useContractRead({
+  //   address: ROLLUP_BRIDGE_ADDRESS,
+  //   abi: ROLLUP_BRIDGE_ABI,
+  //   functionName: 'getParticipantTokenDeposit',
+  //   args: address && availableChannels[1] && tokenAddress ? [availableChannels[1].channelId, address, tokenAddress] : undefined,
+  //   enabled: isMounted && isConnected && !!address && availableChannels.length > 1,
+  // });
+  const userDeposit1 = undefined;
   
-  const { data: userDeposit2 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address && availableChannels[2] ? [availableChannels[2].channelId, address] : undefined,
-    enabled: isMounted && isConnected && !!address && availableChannels.length > 2,
-  });
+  // const { data: userDeposit2 } = useContractRead({
+  //   address: ROLLUP_BRIDGE_ADDRESS,
+  //   abi: ROLLUP_BRIDGE_ABI,
+  //   functionName: 'getParticipantTokenDeposit',
+  //   args: address && availableChannels[2] && tokenAddress ? [availableChannels[2].channelId, address, tokenAddress] : undefined,
+  //   enabled: isMounted && isConnected && !!address && availableChannels.length > 2,
+  // });
+  const userDeposit2 = undefined;
   
   // Map deposits to channels
   if (availableChannels[0]) userDeposits[availableChannels[0].channelId.toString()] = userDeposit0;
@@ -150,8 +146,8 @@ export default function DepositTokensPage() {
 
   // Prepare ETH deposit (new interface requires mptKey)
   const { config: depositETHConfig } = usePrepareContractWrite({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS,
+    abi: ROLLUP_BRIDGE_DEPOSIT_MANAGER_ABI,
     functionName: 'depositETH',
     args: selectedChannel && mptKey ? [selectedChannel.channelId, mptKey as `0x${string}`] : undefined,
     value: selectedChannel && selectedToken && depositAmount && selectedToken.isETH ? parseUnits(depositAmount, actualTokenDecimals) : undefined,
@@ -161,7 +157,7 @@ export default function DepositTokensPage() {
   const { write: depositETH, isLoading: isDepositingETH } = useContractWrite(depositETHConfig);
 
   // Get the actual token decimals for the selected token
-  const getTokenDecimals = (token: any): number => {
+  const getActualTokenDecimals = (token: any): number => {
     if (!token || token.isETH) return 18;
     // If this is the selected token, use the actual fetched decimals
     if (selectedToken && token.address === selectedToken.address) {
@@ -186,7 +182,7 @@ export default function DepositTokensPage() {
     address: selectedToken && !selectedToken.isETH ? selectedToken.address as `0x${string}` : undefined,
     abi: [{ name: 'allowance', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function', inputs: [{ type: 'address' }, { type: 'address' }] }],
     functionName: 'allowance',
-    args: selectedToken && address ? [address, ROLLUP_BRIDGE_ADDRESS] : undefined,
+    args: selectedToken && address ? [address, ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS] : undefined,
     enabled: Boolean(isMounted && selectedToken && !selectedToken.isETH && address),
   });
 
@@ -208,7 +204,7 @@ export default function DepositTokensPage() {
       }
     ],
     functionName: 'allowance',
-    args: selectedToken && address ? [address, ROLLUP_BRIDGE_ADDRESS] : undefined,
+    args: selectedToken && address ? [address, ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS] : undefined,
     enabled: Boolean(isMounted && selectedToken && !selectedToken.isETH && address && isUSDT),
   });
 
@@ -224,7 +220,7 @@ export default function DepositTokensPage() {
     abi: [{ name: 'approve', outputs: [], stateMutability: 'nonpayable', type: 'function', inputs: [{ type: 'address' }, { type: 'uint256' }] }],
     functionName: 'approve',
     args: [
-      ROLLUP_BRIDGE_ADDRESS,
+      ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS,
       BigInt(0)
     ],
     enabled: Boolean(isMounted && isUSDT && approvalStep === 'reset'),
@@ -244,7 +240,7 @@ export default function DepositTokensPage() {
     abi: [{ name: 'approve', outputs: [], stateMutability: 'nonpayable', type: 'function', inputs: [{ type: 'address' }, { type: 'uint256' }] }],
     functionName: 'approve',
     args: selectedToken && depositAmount ? [
-      ROLLUP_BRIDGE_ADDRESS,
+      ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS,
       parseUnits(depositAmount, actualTokenDecimals)
     ] : undefined,
     enabled: Boolean(isMounted && selectedToken && !selectedToken.isETH && depositAmount && address && actualTokenDecimals && 
@@ -333,7 +329,7 @@ export default function DepositTokensPage() {
   // Check if USDT has existing allowance that must be spent first  
   const usdtMustSpendExisting = selectedToken && !selectedToken.isETH && depositAmount && isUSDT && effectiveAllowance !== undefined
     ? (() => {
-        const requiredAmount = parseUnits(depositAmount, getTokenDecimals(selectedToken));
+        const requiredAmount = parseUnits(depositAmount, getActualTokenDecimals(selectedToken));
         const hasExistingAllowance = effectiveAllowance > BigInt(0);
         const wantsDifferentAmount = effectiveAllowance !== requiredAmount;
         return hasExistingAllowance && wantsDifferentAmount;
@@ -343,7 +339,7 @@ export default function DepositTokensPage() {
   // Check if approval is needed - more strict validation
   const needsApproval = selectedToken && !selectedToken.isETH && depositAmount && effectiveAllowance !== undefined
     ? (() => {
-        const requiredAmount = parseUnits(depositAmount, getTokenDecimals(selectedToken));
+        const requiredAmount = parseUnits(depositAmount, getActualTokenDecimals(selectedToken));
         
         // For USDT: if user has existing allowance but wants different amount, they must spend existing first
         if (usdtMustSpendExisting) {
@@ -363,15 +359,15 @@ export default function DepositTokensPage() {
           return false;
         }
         
-        const requiredAmount = parseUnits(depositAmount, getTokenDecimals(selectedToken));
+        const requiredAmount = parseUnits(depositAmount, getActualTokenDecimals(selectedToken));
         return effectiveAllowance >= requiredAmount;
       })()
     : false;
 
   // Prepare Token deposit (new interface requires mptKey)
   const { config: depositTokenConfig } = usePrepareContractWrite({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS,
+    abi: ROLLUP_BRIDGE_DEPOSIT_MANAGER_ABI,
     functionName: 'depositToken',
     args: selectedChannel && selectedToken && depositAmount && mptKey ? [
       selectedChannel.channelId,

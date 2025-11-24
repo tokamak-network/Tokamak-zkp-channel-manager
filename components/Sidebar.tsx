@@ -5,7 +5,6 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAccount, useContractRead } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import Image from 'next/image';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { ClientOnly } from '@/components/ClientOnly';
 import { NetworkDropdown } from '@/components/NetworkDropdown';

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, http } from 'viem';
 import { sepolia } from 'viem/chains';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
 
 const publicClient = createPublicClient({
   chain: sepolia,
@@ -21,15 +21,31 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get all L2 MPT keys for the token from contract
-    const result = await publicClient.readContract({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
-      functionName: 'getL2MptKeysList',
-      args: [BigInt(channelId), token as `0x${string}`]
+    // First get channel participants
+    const participants = await publicClient.readContract({
+      address: ROLLUP_BRIDGE_CORE_ADDRESS,
+      abi: ROLLUP_BRIDGE_CORE_ABI,
+      functionName: 'getChannelParticipants',
+      args: [BigInt(channelId)]
     });
 
-    const [participants, l2MptKeys] = result as [readonly `0x${string}`[], readonly bigint[]];
+    // Get L2 MPT keys for each participant for this token
+    const l2MptKeys: bigint[] = [];
+    
+    for (const participant of participants) {
+      try {
+        const key = await publicClient.readContract({
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: 'getL2MptKey',
+          args: [BigInt(channelId), participant, token as `0x${string}`]
+        });
+        l2MptKeys.push(key as bigint);
+      } catch (error) {
+        console.warn(`Failed to get L2 MPT key for participant ${participant}:`, error);
+        l2MptKeys.push(BigInt(0)); // Default to 0 if failed
+      }
+    }
 
     // Convert bigints to strings and create a mapping
     const keyMap: { [participant: string]: string } = {};

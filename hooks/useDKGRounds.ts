@@ -50,6 +50,8 @@ interface DKGState {
     identifier?: string;
     groupId?: string;
     roster?: Array<[number, string, string]>;
+    key_package?: string;
+    group_public_key?: string;
   };
 }
 

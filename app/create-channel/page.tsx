@@ -4,7 +4,13 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount, useContractWrite, usePrepareContractWrite, useContractRead, useWaitForTransaction } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { ROLLUP_BRIDGE_ABI, ROLLUP_BRIDGE_ADDRESS } from '@/lib/contracts';
+import { 
+  ROLLUP_BRIDGE_CORE_ABI, 
+  ROLLUP_BRIDGE_CORE_ADDRESS, 
+  TON_TOKEN_ADDRESS,
+  WTON_TOKEN_ADDRESS,
+  USDT_TOKEN_ADDRESS 
+} from '@/lib/contracts';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { MobileNavigation } from '@/components/MobileNavigation';
@@ -23,26 +29,26 @@ export default function CreateChannelPage() {
   
   // Check if user is already leading a channel
   const { data: totalChannels } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getTotalChannels',
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'nextChannelId',
     enabled: isConnected,
   });
 
   const { data: channelStats0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelLeader',
     args: [BigInt(0)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 0,
+    enabled: false, // Temporarily disabled
   });
 
   const { data: channelStats1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelLeader',
     args: [BigInt(1)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 1,
+    enabled: false, // Temporarily disabled
   });
 
   // Anyone can create channels now - no authorization required
@@ -50,15 +56,13 @@ export default function CreateChannelPage() {
 
   // Check if user is already a channel leader
   const isAlreadyLeader = address && (
-    (channelStats0 && channelStats0[4] && String(channelStats0[4]).toLowerCase() === address.toLowerCase() && channelStats0[2] !== 5) ||
-    (channelStats1 && channelStats1[4] && String(channelStats1[4]).toLowerCase() === address.toLowerCase() && channelStats1[2] !== 5)
+    (channelStats0 && channelStats0[4] && String(channelStats0[4]).toLowerCase() === address.toLowerCase() && Number(channelStats0[2]) !== 5) ||
+    (channelStats1 && channelStats1[4] && String(channelStats1[4]).toLowerCase() === address.toLowerCase() && Number(channelStats1[2]) !== 5)
   );
 
   // Form state
   const [allowedTokens, setAllowedTokens] = useState<string[]>(['']);
   const [participants, setParticipants] = useState<Participant[]>([
-    { address: '' },
-    { address: '' },
     { address: '' }
   ]);
   const [timeout, setTimeout] = useState(1); // in days
@@ -78,7 +82,7 @@ export default function CreateChannelPage() {
   };
 
   const removeParticipant = (index: number) => {
-    if (participants.length > 3) {
+    if (participants.length > 1) {
       setParticipants(participants.filter((_, i) => i !== index));
     }
   };
@@ -113,12 +117,23 @@ export default function CreateChannelPage() {
   const isValidEthereumAddress = (addr: string) => /^0x[a-fA-F0-9]{40}$/.test(addr);
   const isValidHex = (hex: string) => /^0x[a-fA-F0-9]+$/.test(hex);
 
+  // Helper function to get token symbol from address
+  const getTokenSymbol = (address: string): string => {
+    switch (address.toLowerCase()) {
+      case TON_TOKEN_ADDRESS.toLowerCase():
+        return 'TON';
+      case WTON_TOKEN_ADDRESS.toLowerCase():
+        return 'WTON';
+      case USDT_TOKEN_ADDRESS.toLowerCase():
+        return 'USDT';
+      default:
+        return 'Token';
+    }
+  };
+
   const getMaxParticipants = (tokenCount: number) => {
-    if (tokenCount === 1) return 16;
-    if (tokenCount === 2) return 8;
-    if (tokenCount === 3) return 5;
-    if (tokenCount === 4) return 4;
-    return 16;
+    // New limit: always 128 participants maximum regardless of token count
+    return 128;
   };
 
   const isFormValid = () => {
@@ -137,11 +152,13 @@ export default function CreateChannelPage() {
       !hasDuplicates && // No duplicate tokens allowed
       allowedTokens.every(token => 
         token === '' || // Allow empty tokens during editing
-        token === '0x0000000000000000000000000000000000000001' || // ETH_TOKEN_ADDRESS
+        token === TON_TOKEN_ADDRESS || // TON
+        token === WTON_TOKEN_ADDRESS || // WTON
+        token === USDT_TOKEN_ADDRESS || // USDT
         isValidEthereumAddress(token)
       ) &&
       filledTokens.length > 0 && // At least one non-empty token
-      participants.length >= 3 && 
+      participants.length >= 1 && 
       participants.length <= maxParticipants &&
       participants.every(p => isValidEthereumAddress(p.address)) &&
       timeout >= 1 && timeout <= 365 && // 1 day to 365 days
@@ -160,15 +177,15 @@ export default function CreateChannelPage() {
   } : undefined;
 
   const contractConfig = channelParams ? {
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'openChannel',
     args: [channelParams],
     value: BigInt('1000000000000000'), // Required 0.001 ETH leader bond (1e15 wei)
     enabled: isFormValid() && isConnected,
   } : {
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'openChannel',
     enabled: false,
   };
@@ -178,11 +195,9 @@ export default function CreateChannelPage() {
   const { write: createChannel, isLoading: isCreating, data: txData } = useContractWrite({
     ...config,
     onSuccess(data) {
-      console.log('Transaction submitted:', data);
       setTxHash(data.hash);
     },
     onError(error) {
-      console.error('Failed to submit transaction:', error);
       setTxHash('');
     },
   });
@@ -192,14 +207,12 @@ export default function CreateChannelPage() {
     hash: txData?.hash,
     enabled: !!txData?.hash,
     onSuccess(data) {
-      console.log('Transaction confirmed:', data);
       // Extract channel ID from transaction or use total channels + 1
       setCreatedChannelId(totalChannels ? String(Number(totalChannels)) : '0');
       setShowSuccessPopup(true);
       setTxHash('');
     },
     onError(error) {
-      console.error('Transaction failed:', error);
       setTxHash('');
     },
   });
@@ -310,7 +323,14 @@ export default function CreateChannelPage() {
                   {allowedTokens.map((token, index) => (
                     <div key={index} className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4">
                       <div className="flex justify-between items-start mb-3">
-                        <h4 className="font-medium text-white">Token {index + 1}</h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium text-white">Token {index + 1}</h4>
+                          {token && (getTokenSymbol(token) !== 'Token') && (
+                            <span className="px-2 py-1 text-xs bg-green-600/20 border border-green-500/50 text-green-300 rounded">
+                              {getTokenSymbol(token)}
+                            </span>
+                          )}
+                        </div>
                         {allowedTokens.length > 1 && (
                           <button
                             type="button"
@@ -327,10 +347,10 @@ export default function CreateChannelPage() {
                           type="text"
                           value={token}
                           onChange={(e) => updateToken(index, e.target.value)}
-                          placeholder="0x... or use ETH address: 0x0000000000000000000000000000000000000001"
+                          placeholder="Enter token address or use quick select buttons below"
                           className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
                         />
-                        {token && token !== '0x0000000000000000000000000000000000000001' && !isValidEthereumAddress(token) && (
+                        {token && token !== TON_TOKEN_ADDRESS && token !== WTON_TOKEN_ADDRESS && token !== USDT_TOKEN_ADDRESS && !isValidEthereumAddress(token) && (
                           <p className="text-red-400 text-xs mt-1">Invalid token address</p>
                         )}
                         {token && allowedTokens.filter(t => t === token).length > 1 && (
@@ -341,21 +361,21 @@ export default function CreateChannelPage() {
                         <div className="flex gap-2 flex-wrap">
                           <button
                             type="button"
-                            onClick={() => updateToken(index, '0x0000000000000000000000000000000000000001')}
-                            className="px-2 py-1 text-xs bg-blue-600/20 border border-blue-500/50 text-blue-300 hover:bg-blue-600/40 transition-colors"
+                            onClick={() => updateToken(index, TON_TOKEN_ADDRESS)}
+                            className="px-2 py-1 text-xs bg-green-600/20 border border-green-500/50 text-green-300 hover:bg-green-600/40 transition-colors"
                           >
-                            ETH
+                            TON
                           </button>
                           <button
                             type="button"
-                            onClick={() => updateToken(index, '0x79E0d92670106c85E9067b56B8F674340dCa0Bbd')}
+                            onClick={() => updateToken(index, WTON_TOKEN_ADDRESS)}
                             className="px-2 py-1 text-xs bg-amber-600/20 border border-amber-500/50 text-amber-300 hover:bg-amber-600/40 transition-colors"
                           >
                             WTON
                           </button>
                           <button
                             type="button"
-                            onClick={() => updateToken(index, '0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A')}
+                            onClick={() => updateToken(index, USDT_TOKEN_ADDRESS)}
                             className="px-2 py-1 text-xs bg-purple-600/20 border border-purple-500/50 text-purple-300 hover:bg-purple-600/40 transition-colors"
                           >
                             USDT
@@ -370,20 +390,22 @@ export default function CreateChannelPage() {
                   You can select up to 4 different tokens for your channel. Participants will be able to deposit any of these tokens.
                 </p>
                 
-                {/* Warning for supported tokens */}
-                <div className="mt-3 p-4 bg-amber-900/20 border border-amber-500/50">
+                {/* Information for supported tokens */}
+                <div className="mt-3 p-4 bg-blue-900/20 border border-blue-500/50">
                   <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-400" />
+                    <Lightbulb className="w-5 h-5 text-blue-400" />
                     <div className="flex-1">
-                      <h4 className="text-sm font-semibold text-amber-300 mb-2">
+                      <h4 className="text-sm font-semibold text-blue-300 mb-2">
                         Supported Tokens
                       </h4>
-                      <p className="text-amber-200/90 text-sm mb-3">
-                        Currently supported: ETH (native), WTON, and USDT tokens. Use the quick select buttons above.
+                      <p className="text-blue-200/90 text-sm mb-3">
+                        Currently supported: TON (18 decimals), WTON, and USDT tokens. Use the quick select buttons above for easy selection.
                       </p>
-                      <p className="text-amber-200/90 text-sm">
-                        For ETH: 0x0000000000000000000000000000000000000001
-                      </p>
+                      <div className="space-y-1 text-xs text-blue-200/80">
+                        <p>• TON: {TON_TOKEN_ADDRESS}</p>
+                        <p>• WTON: {WTON_TOKEN_ADDRESS}</p>
+                        <p>• USDT: {USDT_TOKEN_ADDRESS}</p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -412,7 +434,7 @@ export default function CreateChannelPage() {
                     <div key={index} className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4">
                       <div className="flex justify-between items-start mb-3">
                         <h4 className="font-medium text-white">Participant {index + 1}</h4>
-                        {participants.length > 3 && (
+                        {participants.length > 1 && (
                           <button
                             type="button"
                             onClick={() => removeParticipant(index)}
@@ -443,7 +465,7 @@ export default function CreateChannelPage() {
                 </div>
                 
                 <p className="text-sm text-gray-400 mt-2">
-                  Minimum 3 participants, maximum {getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)} participants for {allowedTokens.filter(token => token !== '').length || 1} token(s).
+                  Minimum 1 participant, maximum {getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)} participants.
                 </p>
                 
                 <div className="mt-3 p-4 bg-blue-900/20 border border-blue-500/50">
@@ -538,16 +560,14 @@ export default function CreateChannelPage() {
           <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-8">
             <h3 className="font-semibold text-[#4fc3f7] mb-4">Channel Requirements</h3>
             <ul className="space-y-2 text-sm text-gray-300">
-              <li>• 1-4 unique tokens per channel (ETH, WTON, USDT supported)</li>
-              <li>• Maximum participants: 1 token = 16, 2 tokens = 8, 3 tokens = 5, 4 tokens = 4</li>
-              <li>• Minimum 3 participants required</li>
+              <li>• Maximum participants: 128 (regardless of token count)</li>
+              <li>• Minimum 1 participant required</li>
               <li>• Each token can only be used once (no duplicates allowed)</li>
               <li>• Each participant provides only L1 address during creation</li>
               <li>• L2 MPT keys provided during token deposits (per token type)</li>
               <li>• Timeout must be between 1 hour and 365 days</li>
               <li>• Group public key coordinates required for FROST signatures</li>
               <li>• 0.001 ETH leader bond required (refunded on successful completion)</li>
-              <li>• All token addresses must be pre-approved via setAllowedTargetContract</li>
             </ul>
           </div>
         </div>

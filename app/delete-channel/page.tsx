@@ -27,7 +27,7 @@ export default function DeleteChannelPage() {
   const { data: totalChannels } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getTotalChannels',
+    functionName: 'nextChannelId',
     enabled: isOwner && isConnected
   });
   
@@ -44,7 +44,7 @@ export default function DeleteChannelPage() {
   const { data: channelTimestamps } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelTimestamps',
+    functionName: 'getChannelTimeout',
     args: selectedChannelId !== null ? [BigInt(selectedChannelId)] : undefined,
     enabled: selectedChannelId !== null
   });
@@ -99,20 +99,26 @@ export default function DeleteChannelPage() {
     }
   };
   
-  // Prepare the deleteChannel transaction
-  const { config, error: prepareError } = usePrepareContractWrite({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'deleteChannel',
-    args: selectedChannelId !== null ? [BigInt(selectedChannelId)] : undefined,
-    enabled: Boolean(selectedChannelId !== null && canDelete)
-  });
+  // TODO: Implement deleteChannel transaction (function doesn't exist in current contract)
+  // const { config, error: prepareError } = usePrepareContractWrite({
+  //   address: ROLLUP_BRIDGE_ADDRESS,
+  //   abi: ROLLUP_BRIDGE_ABI,
+  //   functionName: 'deleteChannel',
+  //   args: selectedChannelId !== null ? [BigInt(selectedChannelId)] : undefined,
+  //   enabled: Boolean(selectedChannelId !== null && canDelete)
+  // });
   
-  const { data, write } = useContractWrite(config);
+  // const { data, write } = useContractWrite(config);
   
-  const { isLoading: isTransactionLoading, isSuccess } = useWaitForTransaction({
-    hash: data?.hash,
-  });
+  // const { isLoading: isTransactionLoading, isSuccess } = useWaitForTransaction({
+  //   hash: data?.hash,
+  // });
+  
+  // Placeholder values for UI
+  const prepareError = null;
+  const write = null;
+  const isTransactionLoading = false;
+  const isSuccess = false;
   
   const handleDeleteChannel = async () => {
     console.log('=== DELETE CHANNEL DEBUG INFO ===');
@@ -120,7 +126,7 @@ export default function DeleteChannelPage() {
     console.log('Channel Info:', channelInfo);
     console.log('Channel State:', channelInfo ? Number(channelInfo[1]) : 'undefined');
     console.log('Channel State Name:', channelInfo ? getChannelStateDisplay(Number(channelInfo[1])) : 'undefined');
-    console.log('Channel Timestamps:', channelTimestamps);
+    console.log('Channel Timeout Info:', channelTimestamps);
     console.log('Close Timestamp:', closeTimestamp);
     console.log('Current Time:', currentTime);
     console.log('Challenge Period End:', challengePeriodEnd);
@@ -130,25 +136,29 @@ export default function DeleteChannelPage() {
     console.log('Connected Address:', address);
     console.log('=================');
     
-    if (!write) {
-      if (prepareError) {
-        console.log('Prepare Error:', prepareError);
-        alert(`Contract error: ${prepareError.message || 'Transaction preparation failed'}`);
-      } else {
-        alert('Transaction not ready. Please ensure the channel is closed and the challenge period has ended.');
-      }
-      return;
-    }
+    // TODO: Delete channel functionality not yet implemented
+    alert('Delete channel functionality is not yet implemented in the smart contract.');
+    return;
     
-    try {
-      setIsLoading(true);
-      write();
-    } catch (error) {
-      console.error('Error deleting channel:', error);
-      alert('Error deleting channel. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
+    // if (!write) {
+    //   if (prepareError) {
+    //     console.log('Prepare Error:', prepareError);
+    //     alert(`Contract error: ${prepareError.message || 'Transaction preparation failed'}`);
+    //   } else {
+    //     alert('Transaction not ready. Please ensure the channel is closed and the challenge period has ended.');
+    //   }
+    //   return;
+    // }
+    
+    // try {
+    //   setIsLoading(true);
+    //   write();
+    // } catch (error) {
+    //   console.error('Error deleting channel:', error);
+    //   alert('Error deleting channel. Please try again.');
+    // } finally {
+    //   setIsLoading(false);
+    // }
   };
   
   // Check if channel is in correct state for deletion (Closed=5)
@@ -168,7 +178,7 @@ export default function DeleteChannelPage() {
     const { data: timestamps } = useContractRead({
       address: ROLLUP_BRIDGE_ADDRESS,
       abi: ROLLUP_BRIDGE_ABI,
-      functionName: 'getChannelTimestamps',
+      functionName: 'getChannelTimeout',
       args: [BigInt(channelId)],
       enabled: Boolean(channelId)
     });

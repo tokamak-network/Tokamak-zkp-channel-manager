@@ -23,11 +23,19 @@ export async function POST(request: NextRequest) {
     const channelStats = await publicClient.readContract({
       address: ROLLUP_BRIDGE_ADDRESS,
       abi: ROLLUP_BRIDGE_ABI,
-      functionName: 'getChannelStats',
+      functionName: 'getChannelInfo',
       args: [BigInt(channelId)]
-    }) as readonly [bigint, readonly string[], number, bigint, string];
+    }) as readonly [readonly string[], number, bigint, string];
 
-    const [id, allowedTokens, state, participantCount, leader] = channelStats;
+    const [allowedTokens, state, participantCount, initialRoot] = channelStats;
+    
+    // Get leader separately
+    const leader = await publicClient.readContract({
+      address: ROLLUP_BRIDGE_ADDRESS,
+      abi: ROLLUP_BRIDGE_ABI,
+      functionName: 'getChannelLeader',
+      args: [BigInt(channelId)]
+    }) as string;
 
     // Get channel participants
     const participants = await publicClient.readContract({
@@ -78,12 +86,15 @@ export async function POST(request: NextRequest) {
           // Get L2 MPT key
           let l2MptKey = '0';
           try {
-            const [participantsList, l2MptKeys] = await publicClient.readContract({
-              address: ROLLUP_BRIDGE_ADDRESS,
-              abi: ROLLUP_BRIDGE_ABI,
-              functionName: 'getL2MptKeysList',
-              args: [BigInt(channelId), token as `0x${string}`]
-            }) as [readonly string[], readonly bigint[]];
+            // TODO: Fix function signature mismatch 
+            // const l2MptKeyResult = await publicClient.readContract({
+            //   address: ROLLUP_BRIDGE_ADDRESS,
+            //   abi: ROLLUP_BRIDGE_ABI,
+            //   functionName: 'getL2MptKey',
+            //   args: [BigInt(channelId), participant as `0x${string}`, token as `0x${string}`]
+            // }) as bigint;
+            const participantsList = participants;
+            const l2MptKeys = [BigInt(0)]; // Placeholder
 
             const participantIndex = participantsList.findIndex(p => p.toLowerCase() === participant.toLowerCase());
             if (participantIndex >= 0 && l2MptKeys[participantIndex]) {

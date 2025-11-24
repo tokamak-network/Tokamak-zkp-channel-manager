@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, http } from 'viem';
 import { sepolia } from 'viem/chains';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
 
 const publicClient = createPublicClient({
   chain: sepolia,
@@ -24,8 +24,8 @@ export async function GET(request: NextRequest) {
 
     // Get L2 MPT key from contract
     const l2MptKey = await publicClient.readContract({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
+      address: ROLLUP_BRIDGE_CORE_ADDRESS,
+      abi: ROLLUP_BRIDGE_CORE_ABI,
       functionName: 'getL2MptKey',
       args: [BigInt(channelId), participant as `0x${string}`, token as `0x${string}`]
     });

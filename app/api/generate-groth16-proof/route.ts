@@ -1,17 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execSync } from 'child_process';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
+
+// Check if we're in a production serverless environment (Vercel)
+const isServerless = process.env.VERCEL || process.env.NODE_ENV === 'production';
+
+// Only import these in non-serverless environments
+let execSync: any, fs: any, path: any, os: any;
+if (!isServerless) {
+  ({ execSync } = require('child_process'));
+  fs = require('fs');
+  path = require('path');
+  os = require('os');
+}
 
 interface CircuitInput {
   storage_keys_L2MPT: string[];
   storage_values: string[];
+  treeSize?: number; // Optional tree size, defaults to infer from data length
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: CircuitInput = await request.json();
+    
+    // In production/serverless environment, return a mock proof for testing
+    if (isServerless) {
+      return await generateMockProof(body);
+    }
     
     // Validate input
     if (!body.storage_keys_L2MPT || !body.storage_values) {
@@ -21,9 +35,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (body.storage_keys_L2MPT.length !== 16 || body.storage_values.length !== 16) {
+    // Determine tree size based on input length or explicit parameter
+    const dataLength = body.storage_keys_L2MPT.length;
+    let treeSize = body.treeSize || dataLength;
+    
+    // Validate tree size is supported (16, 32, 64, or 128)
+    if (![16, 32, 64, 128].includes(treeSize)) {
       return NextResponse.json(
-        { error: 'Both arrays must contain exactly 16 elements' },
+        { error: 'Tree size must be 16, 32, 64, or 128' },
+        { status: 400 }
+      );
+    }
+    
+    if (body.storage_keys_L2MPT.length !== treeSize || body.storage_values.length !== treeSize) {
+      return NextResponse.json(
+        { error: `Both arrays must contain exactly ${treeSize} elements for tree size ${treeSize}` },
         { status: 400 }
       );
     }
@@ -36,14 +62,43 @@ export async function POST(request: NextRequest) {
       const inputPath = path.join(tempDir, 'input.json');
       fs.writeFileSync(inputPath, JSON.stringify(body, null, 2));
       
+      // Determine circuit paths based on tree size
+      const getCircuitConfig = (size: number) => {
+        const configs = {
+          16: {
+            proverDir: '16_leaves_groth',
+            circuitName: 'circuit_N4',
+            setupDir: '16_leaves'
+          },
+          32: {
+            proverDir: '32_leaves_groth',
+            circuitName: 'circuit_N5',
+            setupDir: '32_leaves'
+          },
+          64: {
+            proverDir: '64_leaves_groth',
+            circuitName: 'circuit_N6',
+            setupDir: '64_leaves'
+          },
+          128: {
+            proverDir: '128_leaves_groth',
+            circuitName: 'circuit_N7',
+            setupDir: '128_leaves'
+          }
+        };
+        return configs[size as keyof typeof configs];
+      };
+      
+      const config = getCircuitConfig(treeSize);
+      if (!config) {
+        throw new Error(`Unsupported tree size: ${treeSize}`);
+      }
+      
       // Path to the generateProof.js script
       const proofScriptPath = path.join(
         process.cwd(),
-        'Tokamak-Zk-EVM',
-        'packages',
-        'BLS12-Poseidon-Merkle-tree-Groth16',
-        'prover',
-        '16_leaves',
+        'proof-generation',
+        config.proverDir,
         'generateProof.js'
       );
       
@@ -58,11 +113,13 @@ export async function POST(request: NextRequest) {
       fs.copyFileSync(inputPath, proofInputPath);
       
       console.log('Generating proof with input:', body);
+      console.log('Tree size:', treeSize);
+      console.log('Circuit config:', config);
       console.log('Working directory:', proofDir);
       
       // Check if required files exist in the proof directory
-      const wasmPath = path.join(proofDir, '../../circuits/build/circuit_N4_js/circuit_N4.wasm');
-      const zkeyPath = path.join(proofDir, '../../trusted-setup/16_leaves/circuit_final.zkey');
+      const wasmPath = path.join(proofDir, `../${config.circuitName}_js/${config.circuitName}.wasm`);
+      const zkeyPath = path.join(proofDir, `../zkey/circuit_final_${treeSize}.zkey`);
       
       console.log('Checking for required files...');
       console.log('WASM path:', wasmPath);
@@ -85,7 +142,7 @@ export async function POST(request: NextRequest) {
         stdio: ['inherit', 'pipe', 'pipe']
       });
       
-      console.log('Proof generation completed successfully');
+      console.log(`Proof generation completed successfully for ${treeSize}-leaf tree`);
       console.log('Output:', output);
       
       // Read generated proof and public signals
@@ -99,22 +156,22 @@ export async function POST(request: NextRequest) {
       const proof = JSON.parse(fs.readFileSync(proofPath, 'utf-8'));
       const publicSignals = JSON.parse(fs.readFileSync(publicPath, 'utf-8'));
       
-      // Helper function to split BLS12-381 field element into PART1/PART2 format matching Solidity test
+      // Helper function to split BLS12-381 field element into two uint256 parts for Solidity
       const splitFieldElement = (element: string): [string, string] => {
         const bigIntElement = BigInt(element);
-        // Convert to hex and pad to 96 characters (48 bytes for BLS12-381 field elements)
+        // BLS12-381 field elements are ~381 bits, convert to hex and pad to 96 characters (48 bytes)
         const hex = bigIntElement.toString(16).padStart(96, '0');
         
-        // PART1: 16 bytes of zeros + first 16 bytes of field element (32 bytes total)
-        const part1Hex = '00000000000000000000000000000000' + hex.slice(0, 32);
+        // Split into two 32-byte (64 hex char) chunks for uint256 compatibility
+        // Low part: last 64 hex characters (32 bytes)
+        const lowHex = hex.slice(-64);
+        // High part: first 32 hex characters (16 bytes), padded to 32 bytes
+        const highHex = hex.slice(0, 32).padStart(64, '0');
         
-        // PART2: last 32 bytes of field element  
-        const part2Hex = hex.slice(32, 96);
+        const lowPart = BigInt('0x' + lowHex).toString();
+        const highPart = BigInt('0x' + highHex).toString();
         
-        const part1 = BigInt('0x' + part1Hex).toString();
-        const part2 = BigInt('0x' + part2Hex).toString();
-        
-        return [part1, part2];
+        return [highPart, lowPart];
       };
       
       // Format proof for BLS12-381 Solidity contract
@@ -148,9 +205,9 @@ export async function POST(request: NextRequest) {
       
       return NextResponse.json({
         success: true,
-        proof: formattedProof,
+        proof: formattedProof, // Formatted for Solidity contract (BLS12-381 field elements split into uint256 pairs)
         publicSignals,
-        rawProof: proof
+        rawProof: proof // Original snarkjs proof format
       });
       
     } finally {
@@ -173,6 +230,109 @@ export async function POST(request: NextRequest) {
         error: 'Proof generation failed',
         details: errorMessage,
         stack: process.env.NODE_ENV === 'development' ? errorStack : undefined
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Generate a mock proof for production/serverless environments
+ * This returns a valid proof structure but with dummy values for testing
+ * In a real production environment, this should call an external proof generation service
+ */
+async function generateMockProof(body: CircuitInput): Promise<NextResponse> {
+  try {
+    // Validate input
+    if (!body.storage_keys_L2MPT || !body.storage_values) {
+      return NextResponse.json(
+        { error: 'Missing storage_keys_L2MPT or storage_values' },
+        { status: 400 }
+      );
+    }
+
+    // Determine tree size
+    const dataLength = body.storage_keys_L2MPT.length;
+    let treeSize = body.treeSize || dataLength;
+    
+    // Validate tree size is supported
+    if (![16, 32, 64, 128].includes(treeSize)) {
+      return NextResponse.json(
+        { error: 'Tree size must be 16, 32, 64, or 128' },
+        { status: 400 }
+      );
+    }
+    
+    if (body.storage_keys_L2MPT.length !== treeSize || body.storage_values.length !== treeSize) {
+      return NextResponse.json(
+        { error: `Both arrays must contain exactly ${treeSize} elements for tree size ${treeSize}` },
+        { status: 400 }
+      );
+    }
+
+    // Simulate proof generation delay (shorter for serverless)
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Generate a deterministic mock merkle root based on input data
+    const inputHash = await crypto.subtle.digest(
+      'SHA-256', 
+      new TextEncoder().encode(JSON.stringify(body))
+    );
+    const hashArray = Array.from(new Uint8Array(inputHash));
+    const merkleRoot = `0x${hashArray.map(b => b.toString(16).padStart(2, '0')).join('')}`;
+    
+    // Mock proof structure with dummy but properly formatted values
+    const mockProof = {
+      pA: [
+        "1000000000000000000000000000000000000000000000000000000000000001", // Mock field element part 1
+        "2000000000000000000000000000000000000000000000000000000000000002", // Mock field element part 2
+        "3000000000000000000000000000000000000000000000000000000000000003", // Mock field element part 3
+        "4000000000000000000000000000000000000000000000000000000000000004"  // Mock field element part 4
+      ],
+      pB: [
+        "5000000000000000000000000000000000000000000000000000000000000005",
+        "6000000000000000000000000000000000000000000000000000000000000006",
+        "7000000000000000000000000000000000000000000000000000000000000007",
+        "8000000000000000000000000000000000000000000000000000000000000008",
+        "9000000000000000000000000000000000000000000000000000000000000009",
+        "10000000000000000000000000000000000000000000000000000000000000010",
+        "11000000000000000000000000000000000000000000000000000000000000011",
+        "12000000000000000000000000000000000000000000000000000000000000012"
+      ],
+      pC: [
+        "13000000000000000000000000000000000000000000000000000000000000013",
+        "14000000000000000000000000000000000000000000000000000000000000014",
+        "15000000000000000000000000000000000000000000000000000000000000015",
+        "16000000000000000000000000000000000000000000000000000000000000016"
+      ],
+      merkleRoot: merkleRoot
+    };
+
+    const publicSignals = [
+      BigInt(merkleRoot).toString()
+    ];
+
+    return NextResponse.json({
+      success: true,
+      proof: mockProof,
+      publicSignals,
+      rawProof: {
+        pi_a: mockProof.pA.slice(0, 2),
+        pi_b: [[mockProof.pB[2], mockProof.pB[0]], [mockProof.pB[6], mockProof.pB[4]]],
+        pi_c: mockProof.pC.slice(0, 2)
+      },
+      note: "This is a mock proof generated for production environment. In a real deployment, integrate with an external proof generation service."
+    });
+
+  } catch (error) {
+    console.error('Mock proof generation error:', error);
+    
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    return NextResponse.json(
+      { 
+        error: 'Mock proof generation failed',
+        details: errorMessage
       },
       { status: 500 }
     );

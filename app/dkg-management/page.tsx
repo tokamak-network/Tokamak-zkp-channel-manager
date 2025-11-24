@@ -468,7 +468,12 @@ export default function DKGManagementPage() {
           serverUrl={serverUrl}
           setServerUrl={setServerUrl}
           connectToServer={handleConnectToServer}
-          authState={authState}
+          authState={{
+            isAuthenticated: authState.isAuthenticated,
+            userId: authState.userId ?? null,
+            publicKeyHex: authState.publicKeyHex ?? null,
+            challenge: authState.challenge ?? null
+          }}
           onRequestChallenge={requestChallenge}
           onGetPublicKey={getDeterministicPublicKey}
           onAuthenticate={authenticate}
@@ -563,7 +568,9 @@ export default function DKGManagementPage() {
               isSubmittingRound2={isSubmittingRound2}
               isSubmittingFinalize={isSubmittingFinalize}
               isJoiningSession={isJoiningSession}
-              authState={authState}
+              authState={{
+                isAuthenticated: authState.isAuthenticated
+              }}
               wsConnection={wsConnection}
             />
           </div>
@@ -574,7 +581,7 @@ export default function DKGManagementPage() {
             connectionStatus={connectionStatus}
             authState={{
               isAuthenticated: authState.isAuthenticated,
-              publicKeyHex: authState.publicKeyHex
+              publicKeyHex: authState.publicKeyHex || undefined
             }}
             isCreatingSession={isCreatingSession}
             onCreateSession={handleCreateSession}
@@ -584,7 +591,9 @@ export default function DKGManagementPage() {
         {activeTab === 'join' && (
           <DKGSessionJoiner
             connectionStatus={connectionStatus}
-            authState={authState}
+            authState={{
+              isAuthenticated: authState.isAuthenticated
+            }}
             isJoiningSession={isJoiningSession}
             successMessage={successMessage}
             error={error}
@@ -599,7 +608,10 @@ export default function DKGManagementPage() {
           session={selectedSessionForCommitment}
           isSubmitting={isSubmittingRound1}
           frostIdMap={frostIdMap}
-          authState={authState}
+          authState={{
+            isAuthenticated: authState.isAuthenticated,
+            publicKeyHex: authState.publicKeyHex || undefined
+          }}
           onClose={closeCommitmentModal}
           onSubmit={handleSubmitCommitment}
         />

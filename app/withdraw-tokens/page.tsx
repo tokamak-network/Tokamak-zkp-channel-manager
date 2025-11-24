@@ -6,7 +6,12 @@ import { useAccount, useContractRead, useContractWrite, usePrepareContractWrite,
 import { readContract } from 'wagmi/actions';
 import { formatUnits, parseUnits } from 'viem';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { 
+  ROLLUP_BRIDGE_CORE_ADDRESS, 
+  ROLLUP_BRIDGE_CORE_ABI,
+  ROLLUP_BRIDGE_ADDRESS,
+  ROLLUP_BRIDGE_ABI 
+} from '@/lib/contracts';
 import { ClientOnly } from '@/components/ClientOnly';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Sidebar } from '@/components/Sidebar';
@@ -43,7 +48,7 @@ export default function WithdrawTokensPage() {
   const { data: totalChannels } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getTotalChannels',
+    functionName: 'nextChannelId',
     enabled: isConnected,
   });
 
@@ -300,24 +305,14 @@ export default function WithdrawTokensPage() {
     };
   };
 
+  // TODO: withdrawAfterClose function not available in current contract ABI
   // Prepare withdraw transaction
-  const { config: withdrawConfig } = usePrepareContractWrite({
+  const withdrawConfig = {
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'withdrawAfterClose',
-    args: generatedProof ? [
-      BigInt(generatedProof.channelId),
-      BigInt(generatedProof.claimedBalance),
-      BigInt(generatedProof.leafIndex),
-      generatedProof.merkleProof as `0x${string}`[]
-    ] : [BigInt(0), BigInt(0), BigInt(0), [] as `0x${string}`[]], // Provide dummy args when no proof
-    enabled: Boolean(
-      generatedProof &&
-      address &&
-      selectedChannel &&
-      !selectedChannel.hasWithdrawn
-    ),
-  });
+    functionName: 'openChannel',
+    enabled: false, // Disabled since withdrawAfterClose not available
+  } as const;
 
   const { write: withdrawTokens, isLoading: isWithdrawing, data: withdrawData } = useContractWrite(withdrawConfig);
 
@@ -393,31 +388,17 @@ export default function WithdrawTokensPage() {
       if (!isValidL2Address) {
         console.log(`Invalid L2 address (${userL2Address}), fetching from contract...`);
         
-        // Fetch L2 address directly from contract
-        try {
-          const contractL2Address = await readContract({
-            address: ROLLUP_BRIDGE_ADDRESS,
-            abi: ROLLUP_BRIDGE_ABI,
-            functionName: 'getL2PublicKey',
-            args: [selectedChannel.channelId, address as `0x${string}`],
-          });
-          
-          if (contractL2Address && contractL2Address !== '0x0000000000000000000000000000000000000000') {
-            userL2Address = contractL2Address as string;
-            console.log('Fetched L2 address from contract:', userL2Address);
-          } else {
-            throw new Error('Contract returned zero address');
-          }
-        } catch (error) {
-          console.warn('Failed to fetch L2 address from contract, using derived address');
-          // Fallback: derive L2 address from L1 address
-          const addressNum = BigInt(address);
-          const channelOffset = BigInt(selectedChannel.channelId.toString()) + BigInt(1000000);
-          const maxAddress = BigInt("0xffffffffffffffffffffffffffffffffffffffff"); // 2^160 - 1
-          const derivedL2 = (addressNum + channelOffset) % (maxAddress + BigInt(1));
-          userL2Address = `0x${derivedL2.toString(16).padStart(40, '0')}`;
-          console.log(`Using derived L2 address: ${userL2Address} for L1: ${address} in channel ${selectedChannel.channelId}`);
-        }
+        // TODO: getL2PublicKey function not available in current contract ABI
+        // Using fallback method to derive L2 address from L1 address
+        console.warn('getL2PublicKey not available, using derived address');
+        
+        // Derive L2 address from L1 address
+        const addressNum = BigInt(address);
+        const channelOffset = BigInt(selectedChannel.channelId.toString()) + BigInt(1000000);
+        const maxAddress = BigInt("0xffffffffffffffffffffffffffffffffffffffff"); // 2^160 - 1
+        const derivedL2 = (addressNum + channelOffset) % (maxAddress + BigInt(1));
+        userL2Address = `0x${derivedL2.toString(16).padStart(40, '0')}`;
+        console.log(`Using derived L2 address: ${userL2Address} for L1: ${address} in channel ${selectedChannel.channelId}`);
       } else {
         console.log('Using valid L2 address from channelInfo:', userL2Address);
       }
@@ -451,34 +432,16 @@ export default function WithdrawTokensPage() {
         // Get L2 address for each participant
         let participantL2Address = userL2Address; // Default to user's if this is the user
         if (participant.toLowerCase() !== address.toLowerCase()) {
-          // For other participants, we need to fetch their L2 public keys from the contract
-          try {
-            const otherUserL2Address = await readContract({
-              address: ROLLUP_BRIDGE_ADDRESS,
-              abi: ROLLUP_BRIDGE_ABI,
-              functionName: 'getL2PublicKey',
-              args: [selectedChannel.channelId, participant as `0x${string}`],
-            });
-            
-            if (otherUserL2Address && otherUserL2Address !== '0x0000000000000000000000000000000000000000') {
-              participantL2Address = otherUserL2Address as string;
-            } else {
-              // Fallback: derive L2 address for other participants
-              const participantAddressNum = BigInt(participant);
-              const channelOffset = BigInt(selectedChannel.channelId.toString()) + BigInt(2000000);
-              const maxAddress = BigInt("0xffffffffffffffffffffffffffffffffffffffff");
-              const derivedL2 = (participantAddressNum + channelOffset) % (maxAddress + BigInt(1));
-              participantL2Address = `0x${derivedL2.toString(16).padStart(40, '0')}`;
-            }
-          } catch (error) {
-            console.warn(`Failed to get L2 address for participant ${participant}, using fallback`);
-            // Fallback: derive L2 address
-            const participantAddressNum = BigInt(participant);
-            const channelOffset = BigInt(selectedChannel.channelId.toString()) + BigInt(2000000);
-            const maxAddress = BigInt("0xffffffffffffffffffffffffffffffffffffffff");
-            const derivedL2 = (participantAddressNum + channelOffset) % (maxAddress + BigInt(1));
-            participantL2Address = `0x${derivedL2.toString(16).padStart(40, '0')}`;
-          }
+          // TODO: getL2PublicKey function not available in current contract ABI
+          // Using fallback method to derive L2 address from L1 address
+          console.warn(`getL2PublicKey not available, using derived address for participant ${participant}`);
+          
+          // Derive L2 address for other participants
+          const participantAddressNum = BigInt(participant);
+          const channelOffset = BigInt(selectedChannel.channelId.toString()) + BigInt(2000000);
+          const maxAddress = BigInt("0xffffffffffffffffffffffffffffffffffffffff");
+          const derivedL2 = (participantAddressNum + channelOffset) % (maxAddress + BigInt(1));
+          participantL2Address = `0x${derivedL2.toString(16).padStart(40, '0')}`;
         }
         
         // Get deposit balance for each participant
@@ -505,14 +468,10 @@ export default function WithdrawTokensPage() {
       // Fetch participant roots directly from the contract using getChannelParticipantRoots
       console.log('Fetching participant roots from contract for channel:', selectedChannel.channelId.toString());
       
-      const participantRootsResult = await readContract({
-        address: ROLLUP_BRIDGE_ADDRESS,
-        abi: ROLLUP_BRIDGE_ABI,
-        functionName: 'getChannelParticipantRoots',
-        args: [selectedChannel.channelId],
-      });
-      
-      const participantRootsForChannel = Array.isArray(participantRootsResult) ? participantRootsResult.map(root => root as string) : [];
+      // TODO: getChannelParticipantRoots function not available in current contract ABI
+      // Using empty array as fallback
+      console.warn('getChannelParticipantRoots not available, using empty array');
+      const participantRootsForChannel: string[] = [];
       
       if (participantRootsForChannel.length === 0) {
         throw new Error('Participant roots not available for this channel. Make sure aggregated proof has been submitted.');

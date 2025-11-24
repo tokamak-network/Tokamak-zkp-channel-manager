@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount, useContractRead } from 'wagmi';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
 import { Home, PlusCircle, FileCheck, ArrowDownCircle, ArrowUpCircle, Settings, PenTool, XCircle, Trash2, Activity } from 'lucide-react';
 
 interface MobileNavigationProps {
@@ -20,47 +20,47 @@ export function MobileNavigation({ showMobileMenu, setShowMobileMenu }: MobileNa
 
   // Get total number of channels to check leadership
   const { data: totalChannels } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getTotalChannels',
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'nextChannelId',
     enabled: isConnected,
   });
 
-  // Check if user is a channel leader by getting channel stats
-  const { data: channelStats0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
+  // Check if user is a channel leader by getting channel leaders
+  const { data: channelLeader0 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelLeader',
     args: [BigInt(0)],
     enabled: isConnected && !!totalChannels && Number(totalChannels) > 0,
   });
 
-  const { data: channelStats1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
+  const { data: channelLeader1 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelLeader',
     args: [BigInt(1)],
     enabled: isConnected && !!totalChannels && Number(totalChannels) > 1,
   });
 
   // Check if user is a leader of any channels
   const hasChannels = address && (
-    (channelStats0 && channelStats0[4] && String(channelStats0[4]).toLowerCase() === address.toLowerCase()) ||
-    (channelStats1 && channelStats1[4] && String(channelStats1[4]).toLowerCase() === address.toLowerCase())
+    (channelLeader0 && String(channelLeader0).toLowerCase() === address.toLowerCase()) ||
+    (channelLeader1 && String(channelLeader1).toLowerCase() === address.toLowerCase())
   );
 
   // Check if user is a participant (not leader) in channels
   const { data: participantsChannel0 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelParticipants',
     args: [BigInt(0)],
     enabled: isConnected && !!totalChannels && Number(totalChannels) > 0,
   });
 
   const { data: participantsChannel1 } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelParticipants',
     args: [BigInt(1)],
     enabled: isConnected && !!totalChannels && Number(totalChannels) > 1,

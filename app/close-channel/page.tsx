@@ -9,9 +9,9 @@ import { ClientOnly } from '@/components/ClientOnly';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { Footer } from '@/components/Footer';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI, ETH_TOKEN_ADDRESS } from '@/lib/contracts';
+import { getTokenSymbol, getTokenDecimals } from '@/lib/tokenUtils';
 import { XCircle, Link, ShieldOff, CheckCircle2, Clock, AlertCircle, ListChecks } from 'lucide-react';
-import { ETH_TOKEN_ADDRESS } from '@/lib/contracts';
 
 export default function CloseChannelPage() {
   const { isConnected, hasAccess, isMounted, leaderChannel } = useLeaderAccess();
@@ -32,7 +32,7 @@ export default function CloseChannelPage() {
   const { data: channelTimeoutInfo } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelTimeoutInfo',
+    functionName: 'getChannelTimeout',
     args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
     enabled: Boolean(leaderChannel?.id !== undefined)
   });
@@ -45,37 +45,34 @@ export default function CloseChannelPage() {
     enabled: Boolean(leaderChannel?.id !== undefined)
   });
   
-  const { data: isChannelReadyToClose } = useContractRead({
+  const { data: channelState } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'isChannelReadyToClose',
+    functionName: 'getChannelState',
     args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
     enabled: Boolean(leaderChannel?.id !== undefined)
   });
   
-  const { data: channelDeposits } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelDeposits',
-    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
-    enabled: Boolean(leaderChannel?.id !== undefined)
-  });
+  // TODO: Implement channel deposits calculation using getChannelTotalDeposits for each token
+  // const { data: channelDeposits } = useContractRead({
+  //   address: ROLLUP_BRIDGE_ADDRESS,
+  //   abi: ROLLUP_BRIDGE_ABI,
+  //   functionName: 'getChannelTotalDeposits',
+  //   args: leaderChannel ? [BigInt(leaderChannel.id), tokenAddress] : undefined,
+  //   enabled: Boolean(leaderChannel?.id !== undefined && tokenAddress)
+  // });
 
   // Get token information for the channel
   const tokenAddress = channelInfo?.[0] as `0x${string}` | undefined; // targetContract from getChannelInfo
   const participantCount = channelInfo?.[2] ? Number(channelInfo[2]) : 0;
   
-  const { data: tokenInfo } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'debugTokenInfo',
-    args: tokenAddress && address ? [tokenAddress, address] : undefined,
-    enabled: Boolean(tokenAddress && address)
-  });
+  // Check if channel is ready to close based on state
+  const isChannelReadyToClose = channelState !== undefined && Number(channelState) > 0; // Not in Pending(0) state
   
-  // Extract token metadata
-  const tokenSymbol = tokenInfo?.[5] || 'TOKEN';
-  const tokenDecimals = tokenInfo?.[6] || 18;
+  // TODO: debugTokenInfo function removed from new contract architecture
+  // Using centralized token mapping functions
+  const tokenSymbol = tokenAddress ? getTokenSymbol(tokenAddress) : 'TOKEN';
+  const tokenDecimals = tokenAddress ? getTokenDecimals(tokenAddress) : 18;
   const isETH = tokenAddress === ETH_TOKEN_ADDRESS;
   
   // Helper function to get channel state display name
@@ -104,20 +101,26 @@ export default function CloseChannelPage() {
     return colors[stateNumber as keyof typeof colors] || 'text-gray-400';
   };
   
-  // Prepare the closeChannel transaction
-  const { config, error: prepareError } = usePrepareContractWrite({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'closeChannel',
-    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
-    enabled: Boolean(leaderChannel?.id !== undefined)
-  });
+  // TODO: Implement closeChannel transaction (function doesn't exist in current contract)
+  // const { config, error: prepareError } = usePrepareContractWrite({
+  //   address: ROLLUP_BRIDGE_ADDRESS,
+  //   abi: ROLLUP_BRIDGE_ABI,
+  //   functionName: 'closeChannel',
+  //   args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
+  //   enabled: Boolean(leaderChannel?.id !== undefined)
+  // });
   
-  const { data, write } = useContractWrite(config);
+  // const { data, write } = useContractWrite(config);
   
-  const { isLoading: isTransactionLoading, isSuccess } = useWaitForTransaction({
-    hash: data?.hash,
-  });
+  // const { isLoading: isTransactionLoading, isSuccess } = useWaitForTransaction({
+  //   hash: data?.hash,
+  // });
+  
+  // Placeholder values for UI
+  const prepareError = null;
+  const write = null;
+  const isTransactionLoading = false;
+  const isSuccess = false;
   
   const handleCloseChannel = async () => {
     // Debug logging
@@ -126,9 +129,9 @@ export default function CloseChannelPage() {
     console.log('Channel Info:', channelInfo);
     console.log('Channel State:', channelInfo ? Number(channelInfo[1]) : 'undefined');
     console.log('Channel State Name:', channelInfo ? getChannelStateDisplay(Number(channelInfo[1])) : 'undefined');
-    console.log('Channel Deposits:', channelDeposits);
+    console.log('Channel State:', channelState);
     console.log('Token Address:', tokenAddress);
-    console.log('Token Info:', tokenInfo);
+    console.log('Token Info: Using fallback values (debugTokenInfo removed)');
     console.log('Token Symbol:', tokenSymbol);
     console.log('Token Decimals:', tokenDecimals);
     console.log('Is Ready To Close:', isChannelReadyToClose);
@@ -136,25 +139,29 @@ export default function CloseChannelPage() {
     console.log('Connected Address:', address);
     console.log('=================');
     
-    if (!write) {
-      if (prepareError) {
-        console.log('Prepare Error:', prepareError);
-        alert(`Contract error: ${prepareError.message || 'Transaction preparation failed'}`);
-      } else {
-        alert('Transaction not ready. Please ensure you have the correct wallet permissions and the channel is ready to close.');
-      }
-      return;
-    }
+    // TODO: Close channel functionality not yet implemented
+    alert('Close channel functionality is not yet implemented in the smart contract.');
+    return;
     
-    try {
-      setIsLoading(true);
-      write();
-    } catch (error) {
-      console.error('Error closing channel:', error);
-      alert('Error closing channel. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
+    // if (!write) {
+    //   if (prepareError) {
+    //     console.log('Prepare Error:', prepareError);
+    //     alert(`Contract error: ${prepareError.message || 'Transaction preparation failed'}`);
+    //   } else {
+    //     alert('Transaction not ready. Please ensure you have the correct wallet permissions and the channel is ready to close.');
+    //   }
+    //   return;
+    // }
+    
+    // try {
+    //   setIsLoading(true);
+    //   write();
+    // } catch (error) {
+    //   console.error('Error closing channel:', error);
+    //   alert('Error closing channel. Please try again.');
+    // } finally {
+    //   setIsLoading(false);
+    // }
   };
   
   // Check if channel is in correct state for closure (Closing=4 and sigVerified=true)
@@ -249,9 +256,8 @@ export default function CloseChannelPage() {
                     <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 rounded-lg p-4">
                       <div className="text-sm text-gray-400">Total Deposits</div>
                       <div className="text-lg font-semibold text-white">
-                        {channelDeposits && tokenDecimals ? 
-                          `${(Number(channelDeposits[0] || BigInt(0)) / Math.pow(10, tokenDecimals)).toFixed(4)} ${isETH ? 'ETH' : tokenSymbol}` 
-                          : '...'}
+                        {/* TODO: Implement total deposits calculation */}
+                        {'-- ' + (isETH ? 'ETH' : tokenSymbol || 'TOKEN')}
                       </div>
                     </div>
                   </div>
