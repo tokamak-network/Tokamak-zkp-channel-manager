@@ -52,14 +52,11 @@ export async function generateClientSideProof(
     onProgress?.('Loading circuit files...');
 
     // External storage configuration for large zkey files
+    // Use our server-side proxy to handle CORS issues
     const externalStorage: ExternalStorageConfig = {
       provider: 'github-releases',
-      baseUrl: 'https://github.com/mehdi-defiesta/channel-manager/releases/download/zkey-files',
-      fallbackUrls: [
-        // Add additional URLs here as backups
-        // 'https://ipfs.io/ipfs/YOUR_HASH',
-        // 'https://your-cdn.com/zkey-files'
-      ]
+      baseUrl: '/api/proxy-zkey',
+      fallbackUrls: []
     };
     
     // Get circuit configuration with external URLs for large files
@@ -72,17 +69,17 @@ export async function generateClientSideProof(
         },
         32: {
           wasmUrl: '/zk-assets/wasm/circuit_N4.wasm', // Use N4 WASM for now
-          zkeyUrl: `${externalStorage.baseUrl}/circuit_final_32.zkey`, // External
+          zkeyUrl: `${externalStorage.baseUrl}?file=circuit_final_32.zkey`, // External via proxy
           circuitName: 'circuit_N5'
         },
         64: {
           wasmUrl: '/zk-assets/wasm/circuit_N4.wasm', // Use N4 WASM for now
-          zkeyUrl: `${externalStorage.baseUrl}/circuit_final_64.zkey`, // External
+          zkeyUrl: `${externalStorage.baseUrl}?file=circuit_final_64.zkey`, // External via proxy
           circuitName: 'circuit_N6'
         },
         128: {
           wasmUrl: '/zk-assets/wasm/circuit_N4.wasm', // Use N4 WASM for now
-          zkeyUrl: `${externalStorage.baseUrl}/circuit_final_128.zkey`, // External
+          zkeyUrl: `${externalStorage.baseUrl}?file=circuit_final_128.zkey`, // External via proxy
           circuitName: 'circuit_N7'
         }
       };
@@ -102,12 +99,13 @@ export async function generateClientSideProof(
       try {
         onProgress?.(`Checking availability of ${treeSize}-leaf circuit...`);
         const response = await fetch(config.zkeyUrl, { method: 'HEAD' });
-        if (!response.ok) {
-          throw new Error(`External zkey file not available: ${response.status}`);
+        if (response.ok) {
+          onProgress?.(`✓ ${treeSize}-leaf circuit available from external source`);
+        } else {
+          throw new Error(`External file check failed: ${response.status}`);
         }
-        onProgress?.(`✓ ${treeSize}-leaf circuit available from external source`);
       } catch (error) {
-        console.warn(`Large circuit not available, falling back to 16-leaf: ${error}`);
+        console.warn(`External circuit not available, falling back to 16-leaf: ${error}`);
         onProgress?.(`⚠️ ${treeSize}-leaf circuit unavailable, using 16-leaf fallback`);
         actualConfig = {
           wasmUrl: '/zk-assets/wasm/circuit_N4.wasm',
@@ -119,11 +117,18 @@ export async function generateClientSideProof(
 
     onProgress?.('Preparing circuit input...');
     
-    // Prepare circuit input (remove treeSize as circuit doesn't expect it)
+    // Determine the actual tree size being used (might be different from requested due to fallback)
+    const actualTreeSize = actualConfig.circuitName === 'circuit_N4' ? 16 : treeSize;
+    
+    // Prepare circuit input with proper size for the actual circuit being used
     const circuitInput = {
-      storage_keys_L2MPT: input.storage_keys_L2MPT,
-      storage_values: input.storage_values
+      storage_keys_L2MPT: input.storage_keys_L2MPT.slice(0, actualTreeSize),
+      storage_values: input.storage_values.slice(0, actualTreeSize)
     };
+    
+    if (actualTreeSize !== treeSize) {
+      onProgress?.(`⚠️ Using ${actualTreeSize}-leaf circuit instead of ${treeSize}-leaf (input truncated)`);
+    }
 
     onProgress?.('Generating proof... This may take a few minutes...');
 
