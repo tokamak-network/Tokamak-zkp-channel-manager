@@ -8,7 +8,7 @@ import Image from 'next/image';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { ClientOnly } from '@/components/ClientOnly';
 import { NetworkDropdown } from '@/components/NetworkDropdown';
-import { Home, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Search, Settings, FileCheck, PenTool, XCircle, Trash2, Activity } from 'lucide-react';
+import { Home, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Search, Settings, FileCheck, XCircle, Trash2, Activity } from 'lucide-react';
 
 interface SidebarProps {
   isConnected: boolean;
@@ -120,13 +120,6 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
         name: 'Submit Proof',
         href: '/submit-proof',
         icon: FileCheck,
-        description: '',
-        requiresConnection: true
-      },
-      {
-        name: 'Sign Proof',
-        href: '/sign-proof',
-        icon: PenTool,
         description: '',
         requiresConnection: true
       },

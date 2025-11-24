@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount, useContractRead } from 'wagmi';
 import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
-import { Home, PlusCircle, FileCheck, ArrowDownCircle, ArrowUpCircle, Settings, PenTool, XCircle, Trash2, Activity } from 'lucide-react';
+import { Home, PlusCircle, FileCheck, ArrowDownCircle, ArrowUpCircle, Settings, XCircle, Trash2, Activity } from 'lucide-react';
 
 interface MobileNavigationProps {
   showMobileMenu: boolean;
@@ -148,14 +148,6 @@ export function MobileNavigation({ showMobileMenu, setShowMobileMenu }: MobileNa
             >
               <FileCheck className="w-5 h-5" />
               <span className="font-medium">Submit Proof</span>
-            </div>
-            
-            <div 
-              onClick={() => handleNavigation('/sign-proof')}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
-            >
-              <PenTool className="w-5 h-5" />
-              <span className="font-medium">Sign Proof</span>
             </div>
             
             <div 
