@@ -18,6 +18,7 @@ import {
   getGroth16VerifierAddress
 } from '@/lib/contracts';
 import { getTokenSymbol, getTokenDecimals } from '@/lib/tokenUtils';
+import { generateClientSideProof, isClientProofGenerationSupported, getMemoryRequirement } from '@/lib/clientProofGeneration';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 import { Settings, Link, ShieldOff, Users, CheckCircle2, XCircle, Calculator } from 'lucide-react';
 
@@ -95,6 +96,7 @@ export default function InitializeStatePage() {
   const [isGeneratingProof, setIsGeneratingProof] = useState(false);
   const [proofGenerationStatus, setProofGenerationStatus] = useState('');
   const [generatedProof, setGeneratedProof] = useState<any>(null);
+  const [browserCompatible, setBrowserCompatible] = useState<boolean | null>(null);
 
   // Get total number of channels from Core contract
   const { data: totalChannels } = useContractRead({
@@ -137,6 +139,12 @@ export default function InitializeStatePage() {
     }
   }, [isMounted, hookLeaderChannel]);
 
+  // Check browser compatibility for client-side proof generation
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setBrowserCompatible(isClientProofGenerationSupported());
+    }
+  }, []);
 
   // Get participants for leader channel from Core contract
   const { data: channelParticipants } = useContractRead({
@@ -244,7 +252,6 @@ export default function InitializeStatePage() {
         
         if (keysResponse.ok) {
           keysResult = await keysResponse.json();
-          console.log('✓ Bulk L2 MPT keys fetch successful');
         } else {
           throw new Error(`HTTP ${keysResponse.status}`);
         }
@@ -322,26 +329,20 @@ export default function InitializeStatePage() {
       treeSize: treeSize
     };
     
-    console.log('Circuit input:', circuitInput);
-    console.log('Tree size for proof generation:', treeSize);
-    setProofGenerationStatus(`Generating Groth16 proof for ${treeSize}-leaf tree (this may take a few minutes)...`);
-    
-    // Call proof generation API that uses generateProof.js
-    const response = await fetch('/api/generate-groth16-proof', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(circuitInput)
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `Proof generation failed: ${response.statusText}`);
+    // Check if client-side proof generation is supported
+    if (!isClientProofGenerationSupported()) {
+      throw new Error('Client-side proof generation is not supported in this browser. Please try a modern browser with WebAssembly support.');
     }
     
-    const result = await response.json();
-    setProofGenerationStatus('Proof generated successfully!');
+    const memoryReq = getMemoryRequirement(treeSize);
+    setProofGenerationStatus(`Generating Groth16 proof for ${treeSize}-leaf tree (${memoryReq} RAM required, this may take a few minutes)...`);
     
-    console.log('Generated proof:', result);
+    // Generate proof client-side using snarkjs
+    const result = await generateClientSideProof(circuitInput, (status) => {
+      setProofGenerationStatus(status);
+    });
+    
+    setProofGenerationStatus('Proof generated successfully!');
     
     return result.proof;
   };
@@ -563,14 +564,42 @@ export default function InitializeStatePage() {
                         )}
                       </div>
                     )}
+
+                    {/* Browser Compatibility Warning */}
+                    {browserCompatible === false && (
+                      <div className="mb-4 p-3 bg-red-500/20 border border-red-400/50 rounded-lg">
+                        <div className="flex items-center gap-2 text-red-400 text-sm">
+                          <XCircle className="w-4 h-4" />
+                          <span className="font-medium">Browser Not Compatible</span>
+                        </div>
+                        <p className="text-red-300 text-xs mt-1">
+                          Your browser doesn't support WebAssembly or required APIs for client-side proof generation. 
+                          Please use a modern browser like Chrome, Firefox, Safari, or Edge.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Memory Warning for Large Tree Sizes */}
+                    {browserCompatible === true && channelTreeSize && Number(channelTreeSize) >= 64 && (
+                      <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-400/50 rounded-lg">
+                        <div className="flex items-center gap-2 text-yellow-400 text-sm">
+                          <Settings className="w-4 h-4" />
+                          <span className="font-medium">High Memory Usage</span>
+                        </div>
+                        <p className="text-yellow-300 text-xs mt-1">
+                          {Number(channelTreeSize)}-leaf proof generation requires {getMemoryRequirement(Number(channelTreeSize))} of RAM. 
+                          Make sure to close other tabs and applications before proceeding.
+                        </p>
+                      </div>
+                    )}
                     
                     <button
                       onClick={handleInitializeState}
-                      disabled={isInitializingTransaction || isGeneratingProof || hookLeaderChannel.stats[2] !== 1}
+                      disabled={isInitializingTransaction || isGeneratingProof || hookLeaderChannel.stats[2] !== 1 || browserCompatible === false}
                       className={`px-6 sm:px-8 py-3 sm:py-4 font-semibold text-white text-base sm:text-lg transition-all duration-300 transform ${
                         buttonClicked ? 'scale-95' : 'hover:scale-105'
                       } ${
-                        isInitializingTransaction || isGeneratingProof || hookLeaderChannel.stats[2] !== 1
+                        isInitializingTransaction || isGeneratingProof || hookLeaderChannel.stats[2] !== 1 || browserCompatible === false
                           ? 'bg-gray-600 cursor-not-allowed'
                           : 'bg-[#4fc3f7] hover:bg-[#029bee] shadow-lg shadow-[#4fc3f7]/30 hover:shadow-xl hover:shadow-[#4fc3f7]/40'
                       } ${(isInitializingTransaction || isGeneratingProof) ? 'animate-pulse' : ''}`}
