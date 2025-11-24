@@ -52,11 +52,13 @@ export async function generateClientSideProof(
     onProgress?.('Loading circuit files...');
 
     // External storage configuration for large zkey files
-    // Use our server-side proxy to handle CORS issues
+    // Use CORS proxy as fallback until server-side proxy is deployed
     const externalStorage: ExternalStorageConfig = {
       provider: 'github-releases',
       baseUrl: '/api/proxy-zkey',
-      fallbackUrls: []
+      fallbackUrls: [
+        'https://api.allorigins.win/raw?url=https%3A//github.com/mehdi-defiesta/channel-manager/releases/download/zkey-files'
+      ]
     };
     
     // Get circuit configuration with external URLs for large files
@@ -94,18 +96,43 @@ export async function generateClientSideProof(
     // Try to use the specified config, with fallback to 16-leaf circuit
     let actualConfig = config;
     
-    // For larger circuits, verify the external file exists before proceeding
+    // For larger circuits, try to use external source with fallback
     if (treeSize > 16) {
+      let externalFound = false;
+      
+      // Try server-side proxy first
       try {
         onProgress?.(`Checking availability of ${treeSize}-leaf circuit...`);
         const response = await fetch(config.zkeyUrl, { method: 'HEAD' });
         if (response.ok) {
-          onProgress?.(`✓ ${treeSize}-leaf circuit available from external source`);
-        } else {
-          throw new Error(`External file check failed: ${response.status}`);
+          onProgress?.(`✓ ${treeSize}-leaf circuit available from proxy`);
+          externalFound = true;
         }
       } catch (error) {
-        console.warn(`External circuit not available, falling back to 16-leaf: ${error}`);
+        console.warn(`Proxy not available: ${error}`);
+      }
+      
+      // Try fallback URLs if proxy failed
+      if (!externalFound && externalStorage.fallbackUrls) {
+        for (const fallbackBase of externalStorage.fallbackUrls) {
+          try {
+            const fallbackUrl = `${fallbackBase}/circuit_final_${treeSize}.zkey`;
+            onProgress?.(`Trying fallback source...`);
+            const response = await fetch(fallbackUrl, { method: 'HEAD' });
+            if (response.ok) {
+              actualConfig.zkeyUrl = fallbackUrl;
+              onProgress?.(`✓ ${treeSize}-leaf circuit available from fallback source`);
+              externalFound = true;
+              break;
+            }
+          } catch (error) {
+            console.warn(`Fallback failed: ${error}`);
+          }
+        }
+      }
+      
+      if (!externalFound) {
+        console.warn(`All external sources failed, falling back to 16-leaf circuit`);
         onProgress?.(`⚠️ ${treeSize}-leaf circuit unavailable, using 16-leaf fallback`);
         actualConfig = {
           wasmUrl: '/zk-assets/wasm/circuit_N4.wasm',
