@@ -2,6 +2,7 @@
 @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@100;200;300;400;500;600;700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Jersey+10&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -173,6 +174,151 @@
 
   .neon-glow {
     text-shadow: 0 0 5px currentColor, 0 0 10px currentColor, 0 0 15px currentColor;
+  }
+
+  /* ========================================
+     RETRO 80s ARCADE GAME STYLES
+     ======================================== */
+  
+  /* Typography Fonts */
+  .pixel-font {
+    font-family: "Press Start 2P", monospace;
+  }
+
+  .arcade-font {
+    font-family: "Orbitron", sans-serif;
+    font-weight: 700;
+  }
+
+  /* Neon Glow Effects */
+  .neon-glow-yellow {
+    text-shadow: 0 0 5px #FFFF00, 0 0 10px #FFFF00, 0 0 15px #FFFF00;
+  }
+
+  .neon-glow-cyan {
+    text-shadow: 0 0 5px #00FFFF, 0 0 10px #00FFFF, 0 0 15px #00FFFF;
+  }
+
+  .neon-glow-pink {
+    text-shadow: 0 0 5px #FF00FF, 0 0 10px #FF00FF, 0 0 15px #FF00FF;
+  }
+
+  .neon-glow-orange {
+    text-shadow: 0 0 5px #FFA500, 0 0 10px #FFA500, 0 0 15px #FFA500;
+  }
+
+  .neon-glow-green {
+    text-shadow: 0 0 5px #00FF00, 0 0 10px #00FF00, 0 0 15px #00FF00;
+  }
+
+  /* Neon Border Effects */
+  .neon-border-yellow {
+    box-shadow: 0 0 10px #FFFF0060, 0 0 20px #FFFF0040, 0 0 30px #FFFF0020;
+  }
+
+  .neon-border-cyan {
+    box-shadow: 0 0 10px #00FFFF60, 0 0 20px #00FFFF40, 0 0 30px #00FFFF20;
+  }
+
+  .neon-border-pink {
+    box-shadow: 0 0 10px #FF00FF60, 0 0 20px #FF00FF40, 0 0 30px #FF00FF20;
+  }
+
+  .neon-border-orange {
+    box-shadow: 0 0 10px #FFA50060, 0 0 20px #FFA50040, 0 0 30px #FFA50020;
+  }
+
+  .neon-border-green {
+    box-shadow: 0 0 10px #00FF0060, 0 0 20px #00FF0040, 0 0 30px #00FF0020;
+  }
+
+  /* Arcade Cabinet & CRT Monitor */
+  .arcade-cabinet {
+    background: linear-gradient(135deg, #1A1A2E 0%, #0F0F1E 100%);
+    border: 4px solid #00FFFF;
+    box-shadow: 0 0 20px #00FFFF40, inset 0 0 20px #00000080;
+    padding: 2rem;
+  }
+
+  .arcade-screen {
+    background: radial-gradient(ellipse at center, #1A1A2E 0%, #000000 100%);
+    border: 3px solid #00FFFF;
+    box-shadow: 0 0 15px #00FFFF60, inset 0 0 30px #00000080;
+    position: relative;
+  }
+
+  .crt-content {
+    padding: 2rem;
+    position: relative;
+    background: linear-gradient(to bottom, transparent 50%, rgba(0, 0, 0, 0.1) 50%);
+    background-size: 100% 4px;
+    animation: scanline 8s linear infinite;
+  }
+
+  .crt-curve {
+    border-radius: 20px;
+    overflow: hidden;
+  }
+
+  @keyframes scanline {
+    0% { background-position: 0 0; }
+    100% { background-position: 0 100%; }
+  }
+
+  /* Perspective Grid (3D Tron-style grid) */
+  .perspective-grid {
+    perspective: 1000px;
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  .grid-plane {
+    position: absolute;
+    inset: 0;
+    background-image: 
+      linear-gradient(0deg, transparent 24%, rgba(0, 255, 255, 0.15) 25%, rgba(0, 255, 255, 0.15) 26%, transparent 27%, transparent 74%, rgba(0, 255, 255, 0.15) 75%, rgba(0, 255, 255, 0.15) 76%, transparent 77%, transparent),
+      linear-gradient(90deg, transparent 24%, rgba(0, 255, 255, 0.15) 25%, rgba(0, 255, 255, 0.15) 26%, transparent 27%, transparent 74%, rgba(0, 255, 255, 0.15) 75%, rgba(0, 255, 255, 0.15) 76%, transparent 77%, transparent);
+    background-size: 50px 50px;
+    background-position: center center;
+    transform: rotateX(60deg) translateY(50%) translateZ(-100px);
+    animation: grid-move 20s linear infinite;
+  }
+
+  @keyframes grid-move {
+    0% { background-position: 0 0; }
+    100% { background-position: 0 50px; }
+  }
+
+  /* Pac-Man Dots Pattern */
+  .pacman-dots {
+    background-image: radial-gradient(circle, #FFFF00 1px, transparent 1px);
+    background-size: 20px 20px;
+    background-position: 0 0;
+  }
+
+  /* Flash Animation (use sparingly - not on headers) */
+  .flash-animation {
+    animation: flash 2s ease-in-out infinite;
+  }
+
+  @keyframes flash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+
+  /* Pulse Glow Animation (use sparingly - not on headers) */
+  .pulse-glow-animation {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      text-shadow: 0 0 5px currentColor, 0 0 10px currentColor;
+    }
+    50% {
+      text-shadow: 0 0 10px currentColor, 0 0 20px currentColor, 0 0 30px currentColor;
+    }
   }
 }
 

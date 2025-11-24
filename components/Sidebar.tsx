@@ -9,7 +9,7 @@ import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { ClientOnly } from '@/components/ClientOnly';
 import { NetworkDropdown } from '@/components/NetworkDropdown';
-import { Home, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Search, Settings, FileCheck, PenTool, XCircle, Trash2, Activity } from 'lucide-react';
+import { Home, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Search, Settings, FileCheck, PenTool, XCircle, Trash2, Activity, FileText } from 'lucide-react';
 
 interface SidebarProps {
   isConnected: boolean;
@@ -102,6 +102,17 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       href: '/channel-explorer',
       icon: Search,
       description: 'View all channels and activity',
+      requiresConnection: true
+    });
+  }
+  
+  // State Explorer - always visible for development
+  if (isConnected) {
+    channelActions.push({
+      name: 'State Explorer',
+      href: '/state-explorer',
+      icon: FileText,
+      description: 'Track state transitions',
       requiresConnection: true
     });
   }
