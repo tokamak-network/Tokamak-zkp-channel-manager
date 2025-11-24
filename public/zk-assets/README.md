@@ -22,10 +22,13 @@ zk-assets/
 
 ## Current Status
 
-✅ **16 leaves (N4)**: Fully supported with circuit_N4.wasm and circuit_final_16.zkey
-⚠️  **32 leaves (N5)**: zkey available, WASM file needs compilation
-⚠️  **64 leaves (N6)**: zkey available, WASM file needs compilation  
-⚠️  **128 leaves (N7)**: zkey available, WASM file needs compilation
+✅ **16 leaves (N4)**: Fully supported with circuit_N4.wasm and circuit_final_16.zkey (12MB)
+⚠️  **32 leaves (N5)**: zkey too large for GitHub (25MB), falls back to 16-leaf circuit
+⚠️  **64 leaves (N6)**: zkey too large for GitHub (51MB), falls back to 16-leaf circuit  
+⚠️  **128 leaves (N7)**: zkey too large for GitHub (102MB), falls back to 16-leaf circuit
+
+**Deployment Note**: Only the 16-leaf circuit is deployed due to GitHub file size limits. 
+Larger circuits automatically fall back to the 16-leaf circuit for client-side proof generation.
 
 ## Setup Instructions
 
