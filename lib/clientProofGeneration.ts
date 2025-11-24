@@ -6,11 +6,12 @@ export interface CircuitInput {
   treeSize?: number;
 }
 
-export interface ExternalStorageConfig {
-  provider: 'github-releases' | 'aws-s3' | 'ipfs' | 'vercel-blob';
-  baseUrl: string;
-  fallbackUrls?: string[];
-}
+// External storage config removed - using only local 16-leaf circuit for now
+// export interface ExternalStorageConfig {
+//   provider: 'github-releases' | 'aws-s3' | 'ipfs' | 'vercel-blob';
+//   baseUrl: string;
+//   fallbackUrls?: string[];
+// }
 
 export interface ProofResult {
   proof: {
@@ -51,41 +52,15 @@ export async function generateClientSideProof(
 
     onProgress?.('Loading circuit files...');
 
-    // External storage configuration for large zkey files
-    // Use CORS proxy as fallback until server-side proxy is deployed
-    const externalStorage: ExternalStorageConfig = {
-      provider: 'github-releases',
-      baseUrl: '/api/proxy-zkey',
-      fallbackUrls: [
-        'https://api.allorigins.win/raw?url=https%3A//github.com/mehdi-defiesta/channel-manager/releases/download/zkey-files'
-      ]
-    };
-    
-    // Get circuit configuration with external URLs for large files
+    // For now, use 16-leaf circuit for all sizes until external hosting is properly set up
+    // All circuits fall back to 16-leaf with proper input sizing
     const getCircuitConfig = (size: number) => {
-      const configs = {
-        16: {
-          wasmUrl: '/zk-assets/wasm/circuit_N4.wasm',
-          zkeyUrl: `/zk-assets/zkey/circuit_final_16.zkey`, // Local file (small)
-          circuitName: 'circuit_N4'
-        },
-        32: {
-          wasmUrl: '/zk-assets/wasm/circuit_N4.wasm', // Use N4 WASM for now
-          zkeyUrl: `${externalStorage.baseUrl}?file=circuit_final_32.zkey`, // External via proxy
-          circuitName: 'circuit_N5'
-        },
-        64: {
-          wasmUrl: '/zk-assets/wasm/circuit_N4.wasm', // Use N4 WASM for now
-          zkeyUrl: `${externalStorage.baseUrl}?file=circuit_final_64.zkey`, // External via proxy
-          circuitName: 'circuit_N6'
-        },
-        128: {
-          wasmUrl: '/zk-assets/wasm/circuit_N4.wasm', // Use N4 WASM for now
-          zkeyUrl: `${externalStorage.baseUrl}?file=circuit_final_128.zkey`, // External via proxy
-          circuitName: 'circuit_N7'
-        }
+      return {
+        wasmUrl: '/zk-assets/wasm/circuit_N4.wasm',
+        zkeyUrl: `/zk-assets/zkey/circuit_final_16.zkey`,
+        circuitName: 'circuit_N4',
+        actualTreeSize: 16 // Always use 16-leaf circuit
       };
-      return configs[size as keyof typeof configs];
     };
 
     const config = getCircuitConfig(treeSize);
@@ -93,59 +68,17 @@ export async function generateClientSideProof(
       throw new Error(`Unsupported tree size: ${treeSize}`);
     }
 
-    // Try to use the specified config, with fallback to 16-leaf circuit
-    let actualConfig = config;
+    // Always use 16-leaf circuit for now
+    const actualConfig = config;
     
-    // For larger circuits, try to use external source with fallback
     if (treeSize > 16) {
-      let externalFound = false;
-      
-      // Try server-side proxy first
-      try {
-        onProgress?.(`Checking availability of ${treeSize}-leaf circuit...`);
-        const response = await fetch(config.zkeyUrl, { method: 'HEAD' });
-        if (response.ok) {
-          onProgress?.(`✓ ${treeSize}-leaf circuit available from proxy`);
-          externalFound = true;
-        }
-      } catch (error) {
-        console.warn(`Proxy not available: ${error}`);
-      }
-      
-      // Try fallback URLs if proxy failed
-      if (!externalFound && externalStorage.fallbackUrls) {
-        for (const fallbackBase of externalStorage.fallbackUrls) {
-          try {
-            const fallbackUrl = `${fallbackBase}/circuit_final_${treeSize}.zkey`;
-            onProgress?.(`Trying fallback source...`);
-            const response = await fetch(fallbackUrl, { method: 'HEAD' });
-            if (response.ok) {
-              actualConfig.zkeyUrl = fallbackUrl;
-              onProgress?.(`✓ ${treeSize}-leaf circuit available from fallback source`);
-              externalFound = true;
-              break;
-            }
-          } catch (error) {
-            console.warn(`Fallback failed: ${error}`);
-          }
-        }
-      }
-      
-      if (!externalFound) {
-        console.warn(`All external sources failed, falling back to 16-leaf circuit`);
-        onProgress?.(`⚠️ ${treeSize}-leaf circuit unavailable, using 16-leaf fallback`);
-        actualConfig = {
-          wasmUrl: '/zk-assets/wasm/circuit_N4.wasm',
-          zkeyUrl: `/zk-assets/zkey/circuit_final_16.zkey`,
-          circuitName: 'circuit_N4'
-        };
-      }
+      onProgress?.(`⚠️ Using 16-leaf circuit instead of ${treeSize}-leaf (large circuits not yet available)`);
     }
 
     onProgress?.('Preparing circuit input...');
     
-    // Determine the actual tree size being used (might be different from requested due to fallback)
-    const actualTreeSize = actualConfig.circuitName === 'circuit_N4' ? 16 : treeSize;
+    // Always use 16 as the actual tree size for now
+    const actualTreeSize = 16;
     
     // Prepare circuit input with proper size for the actual circuit being used
     const circuitInput = {
@@ -233,34 +166,28 @@ export function isClientProofGenerationSupported(): boolean {
 }
 
 /**
- * Estimate memory requirements and download size for proof generation
+ * Estimate memory requirements for proof generation
+ * Note: Currently all proofs use 16-leaf circuit regardless of requested size
  */
 export function getMemoryRequirement(treeSize: number): string {
-  const requirements = {
-    16: '~512MB RAM',
-    32: '~1GB RAM + 25MB download',
-    64: '~2GB RAM + 51MB download', 
-    128: '~4GB RAM + 102MB download'
-  };
-  return requirements[treeSize as keyof typeof requirements] || 'Unknown';
+  if (treeSize > 16) {
+    return '~512MB RAM (using 16-leaf fallback)';
+  }
+  return '~512MB RAM';
 }
 
 /**
  * Check if large circuit files need to be downloaded
+ * Currently returns false as we only use local 16-leaf circuit
  */
 export function requiresExternalDownload(treeSize: number): boolean {
-  return treeSize > 16;
+  return false; // No external downloads for now
 }
 
 /**
  * Get estimated download size for circuit
+ * Currently always 0MB as we use local files
  */
 export function getDownloadSize(treeSize: number): string {
-  const sizes = {
-    16: '0MB (local)',
-    32: '25MB', 
-    64: '51MB',
-    128: '102MB'
-  };
-  return sizes[treeSize as keyof typeof sizes] || 'Unknown';
+  return '0MB (local)';
 }
