@@ -510,7 +510,7 @@ export function ContractInfo() {
                   </div>
                 )}
 
-                {/* Deposit Tokens */}
+                {/* Freeze State */}
                 {canDeposit ? (
                   <Link href="/deposit-tokens" className="block">
                     <div className="bg-[#4fc3f7]/10 border-[#4fc3f7]/30 border p-3 cursor-pointer hover:bg-[#4fc3f7]/20 transition-all hover:shadow-lg hover:shadow-[#4fc3f7]/10">
@@ -521,7 +521,7 @@ export function ContractInfo() {
                           </svg>
                         </div>
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-white">Deposit Tokens</p>
+                          <p className="text-sm font-medium text-white">Freeze State</p>
                           {participatingChannels.length > 0 && (
                         <div className="space-y-1">
                           {participatingChannels.map(channelId => {
@@ -553,7 +553,7 @@ export function ContractInfo() {
                         </svg>
                       </div>
                       <div className="flex-1">
-                        <p className="text-sm font-medium text-white">Deposit Tokens</p>
+                        <p className="text-sm font-medium text-white">Freeze State</p>
                         {participatingChannels.length > 0 && (
                         <div className="space-y-1">
                           {participatingChannels.map(channelId => {

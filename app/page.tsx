@@ -199,7 +199,7 @@ export default function HomePage() {
                         <ArrowDownCircle className="w-6 h-6 text-white" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Deposit Tokens</h3>
+                        <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Freeze State</h3>
                         <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
                           Deposit ERC20 tokens
                         </p>

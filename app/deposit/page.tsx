@@ -117,7 +117,7 @@ function ChannelCard({ channelId, onDepositClick }: { channelId: number; onDepos
             }}
           >
             <Coins className="h-4 w-4 mr-2" />
-            {state === 1 ? 'Deposit Tokens' : 'Channel Not Ready'}
+            {state === 1 ? 'Freeze State' : 'Channel Not Ready'}
             <ArrowRight className="h-4 w-4 ml-2" />
           </Button>
         </div>
@@ -147,7 +147,7 @@ export default function DepositPage() {
 
   if (!isConnected) {
     return (
-      <Layout title="Deposit Tokens" showFooter={false}>
+      <Layout title="Freeze State" showFooter={false}>
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Connect Your Wallet</h1>
@@ -161,7 +161,7 @@ export default function DepositPage() {
 
   if (isLoading) {
     return (
-      <Layout title="Deposit Tokens">
+      <Layout title="Freeze State">
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -174,7 +174,7 @@ export default function DepositPage() {
 
   if ((!hasChannels && !isParticipant) || allUserChannels.length === 0) {
     return (
-      <Layout title="Deposit Tokens">
+      <Layout title="Freeze State">
         <div className="max-w-4xl mx-auto">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
             <div className="text-center py-12">
@@ -199,11 +199,11 @@ export default function DepositPage() {
   }
 
   return (
-    <Layout title="Deposit Tokens">
+    <Layout title="Freeze State">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Deposit Tokens</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Freeze State</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2">
             Deposit tokens into channels where you're a leader or participant
           </p>

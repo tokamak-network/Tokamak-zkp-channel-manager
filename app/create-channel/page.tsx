@@ -93,7 +93,7 @@ export default function CreateChannelPage() {
 
   // Add/Remove allowed tokens
   const addToken = () => {
-    if (allowedTokens.length < 4) {
+    if (allowedTokens.length < 3) {
       setAllowedTokens([...allowedTokens, '']);
     }
   };
@@ -130,8 +130,10 @@ export default function CreateChannelPage() {
   };
 
   const getMaxParticipants = (tokenCount: number) => {
-    // New limit: always 128 participants maximum regardless of token count
-    return 128;
+    // Maximum participants based on Merkle tree constraints (max 128 leaves total)
+    // Each participant needs one leaf per token
+    if (tokenCount === 0) return 128;
+    return Math.floor(128 / tokenCount);
   };
 
   const isFormValid = () => {
@@ -146,7 +148,7 @@ export default function CreateChannelPage() {
       isAuthorized && // User must be authorized to create channels
       !isAlreadyLeader && // Prevent creation if already leading a channel
       allowedTokens.length > 0 &&
-      allowedTokens.length <= 4 &&
+      allowedTokens.length <= 3 &&
       !hasDuplicates && // No duplicate tokens allowed
       allowedTokens.every(token => 
         token === '' || // Allow empty tokens during editing
@@ -299,13 +301,13 @@ export default function CreateChannelPage() {
               <div>
                 <div className="flex justify-between items-center mb-4">
                   <label className="block text-sm font-medium text-gray-300">
-                    Allowed Tokens ({allowedTokens.length}/4)
+                    Allowed Tokens ({allowedTokens.length}/3)
                   </label>
                   <div className="space-x-2">
                     <button
                       type="button"
                       onClick={addToken}
-                      disabled={allowedTokens.length >= 4}
+                      disabled={allowedTokens.length >= 3}
                       className="px-3 py-1 text-sm bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 transition-colors duration-200"
                     >
                       Add Token
@@ -381,7 +383,7 @@ export default function CreateChannelPage() {
                 </div>
                 
                 <p className="text-sm text-gray-400 mt-2">
-                  You can select up to 4 different tokens for your channel. Participants will be able to deposit any of these tokens.
+                  You can select up to 3 different tokens for your channel. Participants will be able to deposit any of these tokens.
                 </p>
                 
                 {/* Information for supported tokens */}
@@ -405,11 +407,11 @@ export default function CreateChannelPage() {
                 </div>
               </div>
 
-              {/* Participants */}
+              {/* Whitelisted Participants */}
               <div>
                 <div className="flex justify-between items-center mb-4">
                   <label className="block text-sm font-medium text-gray-300">
-                    Participants ({participants.length}/{getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)})
+                    Whitelisted Participants ({participants.length}/{getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)})
                   </label>
                   <div className="space-x-2">
                     <button
@@ -427,7 +429,7 @@ export default function CreateChannelPage() {
                   {participants.map((participant, index) => (
                     <div key={index} className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4">
                       <div className="flex justify-between items-start mb-3">
-                        <h4 className="font-medium text-white">Participant {index + 1}</h4>
+                        <h4 className="font-medium text-white">Whitelisted Participant {index + 1}</h4>
                         {participants.length > 1 && (
                           <button
                             type="button"
@@ -459,7 +461,7 @@ export default function CreateChannelPage() {
                 </div>
                 
                 <p className="text-sm text-gray-400 mt-2">
-                  Minimum 1 participant, maximum {getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)} participants.
+                  Minimum 1 whitelisted participant, maximum {getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)} whitelisted participants.
                 </p>
                 
                 <div className="mt-3 p-4 bg-blue-900/20 border border-blue-500/50">
@@ -470,7 +472,7 @@ export default function CreateChannelPage() {
                         L2 MPT Keys
                       </h4>
                       <p className="text-blue-200/90 text-sm">
-                        L2 MPT keys are no longer provided during channel creation. Participants will provide their L2 MPT keys when making deposits for each token type.
+                        L2 MPT keys are no longer provided during channel creation. Whitelisted participants will provide their L2 MPT keys when making deposits for each token type.
                       </p>
                     </div>
                   </div>
@@ -537,15 +539,12 @@ export default function CreateChannelPage() {
           <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-8">
             <h3 className="font-semibold text-[#4fc3f7] mb-4">Channel Requirements & Workflow</h3>
             <ul className="space-y-2 text-sm text-gray-300">
-              <li>• Maximum participants: 128 (regardless of token count)</li>
-              <li>• Minimum 1 participant required</li>
-              <li>• Each token can only be used once (no duplicates allowed)</li>
-              <li>• Each participant provides only L1 address during creation</li>
+              <li>• Maximum participants: 128 total leaves (participants × tokens ≤ 128)</li>
+              <li>• 1 token = 128 max participants, 2 tokens = 64 max, 3 tokens = 42 max</li>
+              <li>• Minimum 1 whitelisted participant required</li>
               <li>• L2 MPT keys provided during token deposits (per token type)</li>
               <li>• Timeout must be between 1 hour and 365 days</li>
-              <li>• Group public key set via DKG ceremony after channel creation</li>
               <li>• 0.001 ETH leader bond required (refunded on successful completion)</li>
-              <li>• DKG Management must be completed before state initialization</li>
             </ul>
           </div>
         </div>
@@ -587,7 +586,7 @@ export default function CreateChannelPage() {
                   <span className="text-[#4fc3f7] font-bold text-lg">2.</span>
                   <div>
                     <p className="font-medium text-white mb-1">Wait for Participants to Deposit</p>
-                    <p>All participants need to deposit their tokens into the channel.</p>
+                    <p>All whitelisted participants need to deposit their tokens into the channel.</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
@@ -601,7 +600,7 @@ export default function CreateChannelPage() {
                   <span className="text-[#4fc3f7] font-bold text-lg">4.</span>
                   <div>
                     <p className="font-medium text-white mb-1">Proof Operations & Close</p>
-                    <p>Submit aggregated proofs, collect signatures, close the channel, and allow participants to withdraw.</p>
+                    <p>Submit aggregated proofs, collect signatures, close the channel, and allow whitelisted participants to withdraw.</p>
                   </div>
                 </div>
               </div>

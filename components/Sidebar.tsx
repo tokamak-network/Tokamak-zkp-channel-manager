@@ -76,7 +76,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
     if (isParticipant || hasChannels) {
       userActions.push(
         {
-          name: 'Deposit Tokens',
+          name: 'Freeze State',
           href: '/deposit-tokens',
           icon: ArrowDownCircle,
           description: '',

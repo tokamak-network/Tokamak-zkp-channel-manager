@@ -470,7 +470,7 @@ export default function DepositTokensPage() {
                 <div className="h-10 w-10 bg-[#4fc3f7] flex items-center justify-center shadow-lg shadow-[#4fc3f7]/30">
                   <ArrowDownCircle className="w-6 h-6 text-white" />
                 </div>
-                <h1 className="text-3xl font-bold text-white">Deposit Tokens</h1>
+                <h1 className="text-3xl font-bold text-white">Freeze State</h1>
               </div>
               <p className="text-gray-300 ml-13">
                 Select a channel and token to deposit. You must provide an L2 MPT key for each token deposit.

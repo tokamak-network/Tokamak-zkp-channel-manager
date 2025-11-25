@@ -118,7 +118,7 @@ export function MobileNavigation({ showMobileMenu, setShowMobileMenu }: MobileNa
               className="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
             >
               <ArrowDownCircle className="w-5 h-5" />
-              <span className="font-medium">Deposit Tokens</span>
+              <span className="font-medium">Freeze State</span>
             </div>
             
             <div 
