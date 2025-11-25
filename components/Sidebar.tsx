@@ -64,12 +64,12 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       });
     }
 
-    // DKG Management - available for all connected users
+    // DKG Management - available for all connected users (includes signing)
     userActions.push({
       name: 'DKG Management',
       href: '/dkg-management',
       icon: Key,
-      description: 'Distributed Key Generation',
+      description: 'DKG & Threshold Signatures',
       requiresConnection: true
     });
 

@@ -16,7 +16,7 @@ function createSession() {
             console.log('✅ WebSocket connected for session creation');
             
             const message = {
-                type: 'AnnounceSession',
+                type: 'AnnounceDKGSession',
                 payload: {
                     min_signers: 2,
                     max_signers: 3,
@@ -36,7 +36,7 @@ function createSession() {
         ws.on('message', (data) => {
             try {
                 const message = JSON.parse(data.toString());
-                if (message.type === 'SessionCreated') {
+                if (message.type === 'DKGSessionCreated') {
                     console.log('✅ Session created:', message.payload.session);
                     ws.close();
                     resolve(message.payload.session);

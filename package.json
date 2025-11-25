@@ -26,7 +26,7 @@
     "crypto-js": "^4.2.0",
     "date-fns": "^2.30.0",
     "elliptic": "^6.6.1",
-    "ethers": "^6.8.1",
+    "ethers": "^6.15.0",
     "js-sha256": "^0.11.1",
     "js-sha3": "^0.9.3",
     "lucide-react": "^0.292.0",
@@ -35,7 +35,8 @@
     "react-dom": "^18",
     "tailwind-merge": "^2.0.0",
     "viem": "^1.21.4",
-    "wagmi": "^1.4.13"
+    "wagmi": "^1.4.13",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@types/crypto-js": "^4.2.2",

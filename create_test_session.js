@@ -13,7 +13,7 @@ ws.on('open', () => {
     console.log('✅ WebSocket connected');
     
     const message = {
-        type: 'AnnounceSession',
+        type: 'AnnounceDKGSession',
         payload: {
             min_signers: 2,
             max_signers: 3,
@@ -36,7 +36,7 @@ ws.on('message', (data) => {
         const message = JSON.parse(data.toString());
         console.log('📨 Received:', message);
         
-        if (message.type === 'SessionCreated') {
+        if (message.type === 'DKGSessionCreated') {
             console.log('\n🎯 SESSION CREATED SUCCESSFULLY!');
             console.log('📋 Session ID to join:', message.payload.session);
             console.log('\n💡 Now you can join this session in your UI with ID:');

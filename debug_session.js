@@ -37,7 +37,7 @@ function createTestSession() {
     console.log('📤 Creating test session...');
     
     const message = {
-        type: 'AnnounceSession',
+        type: 'AnnounceDKGSession',
         payload: {
             min_signers: 2,
             max_signers: 3,
@@ -57,7 +57,7 @@ function createTestSession() {
 
 function handleMessage(message) {
     switch (message.type) {
-        case 'SessionCreated':
+        case 'DKGSessionCreated':
             console.log('✅ Session created successfully!');
             console.log('📋 Session ID:', message.payload.session);
             console.log('🎯 Your public key should now be registered in server roster');

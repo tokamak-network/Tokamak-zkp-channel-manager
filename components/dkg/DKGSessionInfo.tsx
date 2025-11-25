@@ -130,10 +130,10 @@ export function DKGSessionInfo({ session, myFrostId, authState }: DKGSessionInfo
                 <span className="text-xs text-gray-400">Threshold</span>
               </div>
               <p className="text-lg font-semibold text-white">
-                {session.minSigners}-of-{session.maxSigners}
+                {session.minSigners || 0}-of-{session.maxSigners || 0}
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                {session.minSigners} signatures required
+                {session.minSigners || 0} signatures required
               </p>
             </div>
 
@@ -303,7 +303,7 @@ export function DKGSessionInfo({ session, myFrostId, authState }: DKGSessionInfo
                   </div>
                   <div>
                     <span className="text-gray-400">Threshold:</span>
-                    <p className="text-purple-300 font-mono">{keyPackage.threshold}-of-{keyPackage.total}</p>
+                    <p className="text-purple-300 font-mono">{keyPackage.threshold || 0}-of-{keyPackage.total || 0}</p>
                   </div>
                   <div>
                     <span className="text-gray-400">Group ID:</span>
