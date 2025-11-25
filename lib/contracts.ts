@@ -56,9 +56,7 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
         components: [
           { name: 'allowedTokens', type: 'address[]' },
           { name: 'participants', type: 'address[]' },
-          { name: 'timeout', type: 'uint256' },
-          { name: 'pkx', type: 'uint256' },
-          { name: 'pky', type: 'uint256' }
+          { name: 'timeout', type: 'uint256' }
         ],
         name: 'params',
         type: 'tuple'
@@ -67,6 +65,17 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
     name: 'openChannel',
     outputs: [{ name: 'channelId', type: 'uint256' }],
     stateMutability: 'payable',
+    type: 'function'
+  },
+  {
+    inputs: [
+      { name: 'channelId', type: 'uint256' },
+      { name: 'pkx', type: 'uint256' },
+      { name: 'pky', type: 'uint256' }
+    ],
+    name: 'setChannelPublicKey',
+    outputs: [],
+    stateMutability: 'nonpayable',
     type: 'function'
   },
   // View Functions

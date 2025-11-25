@@ -66,8 +66,6 @@ export default function CreateChannelPage() {
     { address: '' }
   ]);
   const [timeout, setTimeout] = useState(1); // in days
-  const [pkx, setPkx] = useState('');
-  const [pky, setPky] = useState('');
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [createdChannelId, setCreatedChannelId] = useState<string>('');
   const [txHash, setTxHash] = useState<string>('');
@@ -161,9 +159,7 @@ export default function CreateChannelPage() {
       participants.length >= 1 && 
       participants.length <= maxParticipants &&
       participants.every(p => isValidEthereumAddress(p.address)) &&
-      timeout >= 1 && timeout <= 365 && // 1 day to 365 days
-      isValidHex(pkx) &&
-      isValidHex(pky)
+      timeout >= 1 && timeout <= 365 // 1 day to 365 days
     );
   };
 
@@ -171,9 +167,7 @@ export default function CreateChannelPage() {
   const channelParams = isFormValid() ? {
     allowedTokens: allowedTokens.filter(token => token !== '').map(token => token as `0x${string}`),
     participants: participants.map(p => p.address as `0x${string}`),
-    timeout: BigInt(timeout * 86400), // Convert days to seconds
-    pkx: BigInt(pkx),
-    pky: BigInt(pky)
+    timeout: BigInt(timeout * 86400) // Convert days to seconds
   } : undefined;
 
   const contractConfig = channelParams ? {
@@ -502,38 +496,21 @@ export default function CreateChannelPage() {
               </div>
 
 
-              {/* Group Public Key */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Public Key X Coordinate
-                  </label>
-                  <input
-                    type="text"
-                    value={pkx}
-                    onChange={(e) => setPkx(e.target.value)}
-                    placeholder="0x..."
-                    className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
-                  />
-                  {pkx && !isValidHex(pkx) && (
-                    <p className="text-red-400 text-sm mt-1">Invalid hex format</p>
-                  )}
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Public Key Y Coordinate
-                  </label>
-                  <input
-                    type="text"
-                    value={pky}
-                    onChange={(e) => setPky(e.target.value)}
-                    placeholder="0x..."
-                    className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
-                  />
-                  {pky && !isValidHex(pky) && (
-                    <p className="text-red-400 text-sm mt-1">Invalid hex format</p>
-                  )}
+              {/* DKG Management Information */}
+              <div className="p-4 bg-blue-900/20 border border-blue-500/50">
+                <div className="flex items-start gap-3">
+                  <Lightbulb className="w-5 h-5 text-blue-400" />
+                  <div className="flex-1">
+                    <h4 className="text-sm font-semibold text-blue-300 mb-2">
+                      Distributed Key Generation (DKG)
+                    </h4>
+                    <p className="text-blue-200/90 text-sm mb-3">
+                      The group public key will be set later through the DKG Management process after channel creation. This ensures proper key generation ceremony between all participants.
+                    </p>
+                    <p className="text-xs text-blue-200/80">
+                      After creating the channel, use the "DKG Management" page to coordinate the key generation ceremony with all participants.
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -558,7 +535,7 @@ export default function CreateChannelPage() {
 
           {/* Info Panel */}
           <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-8">
-            <h3 className="font-semibold text-[#4fc3f7] mb-4">Channel Requirements</h3>
+            <h3 className="font-semibold text-[#4fc3f7] mb-4">Channel Requirements & Workflow</h3>
             <ul className="space-y-2 text-sm text-gray-300">
               <li>• Maximum participants: 128 (regardless of token count)</li>
               <li>• Minimum 1 participant required</li>
@@ -566,8 +543,9 @@ export default function CreateChannelPage() {
               <li>• Each participant provides only L1 address during creation</li>
               <li>• L2 MPT keys provided during token deposits (per token type)</li>
               <li>• Timeout must be between 1 hour and 365 days</li>
-              <li>• Group public key coordinates required for FROST signatures</li>
+              <li>• Group public key set via DKG ceremony after channel creation</li>
               <li>• 0.001 ETH leader bond required (refunded on successful completion)</li>
+              <li>• DKG Management must be completed before state initialization</li>
             </ul>
           </div>
         </div>
@@ -601,29 +579,29 @@ export default function CreateChannelPage() {
                 <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
                   <span className="text-[#4fc3f7] font-bold text-lg">1.</span>
                   <div>
-                    <p className="font-medium text-white mb-1">Wait for Participants to Deposit</p>
-                    <p>All participants need to deposit their tokens into the channel.</p>
+                    <p className="font-medium text-white mb-1">Coordinate DKG Ceremony</p>
+                    <p>Use the DKG Management page to coordinate the distributed key generation ceremony with all participants.</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
                   <span className="text-[#4fc3f7] font-bold text-lg">2.</span>
                   <div>
-                    <p className="font-medium text-white mb-1">Initialize Channel State</p>
-                    <p>As the channel leader, you'll need to initialize the channel state once all deposits are complete.</p>
+                    <p className="font-medium text-white mb-1">Wait for Participants to Deposit</p>
+                    <p>All participants need to deposit their tokens into the channel.</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
                   <span className="text-[#4fc3f7] font-bold text-lg">3.</span>
                   <div>
-                    <p className="font-medium text-white mb-1">Proof Operations</p>
-                    <p>Submit aggregated proofs, collect signatures, and manage the channel lifecycle.</p>
+                    <p className="font-medium text-white mb-1">Initialize Channel State</p>
+                    <p>As the channel leader, you'll need to initialize the channel state once DKG and deposits are complete.</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
                   <span className="text-[#4fc3f7] font-bold text-lg">4.</span>
                   <div>
-                    <p className="font-medium text-white mb-1">Close & Withdraw</p>
-                    <p>Close the channel when operations are complete and allow participants to withdraw.</p>
+                    <p className="font-medium text-white mb-1">Proof Operations & Close</p>
+                    <p>Submit aggregated proofs, collect signatures, close the channel, and allow participants to withdraw.</p>
                   </div>
                 </div>
               </div>
