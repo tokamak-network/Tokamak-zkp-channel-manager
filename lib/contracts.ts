@@ -290,12 +290,92 @@ export const ROLLUP_BRIDGE_PROOF_MANAGER_ABI = [
     type: 'function'
   },
   {
+    inputs: [
+      { name: 'channelId', type: 'uint256' },
+      {
+        name: 'proofData',
+        type: 'tuple',
+        components: [
+          { name: 'proofPart1', type: 'uint128[]' },
+          { name: 'proofPart2', type: 'uint256[]' },
+          { name: 'publicInputs', type: 'uint256[]' },
+          { name: 'smax', type: 'uint256' },
+          {
+            name: 'functions',
+            type: 'tuple[]',
+            components: [
+              { name: 'functionSignature', type: 'bytes32' },
+              { name: 'preprocessedPart1', type: 'uint128[]' },
+              { name: 'preprocessedPart2', type: 'uint256[]' }
+            ]
+          },
+          { name: 'finalBalances', type: 'uint256[][]' }
+        ]
+      },
+      {
+        name: 'signature',
+        type: 'tuple',
+        components: [
+          { name: 'message', type: 'bytes32' },
+          { name: 'rx', type: 'uint256' },
+          { name: 'ry', type: 'uint256' },
+          { name: 'z', type: 'uint256' }
+        ]
+      }
+    ],
+    name: 'submitProofAndSignature',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function'
+  },
+  {
     anonymous: false,
     inputs: [
       { indexed: true, name: 'channelId', type: 'uint256' },
       { indexed: false, name: 'currentStateRoot', type: 'bytes32' }
     ],
     name: 'StateInitialized',
+    type: 'event'
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'channelId', type: 'uint256' },
+      { indexed: true, name: 'signer', type: 'address' }
+    ],
+    name: 'AggregatedProofSigned',
+    type: 'event'
+  }
+] as const;
+
+// Withdraw Manager ABI
+export const ROLLUP_BRIDGE_WITHDRAW_MANAGER_ABI = [
+  {
+    inputs: [
+      { name: 'channelId', type: 'uint256' }
+    ],
+    name: 'closeAndFinalizeChannel',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function'
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'channelId', type: 'uint256' }
+    ],
+    name: 'ChannelClosed',
+    type: 'event'
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'channelId', type: 'uint256' },
+      { indexed: true, name: 'participant', type: 'address' },
+      { indexed: false, name: 'token', type: 'address' },
+      { indexed: false, name: 'amount', type: 'uint256' }
+    ],
+    name: 'WithdrawCompleted',
     type: 'event'
   }
 ] as const;
@@ -308,6 +388,8 @@ export const ROLLUP_BRIDGE_ABI = [
   ...ROLLUP_BRIDGE_DEPOSIT_MANAGER_ABI,
   // Proof functions
   ...ROLLUP_BRIDGE_PROOF_MANAGER_ABI,
+  // Withdraw functions
+  ...ROLLUP_BRIDGE_WITHDRAW_MANAGER_ABI,
 ] as const;
 
 // Standard ERC20 ABI for token interactions

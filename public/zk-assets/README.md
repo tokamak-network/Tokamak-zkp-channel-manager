@@ -24,26 +24,28 @@ zk-assets/
 
 ✅ **16 leaves (N4)**: Fully supported with circuit_N4.wasm and circuit_final_16.zkey (12MB)
 ✅ **32 leaves (N5)**: Fully supported with circuit_N5.wasm and circuit_final_32.zkey (25MB)
-⚠️ **64 leaves (N6)**: WASM available, zkey requires setup (GitHub size limit: 51MB)
-⚠️ **128 leaves (N7)**: WASM available, zkey requires setup (GitHub size limit: 102MB)
+✅ **64 leaves (N6)**: Fully supported - WASM local, zkey served from Cloudflare R2 (51MB)
+✅ **128 leaves (N7)**: Fully supported - WASM local, zkey served from Cloudflare R2 (102MB)
 
-**Local Development**: 16 and 32-leaf circuits work out of the box. Larger circuits need setup.
-**GitHub Limitation**: Files >50MB cannot be stored in git. Large zkey files need external hosting.
+**Production Ready**: All circuit sizes now work out of the box!
+**Architecture**: Large zkey files hosted on Cloudflare R2, served via Next.js API proxy.
 
 ## Setup Instructions
 
 ### For 16-leaf trees (currently working):
 Files are already copied and working.
 
-### For 32-leaf trees:
-Already set up and working.
+### For all tree sizes (16, 32, 64, 128):
+Everything is now set up and working automatically!
 
-### For 64 and 128-leaf trees:
-1. Generate the large zkey files from `Tokamak-Zk-EVM/packages/BLS12-Poseidon-Merkle-tree-Groth16/circuits/`
-2. Place them in `/public/zk-assets/zkey/` directory:
-   - `circuit_final_64.zkey` (51MB) 
-   - `circuit_final_128.zkey` (102MB)
-3. For production, host these files externally (S3, CDN, IPFS)
+**Small circuits (16, 32)**: Files stored locally in git repository
+**Large circuits (64, 128)**: Files hosted on Cloudflare R2, accessed via API proxy
+
+**External URLs**:
+- 64-leaf: `https://pub-30801471f84a46049e31eea6c3395e00.r2.dev/my-bucket/tokamak-zkp-channles/circuit_final_64.zkey`
+- 128-leaf: `https://pub-30801471f84a46049e31eea6c3395e00.r2.dev/my-bucket/tokamak-zkp-channles/circuit_final_128.zkey`
+
+**API Proxy**: `/api/proxy-large-zkey?size={64|128}` handles CORS and caching
 
 ### Browser Requirements
 

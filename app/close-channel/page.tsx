@@ -1,16 +1,19 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useContractRead, useContractWrite, usePrepareContractWrite, useWaitForTransaction, useAccount } from 'wagmi';
-import { parseEther, formatEther } from 'viem';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { Footer } from '@/components/Footer';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI, ETH_TOKEN_ADDRESS } from '@/lib/contracts';
-import { getTokenSymbol, getTokenDecimals } from '@/lib/tokenUtils';
+import { 
+  ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS, 
+  ROLLUP_BRIDGE_WITHDRAW_MANAGER_ABI,
+  ROLLUP_BRIDGE_CORE_ADDRESS,
+  ROLLUP_BRIDGE_CORE_ABI 
+} from '@/lib/contracts';
 import { XCircle, Link, ShieldOff, CheckCircle2, Clock, AlertCircle, ListChecks } from 'lucide-react';
 
 export default function CloseChannelPage() {
@@ -20,60 +23,38 @@ export default function CloseChannelPage() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
-  // Channel information
+  // Channel information from core contract
   const { data: channelInfo } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelInfo',
     args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
     enabled: Boolean(leaderChannel?.id !== undefined)
   });
-  
-  const { data: channelTimeoutInfo } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelTimeout',
-    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
-    enabled: Boolean(leaderChannel?.id !== undefined)
-  });
-  
+
   const { data: channelParticipants } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelParticipants',
     args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
     enabled: Boolean(leaderChannel?.id !== undefined)
   });
-  
-  const { data: channelState } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelState',
+
+  const { data: allowedTokens } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelAllowedTokens',
     args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
     enabled: Boolean(leaderChannel?.id !== undefined)
   });
-  
-  // TODO: Implement channel deposits calculation using getChannelTotalDeposits for each token
-  // const { data: channelDeposits } = useContractRead({
-  //   address: ROLLUP_BRIDGE_ADDRESS,
-  //   abi: ROLLUP_BRIDGE_ABI,
-  //   functionName: 'getChannelTotalDeposits',
-  //   args: leaderChannel ? [BigInt(leaderChannel.id), tokenAddress] : undefined,
-  //   enabled: Boolean(leaderChannel?.id !== undefined && tokenAddress)
-  // });
 
-  // Get token information for the channel
-  const tokenAddress = channelInfo?.[0] as `0x${string}` | undefined; // targetContract from getChannelInfo
-  const participantCount = channelInfo?.[2] ? Number(channelInfo[2]) : 0;
-  
-  // Check if channel is ready to close based on state
-  const isChannelReadyToClose = channelState !== undefined && Number(channelState) > 0; // Not in Pending(0) state
-  
-  // TODO: debugTokenInfo function removed from new contract architecture
-  // Using centralized token mapping functions
-  const tokenSymbol = tokenAddress ? getTokenSymbol(tokenAddress) : 'TOKEN';
-  const tokenDecimals = tokenAddress ? getTokenDecimals(tokenAddress) : 18;
-  const isETH = tokenAddress === ETH_TOKEN_ADDRESS;
+  const { data: signatureVerified } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'isSignatureVerified',
+    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
+    enabled: Boolean(leaderChannel?.id !== undefined)
+  });
   
   // Helper function to get channel state display name
   const getChannelStateDisplay = (stateNumber: number) => {
@@ -91,82 +72,75 @@ export default function CloseChannelPage() {
   // Get channel state colors
   const getChannelStateColor = (stateNumber: number) => {
     const colors = {
-      0: 'text-gray-400',        // None
-      1: 'text-[#4fc3f7]',        // Initialized  
-      2: 'text-green-400',      // Open
-      3: 'text-green-400',      // Active
-      4: 'text-yellow-400',    // Closing
-      5: 'text-red-400'           // Closed
+      0: 'text-gray-500 dark:text-gray-400',
+      1: 'text-[#4fc3f7]',
+      2: 'text-green-400',
+      3: 'text-green-400',
+      4: 'text-yellow-400',
+      5: 'text-red-400'
     };
-    return colors[stateNumber as keyof typeof colors] || 'text-gray-400';
+    return colors[stateNumber as keyof typeof colors] || 'text-gray-500 dark:text-gray-400';
   };
   
-  // TODO: Implement closeChannel transaction (function doesn't exist in current contract)
-  // const { config, error: prepareError } = usePrepareContractWrite({
-  //   address: ROLLUP_BRIDGE_ADDRESS,
-  //   abi: ROLLUP_BRIDGE_ABI,
-  //   functionName: 'closeChannel',
-  //   args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
-  //   enabled: Boolean(leaderChannel?.id !== undefined)
-  // });
+  // Contract write preparation for closeAndFinalizeChannel
+  const { config, error: prepareError } = usePrepareContractWrite({
+    address: ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS,
+    abi: ROLLUP_BRIDGE_WITHDRAW_MANAGER_ABI,
+    functionName: 'closeAndFinalizeChannel',
+    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
+    enabled: Boolean(leaderChannel && isChannelReadyToClose())
+  });
   
-  // const { data, write } = useContractWrite(config);
+  const { data, write } = useContractWrite(config);
   
-  // const { isLoading: isTransactionLoading, isSuccess } = useWaitForTransaction({
-  //   hash: data?.hash,
-  // });
+  const { isLoading: isTransactionLoading, isSuccess } = useWaitForTransaction({
+    hash: data?.hash,
+  });
+
+  // Check if channel is ready to close
+  function isChannelReadyToClose(): boolean {
+    if (!channelInfo || !signatureVerified) return false;
+    
+    const channelState = Number(channelInfo[1]);
+    return channelState === 4 && signatureVerified; // Closing state and signature verified
+  }
   
-  // Placeholder values for UI
-  const prepareError = null;
-  const write = null;
-  const isTransactionLoading = false;
-  const isSuccess = false;
-  
+  // Submit handler
   const handleCloseChannel = async () => {
-    // Debug logging
-    console.log('=== CLOSE CHANNEL DEBUG INFO ===');
-    console.log('Channel ID:', leaderChannel?.id);
-    console.log('Channel Info:', channelInfo);
-    console.log('Channel State:', channelInfo ? Number(channelInfo[1]) : 'undefined');
-    console.log('Channel State Name:', channelInfo ? getChannelStateDisplay(Number(channelInfo[1])) : 'undefined');
-    console.log('Channel State:', channelState);
-    console.log('Token Address:', tokenAddress);
-    console.log('Token Info: Using fallback values (debugTokenInfo removed)');
-    console.log('Token Symbol:', tokenSymbol);
-    console.log('Token Decimals:', tokenDecimals);
-    console.log('Is Ready To Close:', isChannelReadyToClose);
-    console.log('Is Leader:', hasAccess);
-    console.log('Connected Address:', address);
-    console.log('=================');
+    console.log('🔍 CLOSE CHANNEL DEBUG:');
+    console.log('  Channel ID:', leaderChannel?.id);
+    console.log('  Channel Info:', channelInfo);
+    console.log('  Channel State:', channelInfo ? Number(channelInfo[1]) : 'undefined');
+    console.log('  Signature Verified:', signatureVerified);
+    console.log('  Is Ready To Close:', isChannelReadyToClose());
+    console.log('  Contract Address:', ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS);
+    console.log('  Connected Address:', address);
     
-    // TODO: Close channel functionality not yet implemented
-    alert('Close channel functionality is not yet implemented in the smart contract.');
-    return;
+    if (!write) {
+      if (prepareError) {
+        console.error('Prepare Error:', prepareError);
+        alert(`Contract error: ${prepareError.message || 'Transaction preparation failed'}`);
+      } else {
+        alert('Transaction not ready. Please ensure the channel is in Closing state with verified signatures.');
+      }
+      return;
+    }
     
-    // if (!write) {
-    //   if (prepareError) {
-    //     console.log('Prepare Error:', prepareError);
-    //     alert(`Contract error: ${prepareError.message || 'Transaction preparation failed'}`);
-    //   } else {
-    //     alert('Transaction not ready. Please ensure you have the correct wallet permissions and the channel is ready to close.');
-    //   }
-    //   return;
-    // }
-    
-    // try {
-    //   setIsLoading(true);
-    //   write();
-    // } catch (error) {
-    //   console.error('Error closing channel:', error);
-    //   alert('Error closing channel. Please try again.');
-    // } finally {
-    //   setIsLoading(false);
-    // }
+    try {
+      setIsLoading(true);
+      write();
+    } catch (error) {
+      console.error('Error closing channel:', error);
+      alert('Error closing channel. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
   
-  // Check if channel is in correct state for closure (Closing=4 and sigVerified=true)
+  // Check if channel is in correct state for closure (Closing=4 and signature verified)
   const isChannelStateValid = channelInfo && Number(channelInfo[1]) === 4;
-  const canCloseChannel = isConnected && hasAccess && leaderChannel && isChannelStateValid && isChannelReadyToClose && !isLoading && !isTransactionLoading;
+  const isSignatureValid = Boolean(signatureVerified);
+  const canCloseChannel = isConnected && hasAccess && leaderChannel && isChannelReadyToClose() && !isLoading && !isTransactionLoading;
 
   if (!isMounted) {
     return <div className="min-h-screen bg-gray-50 dark:bg-gray-900"></div>;
@@ -191,10 +165,10 @@ export default function CloseChannelPage() {
               <div className="h-10 w-10 bg-[#4fc3f7] flex items-center justify-center shadow-lg shadow-[#4fc3f7]/30">
                 <XCircle className="w-6 h-6 text-white" />
               </div>
-              <h1 className="text-3xl font-bold text-white">Close Channel</h1>
+              <h1 className="text-3xl font-bold text-white">Close & Finalize Channel</h1>
             </div>
             <p className="text-gray-300 ml-13">
-              Finalize and permanently close your channel to enable withdrawals
+              Permanently close your channel and enable participant withdrawals
             </p>
           </div>
 
@@ -230,7 +204,7 @@ export default function CloseChannelPage() {
                   <div>
                     <h2 className="text-2xl font-bold text-white">Channel Information</h2>
                     <p className="text-gray-300 mt-1">
-                      Review channel status before closing
+                      Review channel status before finalizing closure
                     </p>
                   </div>
                 </div>
@@ -243,7 +217,7 @@ export default function CloseChannelPage() {
                     </div>
                     <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 rounded-lg p-4">
                       <div className="text-sm text-gray-400">Status</div>
-                      <div className={`text-lg font-semibold ${channelInfo ? getChannelStateColor(Number(channelInfo[1])) : 'text-gray-500 dark:text-gray-400'}`}>
+                      <div className={`text-lg font-semibold ${channelInfo ? getChannelStateColor(Number(channelInfo[1])) : 'text-gray-400'}`}>
                         {channelInfo ? getChannelStateDisplay(Number(channelInfo[1])) : 'Loading...'}
                       </div>
                     </div>
@@ -254,24 +228,23 @@ export default function CloseChannelPage() {
                       </div>
                     </div>
                     <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 rounded-lg p-4">
-                      <div className="text-sm text-gray-400">Total Deposits</div>
+                      <div className="text-sm text-gray-400">Allowed Tokens</div>
                       <div className="text-lg font-semibold text-white">
-                        {/* TODO: Implement total deposits calculation */}
-                        {'-- ' + (isETH ? 'ETH' : tokenSymbol || 'TOKEN')}
+                        {allowedTokens ? allowedTokens.length : '...'}
                       </div>
                     </div>
                   </div>
                 )}
               </div>
               
-              {/* Channel Closure Information */}
+              {/* Channel Closure Process */}
               <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/20">
                 <div className="p-6 border-b border-[#4fc3f7]/30">
                   <h3 className="text-xl font-semibold text-white mb-2">
                     Channel Closure Process
                   </h3>
                   <p className="text-gray-400">
-                    Close your channel to finalize all transactions and enable participant withdrawals
+                    Finalize channel closure to enable participant withdrawals using the new withdraw manager
                   </p>
                 </div>
                 
@@ -280,7 +253,7 @@ export default function CloseChannelPage() {
                   <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 p-6">
                     <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                       <ListChecks className="w-6 h-6 text-[#4fc3f7]" />
-                      Pre-Closure Checklist
+                      Pre-Closure Requirements
                     </h4>
                     <div className="space-y-3">
                       <div className={`flex items-center gap-3 p-3 ${
@@ -306,45 +279,45 @@ export default function CloseChannelPage() {
                       </div>
                       
                       <div className={`flex items-center gap-3 p-3 ${
-                        isChannelReadyToClose 
+                        isSignatureValid 
                           ? 'bg-green-500/10 border border-green-500/30' 
                           : 'bg-[#0a1930]/50 border border-[#4fc3f7]/30'
                       }`}>
-                        {isChannelReadyToClose ? (
+                        {isSignatureValid ? (
                           <CheckCircle2 className="w-6 h-6 text-green-400 flex-shrink-0" />
                         ) : (
                           <Clock className="w-6 h-6 text-gray-400 flex-shrink-0" />
                         )}
                         <div>
                           <div className={`font-medium ${
-                            isChannelReadyToClose ? 'text-green-300' : 'text-gray-300'
+                            isSignatureValid ? 'text-green-300' : 'text-gray-300'
                           }`}>
-                            All Signatures Verified
+                            Group Signature Verified
                           </div>
                           <div className="text-sm text-gray-400">
-                            Group threshold signatures must be submitted and verified
+                            Multi-proof and threshold signature must be submitted and verified
                           </div>
                         </div>
                       </div>
                       
                       <div className={`flex items-center gap-3 p-3 ${
-                        leaderChannel 
+                        hasAccess 
                           ? 'bg-green-500/10 border border-green-500/30' 
-                          : 'bg-[#0a1930]/50 border border-[#4fc3f7]/30'
+                          : 'bg-red-500/10 border border-red-500/30'
                       }`}>
-                        {leaderChannel ? (
+                        {hasAccess ? (
                           <CheckCircle2 className="w-6 h-6 text-green-400 flex-shrink-0" />
                         ) : (
                           <AlertCircle className="w-6 h-6 text-red-400 flex-shrink-0" />
                         )}
                         <div>
                           <div className={`font-medium ${
-                            leaderChannel ? 'text-green-300' : 'text-gray-300'
+                            hasAccess ? 'text-green-300' : 'text-red-300'
                           }`}>
                             Channel Leadership
                           </div>
                           <div className="text-sm text-gray-400">
-                            You are the channel leader with closure permissions
+                            Only the channel leader can finalize closure
                           </div>
                         </div>
                       </div>
@@ -358,34 +331,44 @@ export default function CloseChannelPage() {
                       <div>
                         <h4 className="font-semibold text-amber-300 mb-2">Important Notice</h4>
                         <ul className="text-sm text-amber-200/90 space-y-1">
-                          <li>• Closing a channel is <strong>irreversible</strong></li>
+                          <li>• Channel closure is <strong>permanent and irreversible</strong></li>
                           <li>• All participants will be able to withdraw their final balances</li>
-                          <li>• The channel cannot be reopened once closed</li>
-                          <li>• Ensure all off-chain computations are complete</li>
+                          <li>• This uses the new withdraw manager contract architecture</li>
+                          <li>• Withdrawals are processed individually by each participant</li>
+                          <li>• Ensure all off-chain state transitions are complete</li>
                         </ul>
                       </div>
+                    </div>
+                  </div>
+                  
+                  {/* Contract Information */}
+                  <div className="bg-[#4fc3f7]/5 border border-[#4fc3f7]/20 p-4">
+                    <h4 className="text-sm font-semibold text-[#4fc3f7] mb-2">Contract Details</h4>
+                    <div className="text-xs text-gray-400 space-y-1">
+                      <div>Withdraw Manager: <span className="text-[#4fc3f7] font-mono">{ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS}</span></div>
+                      <div>Function: <span className="text-[#4fc3f7] font-mono">closeAndFinalizeChannel(uint256 channelId)</span></div>
                     </div>
                   </div>
                   
                   {/* Close Button */}
                   <div className="pt-6 border-t border-[#4fc3f7]/30">
                     {/* Status Messages */}
-                    {!canCloseChannel && isChannelStateValid && !isChannelReadyToClose && (
-                      <div className="mb-4 p-4 bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
-                        <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                        <div className="text-sm text-amber-300">
-                          <strong className="block mb-1">Channel Not Ready</strong>
-                          Channel not ready to close. All signatures must be verified first.
-                        </div>
-                      </div>
-                    )}
-                    
                     {!canCloseChannel && !isChannelStateValid && channelInfo && (
                       <div className="mb-4 p-4 bg-red-500/10 border border-red-500/30 flex items-start gap-3">
                         <ShieldOff className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
                         <div className="text-sm text-red-300">
                           <strong className="block mb-1">Invalid Channel State</strong>
-                          Channel must be in "Closing" state to close. Current state: {getChannelStateDisplay(Number(channelInfo[1]))}
+                          Channel must be in "Closing" state to finalize. Current: {getChannelStateDisplay(Number(channelInfo[1]))}
+                        </div>
+                      </div>
+                    )}
+
+                    {!canCloseChannel && isChannelStateValid && !isSignatureValid && (
+                      <div className="mb-4 p-4 bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
+                        <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-amber-300">
+                          <strong className="block mb-1">Signatures Required</strong>
+                          Group threshold signatures must be verified before closure.
                         </div>
                       </div>
                     )}
@@ -394,17 +377,16 @@ export default function CloseChannelPage() {
                       <div className="mb-4 p-4 bg-green-500/10 border border-green-500/30 flex items-start gap-3">
                         <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
                         <div className="text-sm text-green-300">
-                          <strong className="block mb-1">Success!</strong>
-                          Channel closed successfully! Participants can now withdraw.
+                          <strong className="block mb-1">Channel Closed Successfully!</strong>
+                          Channel has been finalized. Participants can now withdraw their final balances.
                         </div>
                       </div>
                     )}
                     
-                    {/* Close Button - Full Width */}
                     <button
                       onClick={handleCloseChannel}
                       disabled={!canCloseChannel}
-                      className={`w-full px-8 py-4 font-semibold text-lg transition-all ${
+                      className={`w-full px-8 py-4 rounded-lg font-semibold text-lg transition-all ${
                         canCloseChannel
                           ? 'bg-[#4fc3f7] hover:bg-[#029bee] text-white shadow-lg shadow-[#4fc3f7]/30 hover:shadow-xl hover:shadow-[#4fc3f7]/50'
                           : 'bg-gray-600 text-gray-400 cursor-not-allowed'
@@ -413,10 +395,10 @@ export default function CloseChannelPage() {
                       {isLoading || isTransactionLoading ? (
                         <div className="flex items-center justify-center gap-3">
                           <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                          <span>Closing Channel...</span>
+                          <span>Finalizing Channel Closure...</span>
                         </div>
                       ) : (
-                        'Close Channel Permanently'
+                        'Close & Finalize Channel'
                       )}
                     </button>
                   </div>

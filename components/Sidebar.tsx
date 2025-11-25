@@ -8,7 +8,7 @@ import Image from 'next/image';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { ClientOnly } from '@/components/ClientOnly';
 import { NetworkDropdown } from '@/components/NetworkDropdown';
-import { Home, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Search, Settings, FileCheck, XCircle, Trash2, Activity } from 'lucide-react';
+import { Home, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Search, Settings, FileCheck, XCircle, Activity } from 'lucide-react';
 
 interface SidebarProps {
   isConnected: boolean;
@@ -127,13 +127,6 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
         name: 'Close Channel',
         href: '/close-channel',
         icon: XCircle,
-        description: '',
-        requiresConnection: true
-      },
-      {
-        name: 'Delete Channel',
-        href: '/delete-channel',
-        icon: Trash2,
         description: '',
         requiresConnection: true
       }

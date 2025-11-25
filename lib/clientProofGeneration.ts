@@ -52,7 +52,8 @@ export async function generateClientSideProof(
 
     onProgress?.('Loading circuit files...');
 
-    // Use appropriate circuit for each tree size (now that we have all WASM files locally)
+    // Use appropriate circuit for each tree size 
+    // Large files (64+, 128-leaf) are served via API proxy from Cloudflare R2
     const getCircuitConfig = (size: number) => {
       const configs = {
         16: {
@@ -69,13 +70,13 @@ export async function generateClientSideProof(
         },
         64: {
           wasmUrl: '/zk-assets/wasm/circuit_N6.wasm',
-          zkeyUrl: `/zk-assets/zkey/circuit_final_64.zkey`,
+          zkeyUrl: `/api/proxy-large-zkey?size=64`,
           circuitName: 'circuit_N6', 
           actualTreeSize: 64
         },
         128: {
           wasmUrl: '/zk-assets/wasm/circuit_N7.wasm',
-          zkeyUrl: `/zk-assets/zkey/circuit_final_128.zkey`,
+          zkeyUrl: `/api/proxy-large-zkey?size=128`,
           circuitName: 'circuit_N7',
           actualTreeSize: 128
         }
@@ -99,13 +100,14 @@ export async function generateClientSideProof(
       console.log(`  zkey file: ${actualConfig.zkeyUrl}`);
       console.log(`  Expected tree size: ${treeSize} leaves`);
       
-      // Warn about missing large files due to GitHub limits
+      // Info about large file serving
       if (treeSize >= 64) {
-        console.log('⚠️ NOTE: Large zkey files (64+ leaves) are not included in git due to GitHub file size limits');
-        console.log('📋 For production use, these files need to be:');
-        console.log('   1. Generated locally from Tokamak-Zk-EVM circuits');
-        console.log('   2. Hosted externally (AWS S3, IPFS, etc.)');
-        console.log('   3. Downloaded at runtime or build time');
+        console.log('🌐 NOTE: Large zkey files (64+ leaves) served via Cloudflare R2');
+        console.log('📋 Architecture:');
+        console.log('   1. Files hosted on Cloudflare R2 bucket');
+        console.log('   2. Served via Next.js API proxy at /api/proxy-large-zkey');
+        console.log('   3. CORS and caching handled automatically');
+        console.log('   4. No manual setup required - works out of the box!');
       }
     }
     
@@ -255,22 +257,22 @@ export function getMemoryRequirement(treeSize: number): string {
 
 /**
  * Check if large circuit files need to be downloaded
- * Large files (64+ leaves) are not stored in git due to size limits
+ * Large files (64+ leaves) are served via API proxy from Cloudflare R2
  */
 export function requiresExternalDownload(treeSize: number): boolean {
-  return treeSize >= 64; // Large files need external download/setup
+  return false; // All files now available via API proxy
 }
 
 /**
  * Get estimated download size for circuit
- * Large files require external setup due to GitHub size limits
+ * Large files are served from Cloudflare R2 via API proxy
  */
 export function getDownloadSize(treeSize: number): string {
   const sizes = {
     16: '0MB (local)',
     32: '0MB (local)', 
-    64: '~51MB (requires setup)',
-    128: '~102MB (requires setup)'
+    64: '~51MB (from R2)',
+    128: '~102MB (from R2)'
   };
   return sizes[treeSize as keyof typeof sizes] || '0MB (local)';
 }
@@ -293,8 +295,8 @@ export async function verifyCircuitFiles(): Promise<{
     const configs = {
       16: { wasmUrl: '/zk-assets/wasm/circuit_N4.wasm', zkeyUrl: '/zk-assets/zkey/circuit_final_16.zkey' },
       32: { wasmUrl: '/zk-assets/wasm/circuit_N5.wasm', zkeyUrl: '/zk-assets/zkey/circuit_final_32.zkey' },
-      64: { wasmUrl: '/zk-assets/wasm/circuit_N6.wasm', zkeyUrl: '/zk-assets/zkey/circuit_final_64.zkey' },
-      128: { wasmUrl: '/zk-assets/wasm/circuit_N7.wasm', zkeyUrl: '/zk-assets/zkey/circuit_final_128.zkey' }
+      64: { wasmUrl: '/zk-assets/wasm/circuit_N6.wasm', zkeyUrl: '/api/proxy-large-zkey?size=64' },
+      128: { wasmUrl: '/zk-assets/wasm/circuit_N7.wasm', zkeyUrl: '/api/proxy-large-zkey?size=128' }
     };
     
     const config = configs[size as keyof typeof configs];
