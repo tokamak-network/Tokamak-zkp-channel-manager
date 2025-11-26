@@ -46,7 +46,7 @@ export default function ChannelsPage() {
   const { data: totalChannels, refetch: refetchTotalChannels } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getTotalChannels',
+    functionName: 'nextChannelId',
     watch: true
   });
 

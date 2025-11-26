@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI, ETH_TOKEN_ADDRESS, ERC20_ABI } from '@/lib/contracts';
+import { ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS, ROLLUP_BRIDGE_DEPOSIT_MANAGER_ABI, TON_TOKEN_ADDRESS, ERC20_ABI } from '@/lib/contracts';
 import { DepositFormData } from '@/lib/types';
 import { formatBalance, isValidAmount, parseInputAmount, isValidAddress } from '@/lib/utils';
 import { AlertCircle, Coins, ArrowDown, CheckCircle } from 'lucide-react';
@@ -39,13 +39,13 @@ export function DepositModal({
   const [formData, setFormData] = useState<DepositFormData>({
     channelId: channelId.toString(),
     amount: '',
-    token: targetContract === ETH_TOKEN_ADDRESS ? 'ETH' : 'ERC20',
-    tokenAddress: targetContract !== ETH_TOKEN_ADDRESS ? targetContract : undefined
+    token: 'ERC20', // We only support ERC20 tokens now (TON, WTON, USDT)
+    tokenAddress: targetContract
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const isETH = formData.token === 'ETH';
-  const tokenAddress = isETH ? ETH_TOKEN_ADDRESS : (formData.tokenAddress || targetContract);
+  const isETH = false; // We no longer support ETH
+  const tokenAddress = formData.tokenAddress || targetContract;
 
   // Get user's balance
   const { data: balance } = useContractRead({
@@ -61,7 +61,7 @@ export function DepositModal({
     address: !isETH ? tokenAddress as `0x${string}` : undefined,
     abi: !isETH ? ERC20_ABI : undefined,
     functionName: !isETH ? 'allowance' : undefined,
-    args: !isETH && address ? [address, ROLLUP_BRIDGE_ADDRESS] : undefined,
+    args: !isETH && address ? [address, ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS] : undefined,
     enabled: !isETH && isValidAddress(tokenAddress) && isValidAmount(formData.amount)
   });
 
@@ -74,7 +74,7 @@ export function DepositModal({
     address: !isETH ? tokenAddress as `0x${string}` : undefined,
     abi: !isETH ? ERC20_ABI : undefined,
     functionName: !isETH ? 'approve' : undefined,
-    args: !isETH ? [ROLLUP_BRIDGE_ADDRESS, parseInputAmount(formData.amount, 18)] : undefined,
+    args: !isETH ? [ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS, parseInputAmount(formData.amount, 18)] : undefined,
     enabled: needsApproval && isValidAmount(formData.amount)
   });
 
@@ -84,18 +84,23 @@ export function DepositModal({
   });
 
   // Prepare deposit transaction
-  const depositArgs = isETH 
-    ? [channelId] as const
-    : [channelId, tokenAddress as `0x${string}`, parseInputAmount(formData.amount, 18)] as const;
+  // For now, we'll use a placeholder mptKey - this should be generated based on user's deposit position
+  const placeholderMptKey = '0x0000000000000000000000000000000000000000000000000000000000000000';
+  
+  const depositArgs = [
+    channelId, 
+    tokenAddress as `0x${string}`, 
+    parseInputAmount(formData.amount, 18),
+    placeholderMptKey
+  ] as const;
   
   const { config: depositConfig } = usePrepareContractWrite({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: isETH ? 'depositETH' : 'depositToken',
+    address: ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS,
+    abi: ROLLUP_BRIDGE_DEPOSIT_MANAGER_ABI,
+    functionName: 'depositToken',
     args: depositArgs,
-    value: isETH ? parseInputAmount(formData.amount, 18) : undefined,
-    enabled: isValidAmount(formData.amount) && (!needsApproval || approvalSuccess)
-  } as any);
+    enabled: isValidAmount(formData.amount) && (!needsApproval || approvalSuccess) && isValidAddress(tokenAddress)
+  });
 
   const { write: deposit, data: depositData } = useContractWrite(depositConfig);
   const { isLoading: isDepositing, isSuccess: depositSuccess } = useWaitForTransaction({
@@ -111,8 +116,8 @@ export function DepositModal({
     setFormData({
       channelId: channelId.toString(),
       amount: '',
-      token: targetContract === ETH_TOKEN_ADDRESS ? 'ETH' : 'ERC20',
-      tokenAddress: targetContract !== ETH_TOKEN_ADDRESS ? targetContract : undefined
+      token: 'ERC20',
+      tokenAddress: targetContract
     });
     setErrors({});
   };
@@ -163,48 +168,15 @@ export function DepositModal({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Token Selection */}
-          {targetContract === ETH_TOKEN_ADDRESS && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Token Type</label>
-              <Select
-                value={formData.token}
-                onValueChange={(value: 'ETH' | 'ERC20') => {
-                  setFormData(prev => ({ ...prev, token: value }));
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ETH">ETH</SelectItem>
-                  <SelectItem value="ERC20">Custom ERC20</SelectItem>
-                </SelectContent>
-              </Select>
+          {/* Token Info Display */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Token</label>
+            <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Contract: {tokenAddress}
+              </div>
             </div>
-          )}
-
-          {/* Custom Token Address */}
-          {formData.token === 'ERC20' && targetContract === ETH_TOKEN_ADDRESS && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Token Contract Address</label>
-              <Input
-                placeholder="0x..."
-                value={formData.tokenAddress || ''}
-                onChange={(e) => setFormData(prev => ({ 
-                  ...prev, 
-                  tokenAddress: e.target.value 
-                }))}
-                className={errors.tokenAddress ? 'border-red-500' : ''}
-              />
-              {errors.tokenAddress && (
-                <div className="text-sm text-red-500 flex items-center gap-1">
-                  <AlertCircle className="h-4 w-4" />
-                  {errors.tokenAddress}
-                </div>
-              )}
-            </div>
-          )}
+          </div>
 
           {/* Amount Input */}
           <div className="space-y-2">

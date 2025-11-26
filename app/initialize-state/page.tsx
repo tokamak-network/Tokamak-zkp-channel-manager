@@ -8,7 +8,17 @@ import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { Footer } from '@/components/Footer';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import {
+  ROLLUP_BRIDGE_CORE_ADDRESS,
+  ROLLUP_BRIDGE_ADDRESS,
+  ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS,
+  ROLLUP_BRIDGE_CORE_ABI,
+  ROLLUP_BRIDGE_ABI,
+  ROLLUP_BRIDGE_PROOF_MANAGER_ABI,
+  getGroth16VerifierAddress
+} from '@/lib/contracts';
+import { getTokenSymbol, getTokenDecimals } from '@/lib/tokenUtils';
+import { generateClientSideProof, isClientProofGenerationSupported, getMemoryRequirement, requiresExternalDownload, getDownloadSize } from '@/lib/clientProofGeneration';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 import { Settings, Link, ShieldOff, Users, CheckCircle2, XCircle, Calculator } from 'lucide-react';
 
@@ -86,22 +96,23 @@ export default function InitializeStatePage() {
   const [isGeneratingProof, setIsGeneratingProof] = useState(false);
   const [proofGenerationStatus, setProofGenerationStatus] = useState('');
   const [generatedProof, setGeneratedProof] = useState<any>(null);
+  const [browserCompatible, setBrowserCompatible] = useState<boolean | null>(null);
 
-  // Get total number of channels
+  // Get total number of channels from Core contract
   const { data: totalChannels } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getTotalChannels',
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'nextChannelId',
     enabled: isMounted && isConnected,
   });
 
   // Note: Channel stats are handled by useLeaderAccess hook
 
 
-  // Initialize channel state transaction
+  // Initialize channel state transaction - now uses ProofManager
   const { write: initializeChannelState, data: initializeData } = useContractWrite({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS,
+    abi: ROLLUP_BRIDGE_PROOF_MANAGER_ABI,
     functionName: 'initializeChannelState',
   });
 
@@ -128,11 +139,17 @@ export default function InitializeStatePage() {
     }
   }, [isMounted, hookLeaderChannel]);
 
+  // Check browser compatibility for client-side proof generation
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setBrowserCompatible(isClientProofGenerationSupported());
+    }
+  }, []);
 
-  // Get participants for leader channel
+  // Get participants for leader channel from Core contract
   const { data: channelParticipants } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelParticipants',
     args: hookLeaderChannel ? [BigInt(hookLeaderChannel.id)] : undefined,
     enabled: isMounted && isConnected && !!hookLeaderChannel,
@@ -152,18 +169,19 @@ export default function InitializeStatePage() {
 
   const firstToken = getFirstToken();
 
-  // Get token info using debugTokenInfo for consistency with other pages
-  const { data: tokenInfo } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'debugTokenInfo',
-    args: firstToken && address ? [firstToken, address] : undefined,
-    enabled: isMounted && isConnected && !!firstToken && !!address,
+  // Get tree size for the channel to determine circuit size
+  const { data: channelTreeSize } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelTreeSize',
+    args: hookLeaderChannel ? [BigInt(hookLeaderChannel.id)] : undefined,
+    enabled: isMounted && isConnected && !!hookLeaderChannel,
   });
 
-  // Extract token info with proper fallbacks
-  const tokenDecimals = tokenInfo?.[6] || 18;
-  const tokenSymbol = tokenInfo?.[5] || 'TOKEN';
+  // TODO: debugTokenInfo function removed from new contract architecture
+  // Using centralized token mapping functions
+  const tokenDecimals = firstToken ? getTokenDecimals(firstToken) : 18;
+  const tokenSymbol = firstToken ? getTokenSymbol(firstToken) : 'TOKEN';
 
   // Note: We'll fetch individual participant deposits during proof generation
   // since there's no single function to get all channel deposits
@@ -189,14 +207,37 @@ export default function InitializeStatePage() {
 
     setProofGenerationStatus('Collecting channel data...');
     
+    // Determine required tree size first from contract or calculate based on channel data
+    const participantCount = channelParticipants.length;
+    const allowedTokens = hookLeaderChannel.stats[1] as readonly `0x${string}`[];
+    const tokenCount = allowedTokens.length;
+    
+    // Calculate expected number of entries (participants × tokens)
+    const expectedEntries = participantCount * tokenCount;
+    
+    // Determine tree size from contract or calculate based on expected entries
+    let treeSize: number;
+    if (channelTreeSize) {
+      treeSize = Number(channelTreeSize);
+    } else {
+      // Find the smallest tree size that can accommodate all entries
+      const minTreeSize = Math.max(16, Math.min(128, 2 ** Math.ceil(Math.log2(expectedEntries))));
+      treeSize = [16, 32, 64, 128].find(size => size >= minTreeSize) || 128;
+    }
+    
+    // Validate tree size is supported
+    if (![16, 32, 64, 128].includes(treeSize)) {
+      throw new Error(`Unsupported tree size: ${treeSize}. Channel tree size from contract: ${channelTreeSize}`);
+    }
+    
+    setProofGenerationStatus(`Collecting data for ${treeSize}-leaf merkle tree (${participantCount} participants × ${tokenCount} tokens)...`);
+    
     // Collect storage keys (L2 MPT keys) and values (deposits)
     const storageKeysL2MPT: string[] = [];
     const storageValues: string[] = [];
     
-    const allowedTokens = hookLeaderChannel.stats[1] as readonly `0x${string}`[];
-    
-    // Build participant-token combinations with fallback strategy
-    for (let j = 0; j < allowedTokens.length && storageKeysL2MPT.length < 16; j++) {
+    // Build participant-token combinations - collect up to tree size
+    for (let j = 0; j < allowedTokens.length && storageKeysL2MPT.length < treeSize; j++) {
       const token = allowedTokens[j];
       
       setProofGenerationStatus(`Fetching L2 MPT keys for token ${j + 1} of ${allowedTokens.length}...`);
@@ -211,7 +252,6 @@ export default function InitializeStatePage() {
         
         if (keysResponse.ok) {
           keysResult = await keysResponse.json();
-          console.log('✓ Bulk L2 MPT keys fetch successful');
         } else {
           throw new Error(`HTTP ${keysResponse.status}`);
         }
@@ -220,7 +260,7 @@ export default function InitializeStatePage() {
       }
       
       // Process each participant for this token
-      for (let i = 0; i < channelParticipants.length && storageKeysL2MPT.length < 16; i++) {
+      for (let i = 0; i < channelParticipants.length && storageKeysL2MPT.length < treeSize; i++) {
         const participant = channelParticipants[i];
         
         setProofGenerationStatus(`Processing participant ${i + 1}, token ${j + 1}...`);
@@ -273,38 +313,67 @@ export default function InitializeStatePage() {
       }
     }
     
-    // Pad arrays to exactly 16 elements (circuit requirement)
-    while (storageKeysL2MPT.length < 16) {
+    // Tree size was determined earlier in the function
+    
+    // Pad arrays to exactly treeSize elements (circuit requirement)
+    while (storageKeysL2MPT.length < treeSize) {
       storageKeysL2MPT.push('0');
       storageValues.push('0');
     }
     
     setProofGenerationStatus('Preparing circuit input...');
     
-    const circuitInput = {
-      storage_keys_L2MPT: storageKeysL2MPT,
-      storage_values: storageValues
-    };
+    console.log('🔍 PROOF GENERATION DEBUG:');
+    console.log('  Channel ID:', hookLeaderChannel.id);
+    console.log('  Channel Tree Size:', channelTreeSize);
+    console.log('  Requested Tree Size:', treeSize);
+    console.log('  Storage Keys Length:', storageKeysL2MPT.length);
+    console.log('  Storage Values Length:', storageValues.length);
+    console.log('  First 5 Storage Keys:', storageKeysL2MPT.slice(0, 5));
+    console.log('  First 5 Storage Values:', storageValues.slice(0, 5));
     
-    console.log('Circuit input:', circuitInput);
-    setProofGenerationStatus('Generating Groth16 proof (this may take a few minutes)...');
-    
-    // Call proof generation API that uses generateProof.js
-    const response = await fetch('/api/generate-groth16-proof', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(circuitInput)
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `Proof generation failed: ${response.statusText}`);
+    // CRITICAL WARNING: Check for tree size mismatch
+    if (treeSize > 16) {
+      console.error('🚨 CRITICAL ISSUE: Tree size mismatch detected!');
+      console.error('  Channel expects:', treeSize, 'leaves');
+      console.error('  We can only generate: 16 leaves');
+      console.error('  This will likely cause "Invalid Groth16 proof" error in contract');
+      console.error('  Contract verifier was compiled for', treeSize, 'leaves, but we\'re providing 16-leaf proof');
     }
     
-    const result = await response.json();
-    setProofGenerationStatus('Proof generated successfully!');
+    const circuitInput = {
+      storage_keys_L2MPT: storageKeysL2MPT,
+      storage_values: storageValues,
+      treeSize: treeSize
+    };
     
-    console.log('Generated proof:', result);
+    console.log('  Circuit Input:', {
+      keysLength: circuitInput.storage_keys_L2MPT.length,
+      valuesLength: circuitInput.storage_values.length,
+      treeSize: circuitInput.treeSize
+    });
+    
+    // Check if client-side proof generation is supported
+    if (!isClientProofGenerationSupported()) {
+      throw new Error('Client-side proof generation is not supported in this browser. Please try a modern browser with WebAssembly support.');
+    }
+    
+    const memoryReq = getMemoryRequirement(treeSize);
+    const needsDownload = requiresExternalDownload(treeSize);
+    const downloadInfo = needsDownload ? ` + ${getDownloadSize(treeSize)} download` : '';
+    setProofGenerationStatus(`Generating Groth16 proof for ${treeSize}-leaf tree (${memoryReq}${downloadInfo}, this may take a few minutes)...`);
+    
+    // Generate proof client-side using snarkjs
+    const result = await generateClientSideProof(circuitInput, (status) => {
+      setProofGenerationStatus(status);
+    });
+    
+    console.log('🔍 PROOF RESULT DEBUG:');
+    console.log('  Generated Proof:', result.proof);
+    console.log('  Public Signals:', result.publicSignals);
+    console.log('  Merkle Root:', result.proof.merkleRoot);
+    
+    setProofGenerationStatus('Proof generated successfully!');
     
     return result.proof;
   };
@@ -317,12 +386,27 @@ export default function InitializeStatePage() {
     
     try {
       // First generate the Groth16 proof
+      console.log('🔍 STARTING PROOF GENERATION FOR CONTRACT SUBMISSION');
       const proof = await generateGroth16Proof();
       setGeneratedProof(proof);
+      
+      console.log('🔍 CONTRACT SUBMISSION DEBUG:');
+      console.log('  Channel ID:', hookLeaderChannel.id);
+      console.log('  Channel Tree Size:', channelTreeSize);
+      console.log('  Generated Proof:', proof);
+      console.log('  Proof Structure:', {
+        pA: proof.pA,
+        pB: proof.pB,
+        pC: proof.pC,
+        merkleRoot: proof.merkleRoot
+      });
       
       setProofGenerationStatus('Submitting to blockchain...');
       
       // Then submit to contract with proof
+      console.log('🔍 CALLING CONTRACT: initializeChannelState');
+      console.log('  Args:', [BigInt(hookLeaderChannel.id), proof]);
+      
       initializeChannelState({
         args: [BigInt(hookLeaderChannel.id), proof]
       });
@@ -526,14 +610,42 @@ export default function InitializeStatePage() {
                         )}
                       </div>
                     )}
+
+                    {/* Browser Compatibility Warning */}
+                    {browserCompatible === false && (
+                      <div className="mb-4 p-3 bg-red-500/20 border border-red-400/50 rounded-lg">
+                        <div className="flex items-center gap-2 text-red-400 text-sm">
+                          <XCircle className="w-4 h-4" />
+                          <span className="font-medium">Browser Not Compatible</span>
+                        </div>
+                        <p className="text-red-300 text-xs mt-1">
+                          Your browser doesn't support WebAssembly or required APIs for client-side proof generation. 
+                          Please use a modern browser like Chrome, Firefox, Safari, or Edge.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Memory Warning for Large Tree Sizes */}
+                    {browserCompatible === true && channelTreeSize && Number(channelTreeSize) >= 64 && (
+                      <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-400/50 rounded-lg">
+                        <div className="flex items-center gap-2 text-yellow-400 text-sm">
+                          <Settings className="w-4 h-4" />
+                          <span className="font-medium">High Memory Usage</span>
+                        </div>
+                        <p className="text-yellow-300 text-xs mt-1">
+                          {Number(channelTreeSize)}-leaf proof generation requires {getMemoryRequirement(Number(channelTreeSize))}. 
+                          Make sure to close other tabs and applications before proceeding.
+                        </p>
+                      </div>
+                    )}
                     
                     <button
                       onClick={handleInitializeState}
-                      disabled={isInitializingTransaction || isGeneratingProof || hookLeaderChannel.stats[2] !== 1}
+                      disabled={isInitializingTransaction || isGeneratingProof || hookLeaderChannel.stats[2] !== 1 || browserCompatible === false}
                       className={`px-6 sm:px-8 py-3 sm:py-4 font-semibold text-white text-base sm:text-lg transition-all duration-300 transform ${
                         buttonClicked ? 'scale-95' : 'hover:scale-105'
                       } ${
-                        isInitializingTransaction || isGeneratingProof || hookLeaderChannel.stats[2] !== 1
+                        isInitializingTransaction || isGeneratingProof || hookLeaderChannel.stats[2] !== 1 || browserCompatible === false
                           ? 'bg-gray-600 cursor-not-allowed'
                           : 'bg-[#4fc3f7] hover:bg-[#029bee] shadow-lg shadow-[#4fc3f7]/30 hover:shadow-xl hover:shadow-[#4fc3f7]/40'
                       } ${(isInitializingTransaction || isGeneratingProof) ? 'animate-pulse' : ''}`}
@@ -568,8 +680,30 @@ export default function InitializeStatePage() {
                       )}
                     </button>
 
+                    {/* Tree Size and Verifier Info */}
+                    <div className="mt-4 p-3 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 text-center">
+                      <div className="text-sm text-gray-300 mb-2">Proof Generation Details:</div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-gray-400">Tree Size:</span>
+                          <div className="text-[#4fc3f7] font-medium">
+                            {channelTreeSize ? Number(channelTreeSize) : 'Auto-detect'} leaves
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Verifier:</span>
+                          <div className="text-[#4fc3f7] font-medium font-mono text-xs">
+                            {channelTreeSize && getGroth16VerifierAddress(Number(channelTreeSize)).slice(0, 8)}...
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        Participants × Tokens = {channelParticipants?.length || 0} × {(hookLeaderChannel?.stats?.[1] as any[])?.length || 0} = {(channelParticipants?.length || 0) * ((hookLeaderChannel?.stats?.[1] as any[])?.length || 0)} entries
+                      </div>
+                    </div>
+                    
                     <p className="text-xs text-gray-400 mt-2 sm:mt-3">
-                      This will generate a Groth16 proof using the 16-leaf merkle tree circuit and submit it to initialize the channel
+                      This will generate a Groth16 proof using the appropriate merkle tree circuit and submit it to initialize the channel
                     </p>
                   </div>
                 </div>

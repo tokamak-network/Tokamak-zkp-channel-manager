@@ -52,7 +52,7 @@ export function ChannelTimeoutManager({
   const { data: timeoutInfo } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelTimeoutInfo',
+    functionName: 'getChannelTimeout',
     args: [channelId],
     watch: true
   });

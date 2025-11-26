@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAccount, useContractRead, usePublicClient } from 'wagmi';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
 
 // Custom hook to dynamically check user roles across all channels
 export function useUserRoles() {
@@ -12,9 +12,9 @@ export function useUserRoles() {
 
   // Get total number of channels
   const { data: totalChannels } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getTotalChannels',
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'nextChannelId',
     enabled: isConnected,
   });
 
@@ -39,16 +39,16 @@ export function useUserRoles() {
         // Check each channel dynamically
         for (let channelId = 0; channelId < channelCount; channelId++) {
           try {
-            // Check channel stats to see if user is leader
-            const channelStats = await publicClient.readContract({
-              address: ROLLUP_BRIDGE_ADDRESS,
-              abi: ROLLUP_BRIDGE_ABI,
-              functionName: 'getChannelStats',
+            // Check if user is the leader
+            const channelLeader = await publicClient.readContract({
+              address: ROLLUP_BRIDGE_CORE_ADDRESS,
+              abi: ROLLUP_BRIDGE_CORE_ABI,
+              functionName: 'getChannelLeader',
               args: [BigInt(channelId)],
-            }) as readonly [bigint, readonly `0x${string}`[], number, bigint, `0x${string}`];
+            }) as `0x${string}`;
 
-            // Check if user is the leader (index 4 is leader address in new contract)
-            if (channelStats[4] && channelStats[4].toLowerCase() === address.toLowerCase()) {
+            // Check if user is the leader
+            if (channelLeader && channelLeader.toLowerCase() === address.toLowerCase()) {
               foundLeadership = true;
               console.log(`User is leader of channel ${channelId}`);
             }
@@ -56,8 +56,8 @@ export function useUserRoles() {
             // If not a leader, check if user is a participant
             if (!foundLeadership) {
               const participants = await publicClient.readContract({
-                address: ROLLUP_BRIDGE_ADDRESS,
-                abi: ROLLUP_BRIDGE_ABI,
+                address: ROLLUP_BRIDGE_CORE_ADDRESS,
+                abi: ROLLUP_BRIDGE_CORE_ABI,
                 functionName: 'getChannelParticipants',
                 args: [BigInt(channelId)],
               }) as readonly string[];

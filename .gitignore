@@ -47,10 +47,20 @@ Thumbs.db
 # Claude
 /.claude/
 
-# Cursor
-.cursor/
-.cursorrules
-
 /Tokamak-zk-EVM-landing-page
 /threshold-signature-Frost
 /docs
+
+# ZK proof generation temporary files (keep zkey files but ignore generated outputs)
+proof-generation/**/*.wtns
+proof-generation/**/proof.json
+proof-generation/**/public.json
+proof-generation/**/circuit_input.json
+
+# Large ZK circuit files (>50MB) - blocked by GitHub file size limits
+public/zk-assets/zkey/circuit_final_64.zkey
+public/zk-assets/zkey/circuit_final_128.zkey
+
+# Public ZK assets - smaller files are committed for client-side proof generation
+# public/zk-assets/**/*.zkey  # commented out - we commit small zkey files
+# public/zk-assets/**/*.wasm  # commented out - we commit all WASM files

@@ -39,8 +39,8 @@ export function EmergencyWithdrawal({
   const { data: userDeposit } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: [channelId, userAddress as `0x${string}`],
+    functionName: 'getParticipantTokenDeposit',
+    args: [channelId, userAddress as `0x${string}`, targetContract as `0x${string}`],
     watch: true
   });
 
@@ -48,7 +48,7 @@ export function EmergencyWithdrawal({
   const { data: hasWithdrawn } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'hasWithdrawn',
+    functionName: 'hasUserWithdrawn',
     args: [channelId, userAddress as `0x${string}`],
     watch: true
   });

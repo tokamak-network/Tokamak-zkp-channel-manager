@@ -27,13 +27,13 @@
     "date-fns": "^2.30.0",
     "elliptic": "^6.6.1",
     "ethers": "^6.8.1",
-    "firebase": "^12.6.0",
     "js-sha256": "^0.11.1",
     "js-sha3": "^0.9.3",
     "lucide-react": "^0.292.0",
     "next": "14.0.3",
     "react": "^18",
     "react-dom": "^18",
+    "snarkjs": "^0.7.5",
     "tailwind-merge": "^2.0.0",
     "viem": "^1.21.4",
     "wagmi": "^1.4.13"
@@ -41,7 +41,7 @@
   "devDependencies": {
     "@types/crypto-js": "^4.2.2",
     "@types/elliptic": "^6.4.18",
-    "@types/node": "^20",
+    "@types/node": "^20.19.25",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.0.1",

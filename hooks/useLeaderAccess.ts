@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAccount, useContractRead } from 'wagmi';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 
 export function useLeaderAccess() {
@@ -15,10 +15,10 @@ export function useLeaderAccess() {
   const { hasChannels, leadingChannels, channelStatsData } = useUserRolesDynamic();
 
 
-  // Get contract owner
+  // Get contract owner from Core contract
   const { data: owner } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'owner',
     enabled: isMounted && isConnected && !!address,
   });

@@ -5,11 +5,10 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAccount, useContractRead } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import Image from 'next/image';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { ClientOnly } from '@/components/ClientOnly';
 import { NetworkDropdown } from '@/components/NetworkDropdown';
-import { Home, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Search, Settings, FileCheck, PenTool, XCircle, Trash2, Activity, FileText } from 'lucide-react';
+import { Home, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Search, Settings, FileCheck, XCircle, Activity } from 'lucide-react';
 
 interface SidebarProps {
   isConnected: boolean;
@@ -77,7 +76,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
     if (isParticipant || hasChannels) {
       userActions.push(
         {
-          name: 'Deposit Tokens',
+          name: 'Freeze State',
           href: '/deposit-tokens',
           icon: ArrowDownCircle,
           description: '',
@@ -105,17 +104,6 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       requiresConnection: true
     });
   }
-  
-  // State Explorer - always visible for development
-  if (isConnected) {
-    channelActions.push({
-      name: 'State Explorer',
-      href: '/state-explorer',
-      icon: FileText,
-      description: 'Track state transitions',
-      requiresConnection: true
-    });
-  }
 
   // Channel leader actions
   const leaderActions = [];
@@ -136,23 +124,9 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
         requiresConnection: true
       },
       {
-        name: 'Sign Proof',
-        href: '/sign-proof',
-        icon: PenTool,
-        description: '',
-        requiresConnection: true
-      },
-      {
         name: 'Close Channel',
         href: '/close-channel',
         icon: XCircle,
-        description: '',
-        requiresConnection: true
-      },
-      {
-        name: 'Delete Channel',
-        href: '/delete-channel',
-        icon: Trash2,
         description: '',
         requiresConnection: true
       }

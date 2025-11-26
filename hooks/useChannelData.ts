@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAccount, useContractRead } from 'wagmi';
 import { isAddress } from 'viem';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI, ERC20_ABI } from '@/lib/contracts';
 
 interface ChannelData {
   channelId: bigint;
@@ -29,9 +29,9 @@ export function useChannelData(): UseChannelDataReturn {
 
   // Get total number of channels
   const { data: totalChannels } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getTotalChannels',
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'nextChannelId',
     enabled: isConnected,
   });
 
@@ -64,7 +64,7 @@ export function useChannelData(): UseChannelDataReturn {
                 method: 'eth_call',
                 params: [
                   {
-                    to: ROLLUP_BRIDGE_ADDRESS,
+                    to: ROLLUP_BRIDGE_CORE_ADDRESS,
                     data: `0x8b5c1b0b${channelId.toString(16).padStart(64, '0')}`, // getChannelParticipants selector + channelId
                   },
                   'latest',
@@ -117,66 +117,83 @@ export function useChannelInfo(channelId: number) {
 
   // Get channel participants
   const { data: participants } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelParticipants',
     args: [BigInt(channelId)],
     enabled: isConnected,
   });
 
-  // Get channel stats
-  const { data: channelStats } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
+  // Get channel state
+  const { data: channelState } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelState',
     args: [BigInt(channelId)],
     enabled: isConnected,
   });
 
-  // Get user deposit
+  // Get channel allowed tokens
+  const { data: allowedTokens } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelAllowedTokens',
+    args: [BigInt(channelId)],
+    enabled: isConnected,
+  });
+
+  // Get user deposit for first allowed token (ETH if no tokens or first token)
+  const firstToken = allowedTokens?.[0] || '0x0000000000000000000000000000000000000001'; // ETH placeholder
   const { data: userDeposit } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantDeposit',
-    args: address ? [BigInt(channelId), address] : undefined,
-    enabled: isConnected && !!address && !!participants && participants.includes(address),
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getParticipantTokenDeposit',
+    args: address ? [BigInt(channelId), address, firstToken] : undefined,
+    enabled: isConnected && !!address && !!participants && participants.includes(address) && !!allowedTokens,
   });
 
   // Check if user is participant and channel is initialized
   const isUserParticipant = participants && address ? participants.includes(address) : false;
-  const isChannelInitialized = channelStats?.[2] === 1; // state === 1 means Initialized
+  const isChannelInitialized = channelState === 1; // state === 1 means Initialized
 
   const isEligible = isUserParticipant && isChannelInitialized;
 
   // Get token info if not ETH
-  // Note: New contract uses allowedTokens[] at index 1, but for backwards compatibility, use first token
-  const allowedTokens = channelStats?.[1] as readonly `0x${string}`[] | undefined;
-  const targetContract = allowedTokens?.[0]; // Use first allowed token for backwards compatibility
-  const isETH = !targetContract || targetContract === '0x0000000000000000000000000000000000000001';
+  const targetContract = firstToken;
+  const isETH = !targetContract || targetContract === '0x0000000000000000000000000000000000000001' || targetContract === '0x0000000000000000000000000000000000000000';
 
   const { data: tokenDecimals } = useContractRead({
     address: targetContract as `0x${string}`,
-    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    abi: ERC20_ABI,
     functionName: 'decimals',
     enabled: isConnected && !!targetContract && isAddress(targetContract) && !isETH && isEligible,
   });
 
   const { data: tokenSymbol } = useContractRead({
     address: targetContract as `0x${string}`,
-    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }],
+    abi: ERC20_ABI,
     functionName: 'symbol',
     enabled: isConnected && !!targetContract && isAddress(targetContract) && !isETH && isEligible,
   });
 
-  if (!isEligible || !channelStats) {
+  if (!isEligible || channelState === undefined || !allowedTokens) {
     return null;
   }
+
+  // Get total deposits for the channel and token
+  const { data: totalDeposits } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelTotalDeposits',
+    args: [BigInt(channelId), firstToken],
+    enabled: isConnected && isEligible && !!firstToken,
+  });
 
   return {
     channelId: BigInt(channelId),
     targetContract: targetContract || '',
-    state: channelStats[2],
-    totalDeposits: channelStats[4],
+    state: channelState,
+    totalDeposits: totalDeposits || BigInt(0),
     userDeposit: userDeposit || BigInt(0),
     decimals: isETH ? 18 : (tokenDecimals || 18),
     symbol: isETH ? 'ETH' : (typeof tokenSymbol === 'string' ? tokenSymbol : 'TOKEN'),
@@ -191,9 +208,9 @@ export function useAvailableChannels() {
   
   // Get total number of channels
   const { data: totalChannels } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getTotalChannels',
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'nextChannelId',
     enabled: isConnected,
   });
 
@@ -218,9 +235,9 @@ export function useUserChannelRoles() {
 
   // Get total number of channels
   const { data: totalChannels } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getTotalChannels',
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'nextChannelId',
     enabled: isConnected,
   });
 

@@ -24,14 +24,14 @@ export async function GET(request: NextRequest) {
       const totalChannels = await publicClient.readContract({
         address: ROLLUP_BRIDGE_ADDRESS,
         abi: ROLLUP_BRIDGE_ABI,
-        functionName: 'getTotalChannels'
+        functionName: 'nextChannelId'
       });
       results.totalChannels = totalChannels.toString();
-      console.log('✓ getTotalChannels works:', totalChannels);
+      console.log('✓ nextChannelId works:', totalChannels);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       results.totalChannelsError = errorMessage;
-      console.log('✗ getTotalChannels failed:', errorMessage);
+      console.log('✗ nextChannelId failed:', errorMessage);
     }
 
     // Test getChannelParticipants
@@ -71,22 +71,25 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Test getL2MptKeysList (bulk)
-    try {
-      const testToken = '0x79E0d92670106c85E9067b56B8F674340dCa0Bbd';
-      
-      const keysList = await publicClient.readContract({
-        address: ROLLUP_BRIDGE_ADDRESS,
-        abi: ROLLUP_BRIDGE_ABI,
-        functionName: 'getL2MptKeysList',
-        args: [BigInt(channelId), testToken]
-      });
-      results.l2MptKeysList = keysList;
-      console.log('✓ getL2MptKeysList works:', keysList);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      results.l2MptKeysListError = errorMessage;
-      console.log('✗ getL2MptKeysList failed:', errorMessage);
+    // Test getL2MptKey (bulk) - requires all 3 parameters
+    if (results.participants && results.participants.length > 0) {
+      try {
+        const testToken = '0x79E0d92670106c85E9067b56B8F674340dCa0Bbd';
+        const participant = results.participants[0];
+        
+        const keysList = await publicClient.readContract({
+          address: ROLLUP_BRIDGE_ADDRESS,
+          abi: ROLLUP_BRIDGE_ABI,
+          functionName: 'getL2MptKey',
+          args: [BigInt(channelId), participant, testToken]
+        });
+        results.l2MptKeysList = keysList;
+        console.log('✓ getL2MptKey (bulk) works:', keysList);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        results.l2MptKeysListError = errorMessage;
+        console.log('✗ getL2MptKey (bulk) failed:', errorMessage);
+      }
     }
 
     return NextResponse.json({
