@@ -74,6 +74,16 @@ export function DKGErrorDisplay({ error, onDismiss, onRetry }: DKGErrorDisplayPr
             {formattedError.message}
           </p>
 
+          {/* Show raw server error if it's different from the formatted message */}
+          {parsedError.code === 'UNKNOWN_ERROR' && parsedError.message && parsedError.message !== formattedError.message && (
+            <div className="mb-3 p-2 bg-black/10 dark:bg-black/20 rounded border border-current/20">
+              <p className={`text-xs font-medium ${getTitleColor()} mb-1`}>Server Response:</p>
+              <p className={`text-xs font-mono ${getTextColor()} break-all`}>
+                {parsedError.message}
+              </p>
+            </div>
+          )}
+
           {formattedError.suggestions.length > 0 && (
             <div className="mb-3">
               <p className={`text-xs font-medium ${getTitleColor()} mb-2 flex items-center gap-1.5`}>

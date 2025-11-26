@@ -7,7 +7,7 @@ import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Flame, Plus, Link2, ClipboardList, CheckCircle, X, Trash2, PenTool, Upload, Download } from 'lucide-react';
+import { Flame, Plus, Link2, ClipboardList, CheckCircle, X, Trash2, PenTool, Upload, Download, RefreshCw } from 'lucide-react';
 import { initWasm } from '@/lib/frost-wasm';
 import { DKG_CONFIG, getDKGServerUrl, shouldAutoConnect, debugLog } from '@/lib/dkg-config';
 import { 
@@ -279,6 +279,27 @@ export default function DKGManagementPage() {
           }
         }
 
+        if (message.type === 'SignSessionAnnounced') {
+          console.log('🎯 New signing session announced:', message.payload.session);
+          setSuccessMessage('✅ New signing session announced');
+          // Request updated session list from server for accurate data
+          if (wsConnection) {
+            console.log('🔄 Requesting updated signing sessions list after announcement');
+            wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+          }
+        }
+
+        if (message.type === 'SignSessionJoined') {
+          console.log('✅ Successfully joined signing session:', message.payload.session);
+          setJoiningSigningSession(null);
+          setSuccessMessage(`✅ Joined signing session: ${message.payload.session}`);
+          // Request updated session list from server to get accurate participant count
+          if (wsConnection) {
+            console.log('🔄 Requesting updated signing sessions list after join');
+            wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+          }
+        }
+
         if (message.type === 'PendingSigningSessions') {
           setPendingSigningSessions(message.payload.sessions);
           console.log(`📋 Found ${message.payload.sessions.length} pending signing sessions`);
@@ -307,6 +328,20 @@ export default function DKGManagementPage() {
             message: message.payload.message,
           });
           setSuccessMessage('🎉 Threshold signature created successfully!');
+        }
+
+        // Handle server errors for signing sessions
+        if (message.type === 'Error') {
+          const serverError = message.payload?.message || message.payload || 'Unknown server error';
+          console.error('❌ Server Error:', serverError);
+          
+          // Clear joining state on error
+          if (joiningSigningSession !== null) {
+            setJoiningSigningSession(null);
+          }
+          
+          // Show the actual server error message
+          setError(`Server Error: ${serverError}`);
         }
       } catch (error) {
         console.error('Error handling WebSocket message:', error);
@@ -570,6 +605,52 @@ export default function DKGManagementPage() {
       setKeyPackage(pkg.keyPackageHex);
       setSelectedKeyPackageId(packageId);
       setSuccessMessage(`✅ Loaded key package for ${pkg.groupId}`);
+    }
+  };
+
+  // Load key package and join session in one action (avoids state timing issues)
+  const handleLoadAndJoinSession = (packageId: string, sessionId: string) => {
+    const pkg = availableKeyPackages.find(p => p.id === packageId);
+    if (!pkg) {
+      setError('Key package not found');
+      return;
+    }
+
+    // Set the key package state for future use
+    setKeyPackage(pkg.keyPackageHex);
+    setSelectedKeyPackageId(packageId);
+    
+    // Load metadata from key package
+    try {
+      const metadata = JSON.parse(get_key_package_metadata(pkg.keyPackageHex));
+      setSigningGroupId(metadata.group_id);
+      setSigningThreshold(metadata.threshold.toString());
+      setSigningGroupVk(metadata.group_public_key);
+    } catch (e) {
+      console.warn('Could not load key package metadata:', e);
+    }
+
+    // Join immediately using the key package directly (not from state)
+    try {
+      setJoiningSigningSession(sessionId);
+      signingSessionIdRef[0].current = sessionId;
+      const prereqs = JSON.parse(get_signing_prerequisites(pkg.keyPackageHex));
+      
+      if (wsConnection) {
+        wsConnection.send(JSON.stringify({
+          type: 'JoinSignSession',
+          payload: {
+            session: sessionId,
+            signer_id_bincode_hex: prereqs.signer_id_bincode_hex,
+            verifying_share_bincode_hex: prereqs.verifying_share_bincode_hex,
+          }
+        }));
+      }
+      console.log(`📤 Loaded key package and joining signing session: ${sessionId}`);
+      setSuccessMessage(`Loaded key package and joining session...`);
+    } catch (e: any) {
+      setError(`Failed to join session: ${e.message}`);
+      setJoiningSigningSession(null);
     }
   };
 
@@ -865,7 +946,7 @@ export default function DKGManagementPage() {
             { id: 'sessions', label: 'DKG Sessions', icon: ClipboardList },
             { id: 'create', label: 'Create DKG', icon: Plus },
             { id: 'join', label: 'Join DKG', icon: Link2 },
-            { id: 'sign', label: 'Sign Messages', icon: PenTool }
+            { id: 'signing', label: 'Signing Sessions', icon: PenTool, badge: pendingSigningSessions.length },
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -874,17 +955,22 @@ export default function DKGManagementPage() {
                 variant={activeTab === tab.id ? 'default' : 'ghost'}
                 onClick={() => {
                   setActiveTab(tab.id);
-                  if (tab.id === 'sign') {
+                  if (tab.id === 'signing') {
                     loadAvailableKeyPackages();
                     if (wsConnection && authState.isAuthenticated) {
                       wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
                     }
                   }
                 }}
-                className="flex-1 justify-center text-sm"
+                className="flex-1 justify-center text-sm relative"
               >
                 <Icon className="w-4 h-4 mr-2" />
                 {tab.label}
+                {tab.badge && tab.badge > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-[#028bee] text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5 shadow-lg shadow-[#028bee]/50 animate-pulse">
+                    {tab.badge}
+                  </span>
+                )}
               </Button>
             );
           })}
@@ -944,14 +1030,155 @@ export default function DKGManagementPage() {
           />
         )}
 
-        {activeTab === 'sign' && (
+        {activeTab === 'signing' && (
           <div className="space-y-6">
-            {/* Key Package Selection */}
+            {/* Pending Signing Sessions */}
             <Card className="p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]">
-              <h3 className="text-lg font-semibold text-white mb-4">1. Select Key Package</h3>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 flex items-center justify-center">
+                    <PenTool className="w-5 h-5 text-[#4fc3f7]" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Pending Signing Sessions</h3>
+                    <p className="text-sm text-gray-400">
+                      {pendingSigningSessions.length > 0 
+                        ? `${pendingSigningSessions.length} session${pendingSigningSessions.length !== 1 ? 's' : ''} waiting for participants` 
+                        : 'No pending sessions'}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => {
+                    if (wsConnection) {
+                      wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+                    }
+                  }}
+                  variant="outline"
+                  size="sm"
+                  disabled={!wsConnection}
+                  className="bg-[#028bee] hover:bg-[#0277d4] text-white border-[#028bee]"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Refresh
+                </Button>
+              </div>
+
+              {pendingSigningSessions.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-[#4fc3f7]/10 border-2 border-dashed border-[#4fc3f7]/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <PenTool className="w-8 h-8 text-[#4fc3f7]/50" />
+                  </div>
+                  <p className="text-gray-300 mb-2 font-medium">No Signing Sessions Available</p>
+                  <p className="text-gray-400 text-sm">Create a new session or wait for others to announce one</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {pendingSigningSessions.map((session: any) => {
+                    const matchingPkg = availableKeyPackages.find(pkg => pkg.groupId === session.group_id);
+                    const hasKey = keyPackage || matchingPkg;
+                    const progress = (session.joined.length / session.participants.length) * 100;
+                    
+                    return (
+                      <Card key={session.session} className="p-5 bg-[#0a1930] border-[#4fc3f7]/30 hover:border-[#4fc3f7]/60 transition-all">
+                        <div className="space-y-4">
+                          {/* Header */}
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Badge className="bg-[#4fc3f7]/20 text-[#4fc3f7] border-[#4fc3f7]/30 text-xs">
+                                  Session
+                                </Badge>
+                                <p className="text-white font-mono text-sm">{session.session.slice(0, 18)}...</p>
+                              </div>
+                              <p className="text-gray-300 font-medium mb-1">Group: {session.group_id}</p>
+                              <div className="bg-[#0f1729]/50 border border-[#4fc3f7]/20 p-3 mt-2">
+                                <p className="text-xs text-gray-400 mb-1">Message to Sign:</p>
+                                <p className="text-white text-sm">{session.message}</p>
+                              </div>
+                            </div>
+                            {hasKey ? (
+                              <div className="ml-4 flex items-center gap-2 px-3 py-1.5 bg-green-500/20 border border-green-500/30 text-green-300 text-xs font-medium">
+                                <CheckCircle className="w-3.5 h-3.5" />
+                                Key Available
+                              </div>
+                            ) : (
+                              <div className="ml-4 flex items-center gap-2 px-3 py-1.5 bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-medium">
+                                <X className="w-3.5 h-3.5" />
+                                No Key
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Progress Bar */}
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs text-gray-400">Participants</span>
+                              <span className="text-xs font-medium text-white">
+                                {session.joined.length}/{session.participants.length}
+                              </span>
+                            </div>
+                            <div className="w-full h-2 bg-[#0f1729] border border-[#4fc3f7]/20 overflow-hidden">
+                              <div 
+                                className="h-full bg-gradient-to-r from-[#4fc3f7] to-[#028bee] transition-all duration-300"
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Action Button */}
+                          {!hasKey ? (
+                            <Button
+                              disabled
+                              className="w-full bg-gray-600 cursor-not-allowed"
+                              size="sm"
+                            >
+                              No Key Package for {session.group_id}
+                            </Button>
+                          ) : (
+                            <Button
+                              onClick={() => {
+                                // Auto-load key package if needed, then join
+                                if (!keyPackage && matchingPkg) {
+                                  // Use the combined function that loads and joins atomically
+                                  handleLoadAndJoinSession(matchingPkg.id, session.session);
+                                } else {
+                                  handleJoinSigningSession(session.session);
+                                }
+                              }}
+                              disabled={joiningSigningSession !== null || !authState.isAuthenticated}
+                              className="w-full bg-[#028bee] hover:bg-[#0277d4]"
+                              size="sm"
+                            >
+                              {joiningSigningSession === session.session ? 'Joining...' : 'Join Session'}
+                            </Button>
+                          )}
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+
+            {/* Create New Signing Session Section */}
+            <Card className="p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 bg-[#028bee]/20 border border-[#028bee]/50 flex items-center justify-center">
+                  <Plus className="w-5 h-5 text-[#028bee]" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Create New Signing Session</h3>
+                  <p className="text-sm text-gray-400">Select a key package and create a signing session</p>
+                </div>
+              </div>
+
+              {/* Key Package Selection */}
+              <div className="mb-6">
+                <h4 className="text-md font-semibold text-white mb-4">1. Select Key Package</h4>
               
               {availableKeyPackages.length === 0 ? (
-                <div className="text-center py-8">
+                  <div className="text-center py-8 border-2 border-dashed border-[#4fc3f7]/30">
                   <PenTool className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                   <p className="text-gray-300 mb-2">No key packages found</p>
                   <p className="text-gray-400 text-sm">Complete a DKG ceremony first to generate key packages</p>
@@ -998,12 +1225,12 @@ export default function DKGManagementPage() {
                   </div>
                 </div>
               )}
-            </Card>
+              </div>
 
-            {/* Create Signing Session */}
+              {/* Create Signing Session Form */}
             {keyPackage && (
-              <Card className="p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]">
-                <h3 className="text-lg font-semibold text-white mb-4">2. Create Signing Session</h3>
+                <div className="border-t border-[#4fc3f7]/30 pt-6">
+                  <h4 className="text-md font-semibold text-white mb-4">2. Create Signing Session</h4>
                 
                 <div className="space-y-4">
                   <div>
@@ -1027,7 +1254,7 @@ export default function DKGManagementPage() {
                       value={messageToSign}
                       onChange={(e) => setMessageToSign(e.target.value)}
                       placeholder="Enter message to sign..."
-                      className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-white"
+                        className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-white placeholder-gray-500"
                     />
                   </div>
 
@@ -1071,59 +1298,15 @@ export default function DKGManagementPage() {
                   <Button
                     onClick={handleAnnounceSigningSession}
                     disabled={!connectionStatus || connectionStatus !== 'connected' || !authState.isAuthenticated || !messageHash}
-                    className="w-full"
+                      className="w-full bg-[#028bee] hover:bg-[#0277d4]"
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Create Signing Session
                   </Button>
                 </div>
-              </Card>
-            )}
-
-            {/* Pending Signing Sessions */}
-            {pendingSigningSessions.length > 0 && (
-              <Card className="p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-white">Pending Signing Sessions</h3>
-                  <Button
-                    onClick={() => {
-                      if (wsConnection) {
-                        wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
-                      }
-                    }}
-                    variant="outline"
-                    size="sm"
-                    disabled={!wsConnection}
-                  >
-                    Refresh
-                  </Button>
                 </div>
-
-                <div className="space-y-2">
-                  {pendingSigningSessions.map((session: any) => (
-                    <Card key={session.session} className="p-4 bg-[#0a1930]">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-white font-medium">Session: {session.session.slice(0, 16)}...</p>
-                          <p className="text-gray-400 text-sm">Group: {session.group_id}</p>
-                          <p className="text-gray-400 text-sm">Message: {session.message}</p>
-                          <p className="text-gray-400 text-sm">
-                            Participants: {session.joined.length}/{session.participants.length}
-                          </p>
-                        </div>
-                        <Button
-                          onClick={() => handleJoinSigningSession(session.session)}
-                          disabled={joiningSigningSession !== null || !keyPackage}
-                          size="sm"
-                        >
-                          Join
-                        </Button>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </Card>
-            )}
+              )}
+            </Card>
 
             {/* Final Signature */}
             {finalSignature && (
@@ -1144,7 +1327,7 @@ export default function DKGManagementPage() {
                       className="w-full px-3 py-2 bg-[#0a1930] border border-green-500/30 rounded-md text-white font-mono text-sm"
                     />
                   </div>
-                  <Button onClick={handleDownloadSignature} className="w-full">
+                  <Button onClick={handleDownloadSignature} className="w-full bg-green-600 hover:bg-green-700">
                     <Download className="w-4 h-4 mr-2" />
                     Download Signature JSON
                   </Button>
