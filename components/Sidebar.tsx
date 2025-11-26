@@ -104,6 +104,16 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       requiresConnection: true
     });
   }
+  // State Explorer - always visible when connected
+  if (isConnected) {
+    channelActions.push({
+      name: 'State Explorer',
+      href: '/state-explorer',
+      icon: Activity,
+      description: 'Track state transitions and proofs',
+      requiresConnection: true
+    });
+  }
 
   // Channel leader actions
   const leaderActions = [];
