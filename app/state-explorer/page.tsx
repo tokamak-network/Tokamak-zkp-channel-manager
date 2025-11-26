@@ -5,7 +5,7 @@ import { useAccount } from 'wagmi';
 import { Layout } from '@/components/Layout';
 import { ProofCard, ProofData } from '@/components/ProofCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText, CheckCircle2, Clock, XCircle, Activity, Users, Coins, Plus, ExternalLink } from 'lucide-react';
+import { FileText, CheckCircle2, Clock, XCircle, Activity, Users, Coins, Plus, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 
 // Participant Balance Type
 interface ParticipantBalance {
@@ -63,7 +63,7 @@ const mockProofs: ProofData[] = [
   }
 ];
 
-// Mock participant balances (current state)
+// Mock participant balances (current state) - Extended for demo
 const mockParticipantBalances: ParticipantBalance[] = [
   {
     address: '0x1234567890123456789012345678901234567890',
@@ -88,12 +88,38 @@ const mockParticipantBalances: ParticipantBalance[] = [
       { token: 'WTON', amount: '1800.75', symbol: 'WTON' },
       { token: 'USDT', amount: '4200.50', symbol: 'USDT' }
     ]
+  },
+  {
+    address: '0x2222222222222222222222222222222222222222',
+    balances: [
+      { token: 'ETH', amount: '0.8', symbol: 'ETH' },
+      { token: 'WTON', amount: '950.00', symbol: 'WTON' },
+      { token: 'USDT', amount: '2100.00', symbol: 'USDT' }
+    ]
+  },
+  {
+    address: '0x3333333333333333333333333333333333333333',
+    balances: [
+      { token: 'ETH', amount: '1.2', symbol: 'ETH' },
+      { token: 'WTON', amount: '1100.50', symbol: 'WTON' },
+      { token: 'USDT', amount: '3200.00', symbol: 'USDT' }
+    ]
+  },
+  {
+    address: '0x4444444444444444444444444444444444444444',
+    balances: [
+      { token: 'ETH', amount: '2.1', symbol: 'ETH' },
+      { token: 'WTON', amount: '1750.25', symbol: 'WTON' },
+      { token: 'USDT', amount: '4500.00', symbol: 'USDT' }
+    ]
   }
 ];
 
 export default function StateExplorerPage() {
   const { isConnected } = useAccount();
   const [filter, setFilter] = useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
+  const [isBalancesExpanded, setIsBalancesExpanded] = useState(false);
+  const VISIBLE_PARTICIPANTS_COLLAPSED = 3; // Number of participants to show when collapsed
 
   const filteredProofs = mockProofs.filter(proof => {
     if (filter === 'all') return true;
@@ -112,7 +138,7 @@ export default function StateExplorerPage() {
       <div className="p-4 pb-20">
         <div className="max-w-7xl w-full mx-auto">
           {/* Header Section - Dashboard Style */}
-          <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-6 mb-8 shadow-lg shadow-[#4fc3f7]/20">
+          <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-6 mb-4 shadow-lg shadow-[#4fc3f7]/20">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
                 <div className="bg-[#4fc3f7] p-2 rounded">
@@ -138,6 +164,140 @@ export default function StateExplorerPage() {
             <p className="text-gray-300 text-sm">
               Track and explore state transitions and proof submissions
             </p>
+          </div>
+
+          {/* Compact Participant Balances Section - Collapsible */}
+          <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/20 mb-4 overflow-hidden">
+            {/* Header with Toggle */}
+            <button
+              onClick={() => setIsBalancesExpanded(!isBalancesExpanded)}
+              className="w-full flex items-center justify-between p-4 hover:bg-[#4fc3f7]/5 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="bg-[#4fc3f7] p-1.5 rounded">
+                  <Users className="w-4 h-4 text-white" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-sm font-semibold text-white">Current State - Participant Balances</h3>
+                  <p className="text-xs text-gray-400">{mockParticipantBalances.length} participants</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                {/* Quick Summary Stats */}
+                <div className="hidden md:flex items-center gap-4 text-xs">
+                  <span className="text-gray-400">
+                    Total: <span className="text-white font-medium">
+                      {mockParticipantBalances.reduce((sum, p) => 
+                        sum + parseFloat(p.balances.find(b => b.symbol === 'ETH')?.amount || '0'), 0
+                      ).toFixed(2)} ETH
+                    </span>
+                  </span>
+                  <span className="text-gray-400">
+                    <span className="text-white font-medium">
+                      {mockParticipantBalances.reduce((sum, p) => 
+                        sum + parseFloat(p.balances.find(b => b.symbol === 'WTON')?.amount || '0'), 0
+                      ).toFixed(2)} WTON
+                    </span>
+                  </span>
+                  <span className="text-gray-400">
+                    <span className="text-white font-medium">
+                      {mockParticipantBalances.reduce((sum, p) => 
+                        sum + parseFloat(p.balances.find(b => b.symbol === 'USDT')?.amount || '0'), 0
+                      ).toFixed(2)} USDT
+                    </span>
+                  </span>
+                </div>
+                {/* Expand/Collapse Icon */}
+                <div className="text-[#4fc3f7]">
+                  {isBalancesExpanded ? (
+                    <ChevronUp className="w-5 h-5" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5" />
+                  )}
+                </div>
+              </div>
+            </button>
+
+            {/* Expandable Content */}
+            <div
+              className={`transition-all duration-300 ease-in-out ${
+                isBalancesExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
+              } overflow-hidden`}
+            >
+              <div className="px-4 pb-4">
+                {/* Compact Participant Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {mockParticipantBalances
+                    .slice(0, isBalancesExpanded ? undefined : VISIBLE_PARTICIPANTS_COLLAPSED)
+                    .map((participant, index) => (
+                    <div
+                      key={participant.address}
+                      className="bg-[#0a1930]/50 border border-[#4fc3f7]/20 p-3 hover:border-[#4fc3f7]/50 transition-all rounded"
+                    >
+                      {/* Compact Header */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="bg-[#4fc3f7] px-1.5 py-0.5 rounded text-white font-bold text-[10px]">
+                          #{index + 1}
+                        </span>
+                        <span className="font-mono text-xs text-[#4fc3f7] truncate flex-1">
+                          {participant.address.slice(0, 6)}...{participant.address.slice(-4)}
+                        </span>
+                      </div>
+                      
+                      {/* Compact Balances - Horizontal */}
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        {participant.balances.map((balance) => (
+                          <div
+                            key={balance.token}
+                            className="flex items-center gap-1 bg-[#1a2347]/50 px-2 py-1 rounded"
+                          >
+                            <Coins className="w-3 h-3 text-[#4fc3f7]" />
+                            <span className="font-medium text-white">{balance.amount}</span>
+                            <span className="text-gray-400">{balance.symbol}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Show More/Less Button (if many participants) */}
+                {mockParticipantBalances.length > VISIBLE_PARTICIPANTS_COLLAPSED && (
+                  <div className="flex justify-center mt-3">
+                    <div className="text-xs text-gray-400">
+                      Showing all {mockParticipantBalances.length} participants
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Preview when collapsed - show first few participants inline */}
+            {!isBalancesExpanded && (
+              <div className="px-4 pb-3 flex flex-wrap gap-2 text-xs">
+                {mockParticipantBalances.slice(0, 4).map((participant, index) => (
+                  <div
+                    key={participant.address}
+                    className="flex items-center gap-1.5 bg-[#0a1930]/50 border border-[#4fc3f7]/10 px-2 py-1 rounded"
+                  >
+                    <span className="bg-[#4fc3f7]/80 px-1 rounded text-white font-bold text-[9px]">
+                      #{index + 1}
+                    </span>
+                    <span className="font-mono text-[#4fc3f7]/80 text-[10px]">
+                      {participant.address.slice(0, 4)}...{participant.address.slice(-3)}
+                    </span>
+                    <span className="text-gray-400">
+                      {participant.balances.find(b => b.symbol === 'ETH')?.amount} ETH
+                    </span>
+                  </div>
+                ))}
+                {mockParticipantBalances.length > 4 && (
+                  <div className="flex items-center text-gray-400">
+                    +{mockParticipantBalances.length - 4} more
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Main Content Area - Dashboard Style Border */}
@@ -223,92 +383,6 @@ export default function StateExplorerPage() {
                 ))}
               </div>
             )}
-          </div>
-
-          {/* Participant Balances Section */}
-          <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-6 shadow-lg shadow-[#4fc3f7]/20">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="bg-[#4fc3f7] p-2 rounded">
-                <Users className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-white">Current State - Participant Balances</h3>
-                <p className="text-sm text-gray-400">Token balances for each participant based on latest verified state</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {mockParticipantBalances.map((participant, index) => (
-                <div
-                  key={participant.address}
-                  className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 p-5 hover:border-[#4fc3f7] transition-all"
-                >
-                  {/* Participant Header */}
-                  <div className="flex items-center gap-3 mb-4 pb-3 border-b border-[#4fc3f7]/20">
-                    <div className="bg-[#4fc3f7] px-3 py-1 rounded text-white font-bold text-sm">
-                      #{index + 1}
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-xs text-gray-400 mb-1">Participant Address</div>
-                      <div className="font-mono text-sm text-[#4fc3f7]">
-                        {participant.address}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Token Balances */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {participant.balances.map((balance) => (
-                      <div
-                        key={balance.token}
-                        className="bg-[#1a2347] border border-[#4fc3f7]/20 p-4 rounded hover:border-[#4fc3f7]/50 transition-all"
-                      >
-                        <div className="flex items-center gap-2 mb-2">
-                          <Coins className="w-4 h-4 text-[#4fc3f7]" />
-                          <span className="text-sm font-medium text-gray-300">{balance.symbol}</span>
-                        </div>
-                        <div className="text-xl font-bold text-white">
-                          {balance.amount}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Total Summary */}
-            <div className="mt-6 pt-6 border-t border-[#4fc3f7]/30">
-              <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 p-4 rounded">
-                <h4 className="text-sm font-medium text-gray-300 mb-3">Total Balances Across All Participants</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="text-center">
-                    <div className="text-xs text-gray-400 mb-1">Total ETH</div>
-                    <div className="text-lg font-bold text-white">
-                      {mockParticipantBalances.reduce((sum, p) => 
-                        sum + parseFloat(p.balances.find(b => b.symbol === 'ETH')?.amount || '0'), 0
-                      ).toFixed(2)} ETH
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-gray-400 mb-1">Total WTON</div>
-                    <div className="text-lg font-bold text-white">
-                      {mockParticipantBalances.reduce((sum, p) => 
-                        sum + parseFloat(p.balances.find(b => b.symbol === 'WTON')?.amount || '0'), 0
-                      ).toFixed(2)} WTON
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-gray-400 mb-1">Total USDT</div>
-                    <div className="text-lg font-bold text-white">
-                      {mockParticipantBalances.reduce((sum, p) => 
-                        sum + parseFloat(p.balances.find(b => b.symbol === 'USDT')?.amount || '0'), 0
-                      ).toFixed(2)} USDT
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
