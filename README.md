@@ -35,6 +35,7 @@ A user-friendly and attractive interface for interacting with the Tokamak ZK Rol
 - **Styling**: Tailwind CSS with custom design system
 - **Web3**: Wagmi v1 + Viem for Ethereum interactions
 - **Wallet**: RainbowKit for wallet connections
+- **Database**: Firebase Firestore for state management
 - **UI Components**: Radix UI primitives with custom styling
 - **Icons**: Lucide React icon library
 - **State Management**: React Query for server state
@@ -77,6 +78,15 @@ A user-friendly and attractive interface for interacting with the Tokamak ZK Rol
    NEXT_PUBLIC_ROLLUP_BRIDGE_ADDRESS=0x...
    NEXT_PUBLIC_VERIFIER_ADDRESS=0x...
    NEXT_PUBLIC_ZECFROST_ADDRESS=0x...
+
+   # Firebase Configuration (Get from Firebase Console)
+   NEXT_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key_here
+   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project-id.firebaseapp.com
+   NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
+   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project-id.firebasestorage.app
+   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+   NEXT_PUBLIC_FIREBASE_APP_ID=1:your_sender_id:web:your_app_id
+   NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-YOUR_MEASUREMENT_ID
    ```
 
 4. **Run the development server**
@@ -88,6 +98,42 @@ A user-friendly and attractive interface for interacting with the Tokamak ZK Rol
 
 5. **Open your browser**
    Navigate to [http://localhost:3000](http://localhost:3000)
+
+## 🔥 Firebase Integration
+
+This project uses Firebase Firestore for:
+- **State Snapshots**: Store all channel state history
+- **Transaction History**: Track all L2 transactions
+- **DKG Messages**: Manage distributed key generation
+- **ZK Proofs**: Store and verify zero-knowledge proofs
+
+### Documentation
+
+- 📚 **[Firebase API Guide](./README_FIREBASE_API.md)** - Complete API documentation
+- 📊 **[Firebase Schema](./docs/FIREBASE_SCHEMA.md)** - Database structure and types
+- 💻 **[TypeScript Types](./lib/firebase-types.ts)** - Type definitions
+- 🛠️ **[Helper Functions](./lib/firebase-helpers.ts)** - Utility functions
+
+### Quick Usage
+
+```typescript
+import { getChannel, getChannelTransactions } from '@/lib/firebase-helpers';
+
+// Get channel data
+const channel = await getChannel(channelId);
+
+// Get transactions
+const transactions = await getChannelTransactions(channelId);
+```
+
+### API Endpoints
+
+- `GET /api/firebase/read` - Read data from Firestore
+- `POST /api/firebase/write` - Write data to Firestore
+
+See [Firebase API Guide](./README_FIREBASE_API.md) for detailed usage examples.
+
+---
 
 ## 📋 Contract Integration
 

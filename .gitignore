@@ -49,6 +49,8 @@ Thumbs.db
 
 # Cursor
 .cursor/
+.cursorrules
+
 /Tokamak-zk-EVM-landing-page
 /threshold-signature-Frost
 /docs
