@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAccount, useContractWrite, usePrepareContractWrite, useContractRead, useWaitForTransaction } from 'wagmi';
+import { useAccount, useContractWrite, usePrepareContractWrite, useContractRead, useWaitForTransaction, useNetwork } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { 
   ROLLUP_BRIDGE_CORE_ABI, 
@@ -11,11 +11,15 @@ import {
   WTON_TOKEN_ADDRESS,
   USDT_TOKEN_ADDRESS 
 } from '@/lib/contracts';
+import { setData } from '@/lib/realtime-db-helpers';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { Footer } from '@/components/Footer';
-import { AlertTriangle, Lightbulb, CheckCircle } from 'lucide-react';
+import { AlertTriangle, Lightbulb, CheckCircle, Wand2 } from 'lucide-react';
+
+// Check if dev mode is enabled
+const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 
 interface Participant {
   address: string;
@@ -24,10 +28,11 @@ interface Participant {
 export default function CreateChannelPage() {
   const router = useRouter();
   const { address, isConnected } = useAccount();
+  const { chain } = useNetwork();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   
-  // Check if user is already leading a channel
+  // Check total channel count
   const { data: totalChannels } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
@@ -35,30 +40,211 @@ export default function CreateChannelPage() {
     enabled: isConnected,
   });
 
-  const { data: channelStats0 } = useContractRead({
+  // Check if user is already a channel leader by checking each channel
+  const channelCount = totalChannels ? Number(totalChannels) : 0;
+  const [leaderChannelId, setLeaderChannelId] = useState<number | null>(null);
+
+  // Use individual reads for channel leaders (up to 10 channels)
+  const { data: leader0 } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelLeader',
     args: [BigInt(0)],
-    enabled: false, // Temporarily disabled
+    enabled: isConnected && channelCount > 0,
   });
 
-  const { data: channelStats1 } = useContractRead({
+  const { data: leader1 } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelLeader',
     args: [BigInt(1)],
-    enabled: false, // Temporarily disabled
+    enabled: isConnected && channelCount > 1,
   });
+
+  const { data: leader2 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelLeader',
+    args: [BigInt(2)],
+    enabled: isConnected && channelCount > 2,
+  });
+
+  const { data: leader3 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelLeader',
+    args: [BigInt(3)],
+    enabled: isConnected && channelCount > 3,
+  });
+
+  const { data: leader4 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelLeader',
+    args: [BigInt(4)],
+    enabled: isConnected && channelCount > 4,
+  });
+
+  const { data: leader5 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelLeader',
+    args: [BigInt(5)],
+    enabled: isConnected && channelCount > 5,
+  });
+
+  const { data: leader6 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelLeader',
+    args: [BigInt(6)],
+    enabled: isConnected && channelCount > 6,
+  });
+
+  const { data: leader7 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelLeader',
+    args: [BigInt(7)],
+    enabled: isConnected && channelCount > 7,
+  });
+
+  const { data: leader8 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelLeader',
+    args: [BigInt(8)],
+    enabled: isConnected && channelCount > 8,
+  });
+
+  const { data: leader9 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelLeader',
+    args: [BigInt(9)],
+    enabled: isConnected && channelCount > 9,
+  });
+
+  // Check channel states (to exclude closed channels)
+  const { data: state0 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelState',
+    args: [BigInt(0)],
+    enabled: isConnected && channelCount > 0,
+  });
+
+  const { data: state1 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelState',
+    args: [BigInt(1)],
+    enabled: isConnected && channelCount > 1,
+  });
+
+  const { data: state2 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelState',
+    args: [BigInt(2)],
+    enabled: isConnected && channelCount > 2,
+  });
+
+  const { data: state3 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelState',
+    args: [BigInt(3)],
+    enabled: isConnected && channelCount > 3,
+  });
+
+  const { data: state4 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelState',
+    args: [BigInt(4)],
+    enabled: isConnected && channelCount > 4,
+  });
+
+  const { data: state5 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelState',
+    args: [BigInt(5)],
+    enabled: isConnected && channelCount > 5,
+  });
+
+  const { data: state6 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelState',
+    args: [BigInt(6)],
+    enabled: isConnected && channelCount > 6,
+  });
+
+  const { data: state7 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelState',
+    args: [BigInt(7)],
+    enabled: isConnected && channelCount > 7,
+  });
+
+  const { data: state8 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelState',
+    args: [BigInt(8)],
+    enabled: isConnected && channelCount > 8,
+  });
+
+  const { data: state9 } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelState',
+    args: [BigInt(9)],
+    enabled: isConnected && channelCount > 9,
+  });
+
+  // Check leadership across all channels
+  useEffect(() => {
+    if (!address) {
+      setLeaderChannelId(null);
+      return;
+    }
+
+    const channels = [
+      { id: 0, leader: leader0 as string | undefined, state: state0 as number | undefined },
+      { id: 1, leader: leader1 as string | undefined, state: state1 as number | undefined },
+      { id: 2, leader: leader2 as string | undefined, state: state2 as number | undefined },
+      { id: 3, leader: leader3 as string | undefined, state: state3 as number | undefined },
+      { id: 4, leader: leader4 as string | undefined, state: state4 as number | undefined },
+      { id: 5, leader: leader5 as string | undefined, state: state5 as number | undefined },
+      { id: 6, leader: leader6 as string | undefined, state: state6 as number | undefined },
+      { id: 7, leader: leader7 as string | undefined, state: state7 as number | undefined },
+      { id: 8, leader: leader8 as string | undefined, state: state8 as number | undefined },
+      { id: 9, leader: leader9 as string | undefined, state: state9 as number | undefined },
+    ];
+
+    for (const channel of channels) {
+      if (channel.leader) {
+        const state = Number(channel.state ?? 0);
+        // Check if this address is the leader and channel is not closed (state 5)
+        if (channel.leader.toLowerCase() === address.toLowerCase() && state !== 5) {
+          setLeaderChannelId(channel.id);
+          return;
+        }
+      }
+    }
+    setLeaderChannelId(null);
+  }, [address, leader0, leader1, leader2, leader3, leader4, leader5, leader6, leader7, leader8, leader9, 
+      state0, state1, state2, state3, state4, state5, state6, state7, state8, state9]);
 
   // Anyone can create channels now - no authorization required
   const isAuthorized = true;
 
-  // Check if user is already a channel leader
-  const isAlreadyLeader = address && (
-    (channelStats0 && channelStats0[4] && String(channelStats0[4]).toLowerCase() === address.toLowerCase() && Number(channelStats0[2]) !== 5) ||
-    (channelStats1 && channelStats1[4] && String(channelStats1[4]).toLowerCase() === address.toLowerCase() && Number(channelStats1[2]) !== 5)
-  );
+  // Check if user is already a channel leader (only if channel is not closed)
+  const isAlreadyLeader = leaderChannelId !== null;
 
   // Form state
   const [allowedTokens, setAllowedTokens] = useState<string[]>(['']);
@@ -69,6 +255,23 @@ export default function CreateChannelPage() {
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [createdChannelId, setCreatedChannelId] = useState<string>('');
   const [txHash, setTxHash] = useState<string>('');
+
+  // Dev mode: Auto-fill test data
+  const fillTestData = () => {
+    // Fill with test token (TON)
+    setAllowedTokens([TON_TOKEN_ADDRESS]);
+    
+    // Fill with test participants (current user + test addresses)
+    const testParticipants: Participant[] = [
+      { address: address || '0x0000000000000000000000000000000000000001' },
+      { address: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' },
+      { address: '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC' },
+    ];
+    setParticipants(testParticipants);
+    
+    // Set timeout to 7 days
+    setTimeout(7);
+  };
 
   // Add/Remove participants
   const addParticipant = () => {
@@ -136,34 +339,46 @@ export default function CreateChannelPage() {
     return Math.floor(128 / tokenCount);
   };
 
-  const isFormValid = () => {
+  // Form validation with debug info
+  const getFormValidationStatus = () => {
     const filledTokens = allowedTokens.filter(token => token !== '');
     const maxParticipants = getMaxParticipants(filledTokens.length);
-    
-    // Check for duplicate tokens
     const uniqueTokens = new Set(filledTokens);
     const hasDuplicates = uniqueTokens.size !== filledTokens.length;
     
-    return (
-      isAuthorized && // User must be authorized to create channels
-      !isAlreadyLeader && // Prevent creation if already leading a channel
-      allowedTokens.length > 0 &&
-      allowedTokens.length <= 3 &&
-      !hasDuplicates && // No duplicate tokens allowed
-      allowedTokens.every(token => 
-        token === '' || // Allow empty tokens during editing
-        token === TON_TOKEN_ADDRESS || // TON
-        token === WTON_TOKEN_ADDRESS || // WTON
-        token === USDT_TOKEN_ADDRESS || // USDT
+    const checks = {
+      isAuthorized,
+      notAlreadyLeader: !isAlreadyLeader,
+      hasTokens: allowedTokens.length > 0,
+      tokensUnder3: allowedTokens.length <= 3,
+      noDuplicateTokens: !hasDuplicates,
+      allTokensValid: allowedTokens.every(token => 
+        token === '' ||
+        token === TON_TOKEN_ADDRESS ||
+        token === WTON_TOKEN_ADDRESS ||
+        token === USDT_TOKEN_ADDRESS ||
         isValidEthereumAddress(token)
-      ) &&
-      filledTokens.length > 0 && // At least one non-empty token
-      participants.length >= 1 && 
-      participants.length <= maxParticipants &&
-      participants.every(p => isValidEthereumAddress(p.address)) &&
-      timeout >= 1 && timeout <= 365 // 1 day to 365 days
-    );
+      ),
+      hasFilledToken: filledTokens.length > 0,
+      hasParticipants: participants.length >= 1,
+      participantsUnderMax: participants.length <= maxParticipants,
+      allParticipantsValid: participants.every(p => isValidEthereumAddress(p.address)),
+      validTimeout: timeout >= 1 && timeout <= 365,
+    };
+    
+    return checks;
   };
+
+  const isFormValid = () => {
+    const checks = getFormValidationStatus();
+    return Object.values(checks).every(v => v === true);
+  };
+  
+  // Debug: Log form validation on change
+  const formValidationStatus = getFormValidationStatus();
+  const failedChecks = Object.entries(formValidationStatus)
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
 
   // Prepare contract call
   const channelParams = isFormValid() ? {
@@ -186,25 +401,76 @@ export default function CreateChannelPage() {
     enabled: false,
   };
 
-  const { config } = usePrepareContractWrite(contractConfig as any);
+  const { config, error: prepareError, isError: isPrepareError } = usePrepareContractWrite(contractConfig as any);
 
-  const { write: createChannel, isLoading: isCreating, data: txData } = useContractWrite({
+  // Debug log for prepare errors
+  if (isPrepareError && prepareError) {
+    console.log('Contract prepare error:', prepareError.message);
+  }
+
+  const { write: createChannel, isLoading: isCreating, data: txData, error: writeError } = useContractWrite({
     ...config,
     onSuccess(data) {
       setTxHash(data.hash);
     },
     onError(error) {
+      console.error('Contract write error:', error);
       setTxHash('');
     },
   });
+
+  // Save channel to Firebase Realtime Database
+  const saveChannelToFirebase = async (channelId: string) => {
+    try {
+      const channelData = {
+        channelId,
+        contractAddress: ROLLUP_BRIDGE_CORE_ADDRESS,
+        chainId: chain?.id || 11155111, // Use actual chain ID (default: Sepolia 11155111)
+        participantAddresses: participants.map(p => p.address),
+        participantCount: participants.length,
+        allowedTokens: allowedTokens.filter(token => token !== ''),
+        timeout: timeout * 86400, // in seconds
+        leader: address,
+        status: 'pending', // Will become 'active' after DKG
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Save channel data
+      await setData(`channels/${channelId}`, channelData);
+
+      // Save participants
+      for (let i = 0; i < participants.length; i++) {
+        const participantData = {
+          address: participants[i].address,
+          participantIndex: i,
+          l1Address: participants[i].address,
+          status: 'active',
+          isLeader: participants[i].address.toLowerCase() === address?.toLowerCase(),
+          joinedAt: new Date().toISOString(),
+        };
+        await setData(`channels/${channelId}/participants/${participants[i].address}`, participantData);
+      }
+
+      console.log('✅ Channel saved to Firebase:', channelId);
+    } catch (error) {
+      console.error('❌ Failed to save channel to Firebase:', error);
+      // Don't throw - channel is created on-chain, Firebase save is secondary
+    }
+  };
 
   // Wait for transaction confirmation
   const { isLoading: isConfirming } = useWaitForTransaction({
     hash: txData?.hash,
     enabled: !!txData?.hash,
-    onSuccess(data) {
+    async onSuccess(data) {
       // Extract channel ID from transaction or use total channels + 1
-      setCreatedChannelId(totalChannels ? String(Number(totalChannels)) : '0');
+      const newChannelId = totalChannels ? String(Number(totalChannels)) : '0';
+      setCreatedChannelId(newChannelId);
+      
+      // Save to Firebase Realtime Database
+      await saveChannelToFirebase(newChannelId);
+      
       setShowSuccessPopup(true);
       setTxHash('');
     },
@@ -254,26 +520,57 @@ export default function CreateChannelPage() {
         <div className="max-w-5xl mx-auto">
           <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 mb-6 shadow-lg shadow-[#4fc3f7]/20">
             <div className="mb-8">
-              <h2 className="text-2xl font-bold text-white mb-2">Create Multi-Token Channel</h2>
-              <p className="text-gray-300">
-                Set up a collaborative bridge channel supporting multiple tokens for zero-knowledge proof operations with multiple participants.
-              </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-white mb-2">Create Multi-Token Channel</h2>
+                  <p className="text-gray-300">
+                    Set up a collaborative bridge channel supporting multiple tokens for zero-knowledge proof operations with multiple participants.
+                  </p>
+                </div>
+                {/* Dev Mode: Auto-fill test data button */}
+                {isDevMode && (
+                  <button
+                    type="button"
+                    onClick={fillTestData}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded transition-colors"
+                  >
+                    <Wand2 className="w-4 h-4" />
+                    Fill Test Data
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Warning for users already leading a channel */}
             <ClientOnly>
               {isAlreadyLeader && (
-                <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-500/50">
+                <div className="mb-6 p-4 bg-red-900/30 border border-red-500/50">
                   <div className="flex items-center gap-3 mb-2">
-                    <AlertTriangle className="w-5 h-5 text-yellow-400" />
-                    <h3 className="text-lg font-semibold text-yellow-300">Channel Creation Restricted</h3>
+                    <AlertTriangle className="w-5 h-5 text-red-400" />
+                    <h3 className="text-lg font-semibold text-red-300">Channel Creation Blocked</h3>
                   </div>
-                  <p className="text-yellow-200/90 mb-3">
-                    You are already leading an active channel. You can only lead one channel at a time.
+                  <p className="text-red-200/90 mb-3">
+                    <strong>You are already the leader of Channel #{leaderChannelId}.</strong> Each address can only lead one channel at a time.
                   </p>
-                  <p className="text-sm text-yellow-300/80">
-                    Please close your current channel before creating a new one. You can manage your existing channel from the sidebar menu.
+                  <p className="text-sm text-red-300/80 mb-4">
+                    To create a new channel, you must first close Channel #{leaderChannelId}, or use a different wallet address.
                   </p>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/close-channel?channelId=${leaderChannelId}`)}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors"
+                    >
+                      Close Channel #{leaderChannelId}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/manage-channel?channelId=${leaderChannelId}`)}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium transition-colors"
+                    >
+                      Manage Channel #{leaderChannelId}
+                    </button>
+                  </div>
                 </div>
               )}
             </ClientOnly>
@@ -516,11 +813,93 @@ export default function CreateChannelPage() {
                 </div>
               </div>
 
+              {/* Form Validation Debug (only shown when there are issues) */}
+              {failedChecks.length > 0 && (
+                <div className="p-4 bg-yellow-900/20 border border-yellow-500/50">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-yellow-400 mt-0.5" />
+                    <div>
+                      <h4 className="text-sm font-semibold text-yellow-300 mb-2">Form Validation Issues</h4>
+                      <ul className="text-yellow-200/90 text-sm space-y-1">
+                        {failedChecks.includes('hasFilledToken') && (
+                          <li>• Please select at least one token</li>
+                        )}
+                        {failedChecks.includes('allTokensValid') && (
+                          <li>• One or more token addresses are invalid</li>
+                        )}
+                        {failedChecks.includes('noDuplicateTokens') && (
+                          <li>• Duplicate tokens are not allowed</li>
+                        )}
+                        {failedChecks.includes('hasParticipants') && (
+                          <li>• Please add at least one participant</li>
+                        )}
+                        {failedChecks.includes('allParticipantsValid') && (
+                          <li>• One or more participant addresses are invalid (must be 0x + 40 hex characters)</li>
+                        )}
+                        {failedChecks.includes('participantsUnderMax') && (
+                          <li>• Too many participants for selected number of tokens</li>
+                        )}
+                        {failedChecks.includes('validTimeout') && (
+                          <li>• Timeout must be between 1 and 365 days</li>
+                        )}
+                        {failedChecks.includes('notAlreadyLeader') && (
+                          <li>• You are already leading a channel</li>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Contract Prepare Error Message */}
+              {isPrepareError && prepareError && isFormValid() && (
+                <div className="p-4 bg-red-900/20 border border-red-500/50">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5" />
+                    <div>
+                      <h4 className="text-sm font-semibold text-red-300 mb-1">Transaction Preparation Error</h4>
+                      <p className="text-red-200/90 text-sm">
+                        {prepareError.message.includes('Channel limit reached')
+                          ? 'You are already leading a channel. Each address can only lead one channel at a time. Please close your existing channel first or use a different wallet.'
+                          : prepareError.message.includes('insufficient')
+                          ? 'Insufficient ETH balance. You need at least 0.001 ETH for the leader bond plus gas fees.'
+                          : prepareError.message.includes('network')
+                          ? 'Network error. Please make sure you are connected to Sepolia testnet.'
+                          : prepareError.message.includes('Token not allowed')
+                          ? 'One or more tokens are not allowed. Please use only supported tokens (TON, WTON, USDT).'
+                          : prepareError.message.includes('Invalid timeout')
+                          ? 'Invalid timeout value. Must be between 1 hour and 365 days.'
+                          : prepareError.message.includes('revert')
+                          ? 'Contract error: ' + (prepareError.message.match(/reason:\s*([^\n]+)/)?.[1] || prepareError.message.slice(0, 150))
+                          : prepareError.message.slice(0, 200)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Write Error Message */}
+              {writeError && (
+                <div className="p-4 bg-red-900/20 border border-red-500/50">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5" />
+                    <div>
+                      <h4 className="text-sm font-semibold text-red-300 mb-1">Transaction Error</h4>
+                      <p className="text-red-200/90 text-sm">
+                        {writeError.message.includes('rejected')
+                          ? 'Transaction was rejected by user.'
+                          : writeError.message.slice(0, 200)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Submit Button */}
               <div className="pt-6">
                 <button
                   type="submit"
-                  disabled={!isFormValid() || isCreating || isConfirming}
+                  disabled={!isFormValid() || isCreating || isConfirming || !createChannel}
                   className="w-full px-6 py-3 bg-gradient-to-r from-[#4fc3f7] to-[#029bee] text-white font-medium hover:from-[#029bee] hover:to-[#4fc3f7] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] transition-all duration-200"
                 >
                   {isCreating 
@@ -528,9 +907,16 @@ export default function CreateChannelPage() {
                     : isConfirming
                     ? 'Waiting for Confirmation...'
                     : isAlreadyLeader 
-                    ? 'Already Leading a Channel' 
+                    ? 'Already Leading a Channel'
+                    : !createChannel && isFormValid()
+                    ? 'Preparing Transaction...'
                     : 'Create Channel (0.001 ETH bond)'}
                 </button>
+                {!createChannel && isFormValid() && !isPrepareError && (
+                  <p className="text-sm text-yellow-400 mt-2 text-center">
+                    ⏳ Waiting for transaction to be prepared. Make sure you have enough ETH for gas + 0.001 ETH bond.
+                  </p>
+                )}
               </div>
             </form>
           </div>

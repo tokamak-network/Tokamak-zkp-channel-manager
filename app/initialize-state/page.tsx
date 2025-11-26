@@ -20,6 +20,7 @@ import {
 import { getTokenSymbol, getTokenDecimals } from '@/lib/tokenUtils';
 import { generateClientSideProof, isClientProofGenerationSupported, getMemoryRequirement, requiresExternalDownload, getDownloadSize } from '@/lib/clientProofGeneration';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
+import { updateData } from '@/lib/realtime-db-helpers';
 import { Settings, Link, ShieldOff, Users, CheckCircle2, XCircle, Calculator } from 'lucide-react';
 
 // Custom animations
@@ -120,14 +121,45 @@ export default function InitializeStatePage() {
     hash: initializeData?.hash,
   });
 
-  // Show success popup when transaction is successful
+  // Show success popup when transaction is successful and save to Firebase
   useEffect(() => {
+    const saveInitializationData = async () => {
+      if (isInitializeSuccess && initializeData?.hash && hookLeaderChannel) {
+        try {
+          // Save initialization data to Firebase
+          const initializationData = {
+            initializationTxHash: initializeData.hash,
+            initializedAt: new Date().toISOString(),
+            status: 'active', // Channel is now active after initialization
+            ...(generatedProof && {
+              initialProof: {
+                pA: generatedProof.pA?.map(String) || [],
+                pB: generatedProof.pB?.map(String) || [],
+                pC: generatedProof.pC?.map(String) || [],
+                merkleRoot: generatedProof.merkleRoot || '',
+              }
+            })
+          };
+
+          await updateData(`channels/${hookLeaderChannel.id}`, initializationData);
+          console.log('✅ Initialization data saved to Firebase:', {
+            channelId: hookLeaderChannel.id,
+            txHash: initializeData.hash
+          });
+        } catch (error) {
+          console.error('❌ Failed to save initialization data to Firebase:', error);
+          // Don't block the success flow - initialization is on-chain, Firebase is secondary
+        }
+      }
+    };
+
     if (isInitializeSuccess) {
+      saveInitializationData();
       setIsGeneratingProof(false);
       setProofGenerationStatus('');
       setShowSuccessPopup(true);
     }
-  }, [isInitializeSuccess]);
+  }, [isInitializeSuccess, initializeData?.hash, hookLeaderChannel, generatedProof]);
 
   // Animate cards on mount
   useEffect(() => {

@@ -1,9 +1,10 @@
 /**
- * Firebase Firestore Type Definitions
+ * Firebase Realtime Database Type Definitions
  * Based on the schema defined in docs/FIREBASE_SCHEMA.md
  */
 
-import { Timestamp } from "firebase/firestore";
+// For Realtime Database, we use ISO string timestamps instead of Firestore Timestamp
+type Timestamp = string; // ISO 8601 format: "2025-11-26T15:00:00.000Z"
 
 // ============================================================================
 // Common Types
@@ -54,7 +55,7 @@ export interface Channel {
   // Identifiers
   channelId: string;
   contractAddress: string;
-  networkId: string; // "sepolia", "mainnet", etc.
+  chainId: number; // Chain ID (e.g., 11155111 for Sepolia, 1 for Mainnet)
 
   // Channel Configuration
   participantAddresses: string[]; // L1 addresses
@@ -505,7 +506,7 @@ export interface AggregatedProof {
 
 export interface CreateChannelRequest {
   contractAddress: string;
-  networkId: string;
+  chainId: number; // Chain ID (e.g., 11155111 for Sepolia, 1 for Mainnet)
   participantAddresses: string[];
   threshold: number;
   merkleTreeDepth: number;
@@ -566,28 +567,19 @@ export interface SnapshotWithTransactions extends StateSnapshot {
 }
 
 // ============================================================================
-// Firestore Converter Types
+// Timestamp Helper Types (for Realtime Database)
 // ============================================================================
 
 /**
- * Helper type for converting Firestore Timestamp to Date
+ * Helper function to create ISO timestamp string
  */
-export type FirestoreTimestamp = {
-  toDate(): Date;
-  toMillis(): number;
-};
+export function createTimestamp(): string {
+  return new Date().toISOString();
+}
 
 /**
- * Convert Firestore document with Timestamp to client type
+ * Helper function to parse ISO timestamp string to Date
  */
-export type WithFirestoreTimestamp<T> = {
-  [K in keyof T]: T[K] extends Timestamp ? FirestoreTimestamp : T[K];
-};
-
-/**
- * Convert client type to Firestore document (for writing)
- */
-export type ToFirestore<T> = {
-  [K in keyof T]: T[K] extends Date ? Timestamp : T[K];
-};
-
+export function parseTimestamp(timestamp: string): Date {
+  return new Date(timestamp);
+}
