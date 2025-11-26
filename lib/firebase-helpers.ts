@@ -30,29 +30,45 @@ import type {
   UserBalance,
   DKGSession,
   Participant,
+  DKGMessage,
 } from "./firebase-types";
 
 // ============================================================================
 // Collection References
 // ============================================================================
 
-export const channelsRef = collection(db, "channels") as CollectionReference<Channel>;
+export const channelsRef = collection(
+  db,
+  "channels"
+) as CollectionReference<Channel>;
 
 // Helper functions to get subcollection references (all under channelId)
 export function getTransactionsRef(channelId: string) {
-  return collection(db, `channels/${channelId}/transactions`) as CollectionReference<Transaction>;
+  return collection(
+    db,
+    `channels/${channelId}/transactions`
+  ) as CollectionReference<Transaction>;
 }
 
 export function getZKProofsRef(channelId: string) {
-  return collection(db, `channels/${channelId}/zkProofs`) as CollectionReference<ZKProof>;
+  return collection(
+    db,
+    `channels/${channelId}/zkProofs`
+  ) as CollectionReference<ZKProof>;
 }
 
 export function getDepositsRef(channelId: string) {
-  return collection(db, `channels/${channelId}/deposits`) as CollectionReference<Deposit>;
+  return collection(
+    db,
+    `channels/${channelId}/deposits`
+  ) as CollectionReference<Deposit>;
 }
 
 export function getUserBalancesRef(channelId: string) {
-  return collection(db, `channels/${channelId}/userBalances`) as CollectionReference<UserBalance>;
+  return collection(
+    db,
+    `channels/${channelId}/userBalances`
+  ) as CollectionReference<UserBalance>;
 }
 
 export function getAggregatedProofsRef(channelId: string) {
@@ -60,11 +76,17 @@ export function getAggregatedProofsRef(channelId: string) {
 }
 
 export function getDKGSessionsRef(channelId: string) {
-  return collection(db, `channels/${channelId}/dkgSessions`) as CollectionReference<DKGSession>;
+  return collection(
+    db,
+    `channels/${channelId}/dkgSessions`
+  ) as CollectionReference<DKGSession>;
 }
 
 export function getDKGMessagesRef(channelId: string, sessionId: string) {
-  return collection(db, `channels/${channelId}/dkgSessions/${sessionId}/messages`);
+  return collection(
+    db,
+    `channels/${channelId}/dkgSessions/${sessionId}/messages`
+  );
 }
 
 // ============================================================================
@@ -96,7 +118,9 @@ export async function getActiveChannels(): Promise<Channel[]> {
 /**
  * Get channel participants
  */
-export async function getChannelParticipants(channelId: string): Promise<Participant[]> {
+export async function getChannelParticipants(
+  channelId: string
+): Promise<Participant[]> {
   const participantsRef = collection(db, `channels/${channelId}/participants`);
   const snapshot = await getDocs(participantsRef);
   return snapshot.docs.map((doc) => doc.data() as Participant);
@@ -110,7 +134,11 @@ export async function getChannelSnapshots(
   limitCount: number = 10
 ): Promise<StateSnapshot[]> {
   const snapshotsRef = collection(db, `channels/${channelId}/stateSnapshots`);
-  const q = query(snapshotsRef, orderBy("sequenceNumber", "desc"), limit(limitCount));
+  const q = query(
+    snapshotsRef,
+    orderBy("sequenceNumber", "desc"),
+    limit(limitCount)
+  );
   const snapshot = await getDocs(q);
   return snapshot.docs.map((doc) => doc.data() as StateSnapshot);
 }
@@ -118,7 +146,9 @@ export async function getChannelSnapshots(
 /**
  * Get latest state snapshot
  */
-export async function getLatestSnapshot(channelId: string): Promise<StateSnapshot | null> {
+export async function getLatestSnapshot(
+  channelId: string
+): Promise<StateSnapshot | null> {
   const snapshots = await getChannelSnapshots(channelId, 1);
   return snapshots.length > 0 ? snapshots[0] : null;
 }
@@ -151,7 +181,10 @@ export async function getChannelTransactions(
 /**
  * Get transaction by ID
  */
-export async function getTransaction(channelId: string, txId: string): Promise<Transaction | null> {
+export async function getTransaction(
+  channelId: string,
+  txId: string
+): Promise<Transaction | null> {
   const transactionsRef = getTransactionsRef(channelId);
   const docRef = doc(transactionsRef, txId);
   const docSnap = await getDoc(docRef);
@@ -161,7 +194,9 @@ export async function getTransaction(channelId: string, txId: string): Promise<T
 /**
  * Get pending transactions
  */
-export async function getPendingTransactions(channelId: string): Promise<Transaction[]> {
+export async function getPendingTransactions(
+  channelId: string
+): Promise<Transaction[]> {
   const transactionsRef = getTransactionsRef(channelId);
   const q = query(
     transactionsRef,
@@ -179,7 +214,10 @@ export async function getPendingTransactions(channelId: string): Promise<Transac
 /**
  * Get ZK proof by ID
  */
-export async function getZKProof(channelId: string, proofId: string): Promise<ZKProof | null> {
+export async function getZKProof(
+  channelId: string,
+  proofId: string
+): Promise<ZKProof | null> {
   const zkProofsRef = getZKProofsRef(channelId);
   const docRef = doc(zkProofsRef, proofId);
   const docSnap = await getDoc(docRef);
@@ -189,7 +227,9 @@ export async function getZKProof(channelId: string, proofId: string): Promise<ZK
 /**
  * Get unverified proofs for a channel
  */
-export async function getUnverifiedProofs(channelId: string): Promise<ZKProof[]> {
+export async function getUnverifiedProofs(
+  channelId: string
+): Promise<ZKProof[]> {
   const zkProofsRef = getZKProofsRef(channelId);
   const q = query(
     zkProofsRef,
@@ -244,7 +284,9 @@ export async function getChannelDeposits(
 /**
  * Get pending deposits
  */
-export async function getPendingDeposits(channelId: string): Promise<Deposit[]> {
+export async function getPendingDeposits(
+  channelId: string
+): Promise<Deposit[]> {
   return getChannelDeposits(channelId, "pending");
 }
 
@@ -282,7 +324,9 @@ export async function updateDepositStatus(
 /**
  * Get user balances for a specific channel
  */
-export async function getChannelUserBalances(channelId: string): Promise<UserBalance[]> {
+export async function getChannelUserBalances(
+  channelId: string
+): Promise<UserBalance[]> {
   const userBalancesRef = getUserBalancesRef(channelId);
   const snapshot = await getDocs(userBalancesRef);
   return snapshot.docs.map((doc) => doc.data());
@@ -291,7 +335,9 @@ export async function getChannelUserBalances(channelId: string): Promise<UserBal
 /**
  * Get user balances across all channels (Collection Group Query)
  */
-export async function getUserBalancesAllChannels(userAddress: string): Promise<UserBalance[]> {
+export async function getUserBalancesAllChannels(
+  userAddress: string
+): Promise<UserBalance[]> {
   const q = query(
     collectionGroup(db, "userBalances"),
     where("userAddressL1", "==", userAddress)
@@ -331,7 +377,9 @@ export async function updateUserBalance(
   const docRef = doc(userBalancesRef, balanceId);
 
   const currentDoc = await getDoc(docRef);
-  const currentCount = currentDoc.exists() ? currentDoc.data()?.transactionCount || 0 : 0;
+  const currentCount = currentDoc.exists()
+    ? currentDoc.data()?.transactionCount || 0
+    : 0;
 
   await updateDoc(docRef, {
     amount: newAmount,
@@ -349,7 +397,10 @@ export async function updateUserBalance(
 /**
  * Get DKG session by ID
  */
-export async function getDKGSession(channelId: string, sessionId: string): Promise<DKGSession | null> {
+export async function getDKGSession(
+  channelId: string,
+  sessionId: string
+): Promise<DKGSession | null> {
   const dkgSessionsRef = getDKGSessionsRef(channelId);
   const docRef = doc(dkgSessionsRef, sessionId);
   const docSnap = await getDoc(docRef);
@@ -359,7 +410,9 @@ export async function getDKGSession(channelId: string, sessionId: string): Promi
 /**
  * Get DKG sessions for a channel
  */
-export async function getChannelDKGSessions(channelId: string): Promise<DKGSession[]> {
+export async function getChannelDKGSessions(
+  channelId: string
+): Promise<DKGSession[]> {
   const dkgSessionsRef = getDKGSessionsRef(channelId);
   const q = query(dkgSessionsRef, orderBy("startedAt", "desc"));
   const snapshot = await getDocs(q);
@@ -369,7 +422,9 @@ export async function getChannelDKGSessions(channelId: string): Promise<DKGSessi
 /**
  * Get active DKG sessions for a channel
  */
-export async function getActiveDKGSessions(channelId: string): Promise<DKGSession[]> {
+export async function getActiveDKGSessions(
+  channelId: string
+): Promise<DKGSession[]> {
   const dkgSessionsRef = getDKGSessionsRef(channelId);
   const q = query(
     dkgSessionsRef,
@@ -441,6 +496,82 @@ export async function getDKGMessages(
   return snapshot.docs.map((doc) => doc.data());
 }
 
+/**
+ * Save DKG message to Firebase
+ */
+export async function saveDKGMessage(
+  channelId: string,
+  sessionId: string,
+  messageData: {
+    round: number;
+    messageType: string;
+    from: string;
+    to?: string;
+    payload: any;
+    encrypted?: boolean;
+    encryptionPublicKey?: string;
+  }
+): Promise<string> {
+  const messagesRef = getDKGMessagesRef(channelId, sessionId);
+  const messageRef = doc(messagesRef);
+
+  const message = {
+    messageId: messageRef.id,
+    sessionId,
+    ...messageData,
+    processed: false,
+    createdAt: serverTimestamp(),
+    sequenceNumber: Date.now(), // Simple sequence number
+  };
+
+  await setDoc(messageRef, message);
+  console.log("✅ DKG message saved to Firebase:", messageRef.id);
+
+  return messageRef.id;
+}
+
+/**
+ * Create a DKG session in Firebase
+ */
+export async function createDKGSession(
+  channelId: string,
+  sessionData: {
+    n: number;
+    t: number;
+    participantAddresses: string[];
+    createdBy: string;
+  }
+): Promise<string> {
+  const dkgSessionsRef = getDKGSessionsRef(channelId);
+  const sessionRef = doc(dkgSessionsRef);
+
+  const participantIndices: { [address: string]: number } = {};
+  sessionData.participantAddresses.forEach((addr, index) => {
+    participantIndices[addr] = index;
+  });
+
+  const session = {
+    sessionId: sessionRef.id,
+    ...sessionData,
+    participantIndices,
+    currentRound: 0,
+    status: "initializing" as const,
+    round1Commitments: {},
+    round2SecretShares: {},
+    round3Complaints: {},
+    verifyShares: {},
+    startedAt: serverTimestamp(),
+    timeout: 3600000, // 1 hour
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  await setDoc(sessionRef, session);
+  console.log("✅ DKG session created in Firebase:", sessionRef.id);
+
+  return sessionRef.id;
+}
+
 // ============================================================================
 // Batch Operations
 // ============================================================================
@@ -466,11 +597,17 @@ export async function createChannelWithParticipants(
     lastActivityAt: serverTimestamp() as Timestamp,
   };
 
-  await setDoc(channelRef, channel);
+  // Remove undefined values before writing to Firestore
+  const cleanedChannel = removeUndefined(channel);
+
+  await setDoc(channelRef, cleanedChannel);
 
   // Create participants subcollection
   const participantsPromises = participantAddresses.map((address, index) => {
-    const participantRef = doc(db, `channels/${channelId}/participants/${address}`);
+    const participantRef = doc(
+      db,
+      `channels/${channelId}/participants/${address}`
+    );
     return setDoc(participantRef, {
       address,
       participantIndex: index,
@@ -496,9 +633,9 @@ export async function deleteChannel(channelId: string): Promise<void> {
   // Note: In production, use Firebase Admin SDK or Cloud Functions
   // to recursively delete all subcollections
   // This is a simplified version for client-side (should be done server-side)
-  
+
   const channelRef = doc(channelsRef, channelId);
-  
+
   // TODO: Implement recursive deletion of all subcollections
   // - stateSnapshots
   // - participants
@@ -508,13 +645,15 @@ export async function deleteChannel(channelId: string): Promise<void> {
   // - userBalances
   // - aggregatedProofs
   // - dkgSessions (and their messages)
-  
+
   await updateDoc(channelRef, {
     status: "closed",
     updatedAt: serverTimestamp(),
   });
-  
-  console.warn("Full deletion of subcollections should be done via Cloud Functions");
+
+  console.warn(
+    "Full deletion of subcollections should be done via Cloud Functions"
+  );
 }
 
 // ============================================================================
@@ -542,3 +681,254 @@ export function getCurrentTimestamp() {
   return serverTimestamp();
 }
 
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Remove undefined values from an object (Firebase doesn't support undefined)
+ */
+function removeUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
+  const cleaned: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
+
+// ============================================================================
+// Mock Data Generation (for testing without DKG server)
+// ============================================================================
+
+/**
+ * Generate random hex string
+ */
+function generateRandomHex(length: number): string {
+  const bytes = new Uint8Array(length / 2);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Generate random Ethereum address
+ */
+function generateRandomAddress(): string {
+  return "0x" + generateRandomHex(40);
+}
+
+/**
+ * Create channel with participants and auto-generate mock DKG data
+ * This is useful for testing the Firebase schema without running a real DKG server
+ */
+export async function createChannelWithMockDKGData(
+  channelData: Partial<Channel>,
+  participantAddresses: string[]
+): Promise<string> {
+  const channelId = channelData.channelId!;
+  const channelDocRef = doc(channelsRef, channelId);
+
+  // Generate mock DKG session ID
+  const mockSessionId = `mock-session-${Date.now()}-${generateRandomHex(8)}`;
+  const mockGroupPublicKey = "0x" + generateRandomHex(128); // 64 bytes = 128 hex chars
+
+  // Create channel document with mock DKG data
+  const channel = {
+    channelId,
+    contractAddress: channelData.contractAddress || generateRandomAddress(),
+    networkId: channelData.networkId || "sepolia",
+    participantAddresses,
+    participantCount: participantAddresses.length,
+    threshold:
+      channelData.threshold || Math.ceil(participantAddresses.length / 2),
+    leader: channelData.leader || participantAddresses[0],
+    status: "active", // Set to active since mock DKG is "completed"
+    dkgSessionId: mockSessionId,
+    groupPublicKey: mockGroupPublicKey,
+    createdAt: serverTimestamp() as Timestamp,
+    updatedAt: serverTimestamp() as Timestamp,
+    // Optional fields
+    merkleTreeDepth: channelData.merkleTreeDepth,
+    mptKeyList: channelData.mptKeyList,
+    l2AddressList: channelData.l2AddressList,
+    initialGroth16Proof: channelData.initialGroth16Proof,
+    initialMerkleRoot: channelData.initialMerkleRoot,
+    callableFunctions: channelData.callableFunctions,
+  };
+
+  // Remove undefined values before writing to Firestore
+  const cleanedChannel = removeUndefined(channel);
+
+  await setDoc(channelDocRef, cleanedChannel);
+  console.log("✅ Channel created with ID:", channelId);
+
+  // Create participant documents
+  await Promise.all(
+    participantAddresses.map(async (address, index) => {
+      const participantRef = doc(
+        db,
+        `channels/${channelId}/participants/${address}`
+      );
+      const participant: Participant = {
+        channelId,
+        address,
+        isActive: true,
+        joinedAt: serverTimestamp() as Timestamp,
+        publicKey: "0x" + generateRandomHex(128), // Mock public key
+        index: index + 1,
+      };
+      await setDoc(participantRef, participant);
+    })
+  );
+  console.log(`✅ Created ${participantAddresses.length} participants`);
+
+  // Create mock DKG session
+  const dkgSessionRef = doc(
+    db,
+    `channels/${channelId}/dkgSessions/${mockSessionId}`
+  );
+  const dkgSession: DKGSession = {
+    sessionId: mockSessionId,
+    channelId,
+    participantAddresses,
+    threshold: channel.threshold,
+    status: "completed",
+    groupPublicKey: mockGroupPublicKey,
+    createdAt: serverTimestamp() as Timestamp,
+    completedAt: serverTimestamp() as Timestamp,
+  };
+  await setDoc(dkgSessionRef, dkgSession);
+  console.log("✅ Created mock DKG session:", mockSessionId);
+
+  // Create mock DKG messages (Round 1, 2, Finalization)
+  const mockMessages: Partial<DKGMessage>[] = [
+    // Round 1: Commitments from each participant
+    ...participantAddresses.map((addr, idx) => ({
+      round: 1,
+      messageType: "commitment" as const,
+      from: addr,
+      payload: {
+        publicPackage: generateRandomHex(256),
+        commitmentHash: generateRandomHex(64),
+      },
+      processed: true,
+    })),
+    // Round 2: Secret shares from each participant
+    ...participantAddresses.map((addr, idx) => ({
+      round: 2,
+      messageType: "secret_share" as const,
+      from: addr,
+      payload: {
+        encryptedShares: participantAddresses.map((recipient) => ({
+          to: recipient,
+          encryptedData: generateRandomHex(512),
+          nonce: generateRandomHex(24),
+        })),
+      },
+      processed: true,
+    })),
+    // Finalization: Final verification from each participant
+    ...participantAddresses.map((addr, idx) => ({
+      round: 3,
+      messageType: "finalization" as const,
+      from: addr,
+      payload: {
+        signature: generateRandomHex(128),
+        verified: true,
+        groupPublicKey: mockGroupPublicKey,
+      },
+      processed: true,
+    })),
+  ];
+
+  // Save all mock DKG messages
+  for (const messageData of mockMessages) {
+    await saveDKGMessage(channelId, mockSessionId, messageData);
+  }
+  console.log(`✅ Created ${mockMessages.length} mock DKG messages`);
+
+  // Create a few mock transactions
+  const mockTransactions: Partial<Transaction>[] = [
+    {
+      channelId,
+      type: "deposit",
+      from: participantAddresses[0],
+      to: channel.contractAddress,
+      amount: "1000000000000000000", // 1 ETH
+      tokenAddress: "0x0000000000000000000000000000000000000000", // ETH
+      status: "confirmed",
+      l1TxHash: "0x" + generateRandomHex(64),
+    },
+    {
+      channelId,
+      type: "deposit",
+      from: participantAddresses[1],
+      to: channel.contractAddress,
+      amount: "2000000000000000000", // 2 ETH
+      tokenAddress: "0x0000000000000000000000000000000000000000",
+      status: "confirmed",
+      l1TxHash: "0x" + generateRandomHex(64),
+    },
+  ];
+
+  for (const txData of mockTransactions) {
+    const txRef = doc(collection(db, `channels/${channelId}/transactions`));
+    const transaction: Transaction = {
+      transactionId: txRef.id,
+      ...txData,
+      timestamp: serverTimestamp() as Timestamp,
+    } as Transaction;
+    await setDoc(txRef, transaction);
+  }
+  console.log(`✅ Created ${mockTransactions.length} mock transactions`);
+
+  // Create mock deposits
+  const mockDeposits: Partial<Deposit>[] = participantAddresses.map((addr) => ({
+    channelId,
+    userAddress: addr,
+    tokenAddress: "0x0000000000000000000000000000000000000000",
+    amount: "1000000000000000000",
+    status: "confirmed",
+  }));
+
+  for (const depositData of mockDeposits) {
+    const depositRef = doc(collection(db, `channels/${channelId}/deposits`));
+    const deposit: Deposit = {
+      depositId: depositRef.id,
+      ...depositData,
+      depositedAt: serverTimestamp() as Timestamp,
+    } as Deposit;
+    await setDoc(depositRef, deposit);
+  }
+  console.log(`✅ Created ${mockDeposits.length} mock deposits`);
+
+  // Create mock user balances
+  const mockBalances: Partial<UserBalance>[] = participantAddresses.map(
+    (addr) => ({
+      channelId,
+      userAddress: addr,
+      tokenAddress: "0x0000000000000000000000000000000000000000",
+      balance: "1000000000000000000",
+      lockedBalance: "0",
+    })
+  );
+
+  for (const balanceData of mockBalances) {
+    const balanceRef = doc(
+      db,
+      `channels/${channelId}/userBalances/${balanceData.userAddress}`
+    );
+    const balance: UserBalance = {
+      ...balanceData,
+      lastUpdated: serverTimestamp() as Timestamp,
+    } as UserBalance;
+    await setDoc(balanceRef, balance);
+  }
+  console.log(`✅ Created ${mockBalances.length} mock user balances`);
+
+  console.log("🎉 Channel with complete mock data created successfully!");
+  return channelId;
+}

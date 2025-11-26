@@ -1,15 +1,25 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAccount, useContractWrite, usePrepareContractWrite, useContractRead, useWaitForTransaction } from 'wagmi';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { ROLLUP_BRIDGE_ABI, ROLLUP_BRIDGE_ADDRESS } from '@/lib/contracts';
-import { Sidebar } from '@/components/Sidebar';
-import { ClientOnly } from '@/components/ClientOnly';
-import { MobileNavigation } from '@/components/MobileNavigation';
-import { Footer } from '@/components/Footer';
-import { AlertTriangle, Lightbulb, CheckCircle } from 'lucide-react';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  useAccount,
+  useContractWrite,
+  usePrepareContractWrite,
+  useContractRead,
+  useWaitForTransaction,
+} from "wagmi";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { ROLLUP_BRIDGE_ABI, ROLLUP_BRIDGE_ADDRESS } from "@/lib/contracts";
+import { Sidebar } from "@/components/Sidebar";
+import { ClientOnly } from "@/components/ClientOnly";
+import { MobileNavigation } from "@/components/MobileNavigation";
+import { Footer } from "@/components/Footer";
+import { AlertTriangle, Lightbulb, CheckCircle, Database } from "lucide-react";
+import {
+  createChannelWithMockDKGData,
+  createChannelWithParticipants,
+} from "@/lib/firebase-helpers";
 
 interface Participant {
   address: string;
@@ -20,60 +30,84 @@ export default function CreateChannelPage() {
   const { address, isConnected } = useAccount();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  
-  // Check if user is already leading a channel
+
+  // Database development mode
+  const isDBDevelopment = process.env.NEXT_PUBLIC_DB_DEVELOPMENT === "true";
+  const [isGeneratingTestData, setIsGeneratingTestData] = useState(false);
+
+  // Debug: Log DB development mode status
+  console.log("🔍 DB Development Mode:", {
+    isDBDevelopment,
+    envValue: process.env.NEXT_PUBLIC_DB_DEVELOPMENT,
+  });
+
+  // Check if user is already leading a channel (skip in DB development mode)
   const { data: totalChannels } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getTotalChannels',
-    enabled: isConnected,
+    functionName: "getTotalChannels",
+    enabled: isConnected && !isDBDevelopment, // Skip contract checks in DB dev mode
   });
 
   const { data: channelStats0 } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
+    functionName: "getChannelStats",
     args: [BigInt(0)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 0,
+    enabled:
+      isConnected &&
+      !isDBDevelopment &&
+      !!totalChannels &&
+      Number(totalChannels) > 0,
   });
 
   const { data: channelStats1 } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getChannelStats',
+    functionName: "getChannelStats",
     args: [BigInt(1)],
-    enabled: isConnected && !!totalChannels && Number(totalChannels) > 1,
+    enabled:
+      isConnected &&
+      !isDBDevelopment &&
+      !!totalChannels &&
+      Number(totalChannels) > 1,
   });
 
   // Anyone can create channels now - no authorization required
   const isAuthorized = true;
 
   // Check if user is already a channel leader
-  const isAlreadyLeader = address && (
-    (channelStats0 && channelStats0[4] && String(channelStats0[4]).toLowerCase() === address.toLowerCase() && channelStats0[2] !== 5) ||
-    (channelStats1 && channelStats1[4] && String(channelStats1[4]).toLowerCase() === address.toLowerCase() && channelStats1[2] !== 5)
-  );
+  const isAlreadyLeader =
+    address &&
+    ((channelStats0 &&
+      channelStats0[4] &&
+      String(channelStats0[4]).toLowerCase() === address.toLowerCase() &&
+      channelStats0[2] !== 5) ||
+      (channelStats1 &&
+        channelStats1[4] &&
+        String(channelStats1[4]).toLowerCase() === address.toLowerCase() &&
+        channelStats1[2] !== 5));
 
   // Form state
-  const [allowedTokens, setAllowedTokens] = useState<string[]>(['']);
+  const [allowedTokens, setAllowedTokens] = useState<string[]>([""]);
   const [participants, setParticipants] = useState<Participant[]>([
-    { address: '' },
-    { address: '' },
-    { address: '' }
+    { address: "" },
+    { address: "" },
+    { address: "" },
   ]);
   const [timeout, setTimeout] = useState(1); // in days
-  const [pkx, setPkx] = useState('');
-  const [pky, setPky] = useState('');
+  const [pkx, setPkx] = useState("");
+  const [pky, setPky] = useState("");
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
-  const [createdChannelId, setCreatedChannelId] = useState<string>('');
-  const [txHash, setTxHash] = useState<string>('');
+  const [createdChannelId, setCreatedChannelId] = useState<string>("");
+  const [txHash, setTxHash] = useState<string>("");
 
   // Add/Remove participants
   const addParticipant = () => {
-    const filledTokens = allowedTokens.filter(token => token !== '');
+    const filledTokens = allowedTokens.filter((token) => token !== "");
     const maxParticipants = getMaxParticipants(filledTokens.length || 1); // Use 1 as minimum to show limits
     if (participants.length < maxParticipants) {
-      setParticipants([...participants, { address: '' }]);
+      setParticipants([...participants, { address: "" }]);
     }
   };
 
@@ -92,7 +126,7 @@ export default function CreateChannelPage() {
   // Add/Remove allowed tokens
   const addToken = () => {
     if (allowedTokens.length < 4) {
-      setAllowedTokens([...allowedTokens, '']);
+      setAllowedTokens([...allowedTokens, ""]);
     }
   };
 
@@ -108,9 +142,9 @@ export default function CreateChannelPage() {
     setAllowedTokens(newTokens);
   };
 
-
   // Validation
-  const isValidEthereumAddress = (addr: string) => /^0x[a-fA-F0-9]{40}$/.test(addr);
+  const isValidEthereumAddress = (addr: string) =>
+    /^0x[a-fA-F0-9]{40}$/.test(addr);
   const isValidHex = (hex: string) => /^0x[a-fA-F0-9]+$/.test(hex);
 
   const getMaxParticipants = (tokenCount: number) => {
@@ -122,68 +156,80 @@ export default function CreateChannelPage() {
   };
 
   const isFormValid = () => {
-    const filledTokens = allowedTokens.filter(token => token !== '');
+    const filledTokens = allowedTokens.filter((token) => token !== "");
     const maxParticipants = getMaxParticipants(filledTokens.length);
-    
+
     // Check for duplicate tokens
     const uniqueTokens = new Set(filledTokens);
     const hasDuplicates = uniqueTokens.size !== filledTokens.length;
-    
+
     return (
       isAuthorized && // User must be authorized to create channels
       !isAlreadyLeader && // Prevent creation if already leading a channel
       allowedTokens.length > 0 &&
       allowedTokens.length <= 4 &&
       !hasDuplicates && // No duplicate tokens allowed
-      allowedTokens.every(token => 
-        token === '' || // Allow empty tokens during editing
-        token === '0x0000000000000000000000000000000000000001' || // ETH_TOKEN_ADDRESS
-        isValidEthereumAddress(token)
+      allowedTokens.every(
+        (token) =>
+          token === "" || // Allow empty tokens during editing
+          token === "0x0000000000000000000000000000000000000001" || // ETH_TOKEN_ADDRESS
+          isValidEthereumAddress(token)
       ) &&
       filledTokens.length > 0 && // At least one non-empty token
-      participants.length >= 3 && 
+      participants.length >= 3 &&
       participants.length <= maxParticipants &&
-      participants.every(p => isValidEthereumAddress(p.address)) &&
-      timeout >= 1 && timeout <= 365 && // 1 day to 365 days
+      participants.every((p) => isValidEthereumAddress(p.address)) &&
+      timeout >= 1 &&
+      timeout <= 365 && // 1 day to 365 days
       isValidHex(pkx) &&
       isValidHex(pky)
     );
   };
 
   // Prepare contract call
-  const channelParams = isFormValid() ? {
-    allowedTokens: allowedTokens.filter(token => token !== '').map(token => token as `0x${string}`),
-    participants: participants.map(p => p.address as `0x${string}`),
-    timeout: BigInt(timeout * 86400), // Convert days to seconds
-    pkx: BigInt(pkx),
-    pky: BigInt(pky)
-  } : undefined;
+  const channelParams = isFormValid()
+    ? {
+        allowedTokens: allowedTokens
+          .filter((token) => token !== "")
+          .map((token) => token as `0x${string}`),
+        participants: participants.map((p) => p.address as `0x${string}`),
+        timeout: BigInt(timeout * 86400), // Convert days to seconds
+        pkx: BigInt(pkx),
+        pky: BigInt(pky),
+      }
+    : undefined;
 
-  const contractConfig = channelParams ? {
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'openChannel',
-    args: [channelParams],
-    value: BigInt('1000000000000000'), // Required 0.001 ETH leader bond (1e15 wei)
-    enabled: isFormValid() && isConnected,
-  } : {
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'openChannel',
-    enabled: false,
-  };
+  const contractConfig = channelParams
+    ? {
+        address: ROLLUP_BRIDGE_ADDRESS,
+        abi: ROLLUP_BRIDGE_ABI,
+        functionName: "openChannel",
+        args: [channelParams],
+        value: BigInt("1000000000000000"), // Required 0.001 ETH leader bond (1e15 wei)
+        enabled: isFormValid() && isConnected,
+      }
+    : {
+        address: ROLLUP_BRIDGE_ADDRESS,
+        abi: ROLLUP_BRIDGE_ABI,
+        functionName: "openChannel",
+        enabled: false,
+      };
 
   const { config } = usePrepareContractWrite(contractConfig as any);
 
-  const { write: createChannel, isLoading: isCreating, data: txData } = useContractWrite({
+  const {
+    write: createChannel,
+    isLoading: isCreating,
+    data: txData,
+  } = useContractWrite({
     ...config,
     onSuccess(data) {
-      console.log('Transaction submitted:', data);
+      console.log("Transaction submitted:", data);
       setTxHash(data.hash);
     },
     onError(error) {
-      console.error('Failed to submit transaction:', error);
-      setTxHash('');
+      console.error("Failed to submit transaction:", error);
+      setTxHash("");
     },
   });
 
@@ -191,16 +237,74 @@ export default function CreateChannelPage() {
   const { isLoading: isConfirming } = useWaitForTransaction({
     hash: txData?.hash,
     enabled: !!txData?.hash,
-    onSuccess(data) {
-      console.log('Transaction confirmed:', data);
+    onSuccess: async (data) => {
+      console.log("Transaction confirmed:", data);
+
       // Extract channel ID from transaction or use total channels + 1
-      setCreatedChannelId(totalChannels ? String(Number(totalChannels)) : '0');
+      const channelId = totalChannels ? String(Number(totalChannels)) : "0";
+      setCreatedChannelId(channelId);
+
+      try {
+        // Save channel to Firebase
+        console.log("💾 Saving channel to Firebase...", {
+          channelId,
+          participants: participants.map((p) => p.address).filter((a) => a),
+          threshold: Math.ceil(
+            participants.filter((p) => p.address).length / 2
+          ),
+        });
+
+        const participantAddresses = participants
+          .map((p) => p.address.toLowerCase())
+          .filter((a) => a);
+
+        // Choose data generation mode based on environment
+        if (isDBDevelopment) {
+          // Development mode: Create channel with auto-generated mock DKG data
+          // This allows testing the Firebase schema without running a DKG server
+          await createChannelWithMockDKGData(
+            {
+              channelId,
+              contractAddress: ROLLUP_BRIDGE_ADDRESS.toLowerCase(),
+              networkId: "sepolia",
+              threshold: Math.ceil(participantAddresses.length / 2),
+              leader: address!.toLowerCase(),
+              merkleTreeDepth: 8,
+            },
+            participantAddresses
+          );
+          console.log(
+            "✅ Channel with mock DKG data saved to Firebase (DEV MODE)"
+          );
+        } else {
+          // Production mode: Create channel with minimal data, DKG will be done separately
+          await createChannelWithParticipants(
+            {
+              channelId,
+              contractAddress: ROLLUP_BRIDGE_ADDRESS.toLowerCase(),
+              networkId: "sepolia",
+              threshold: Math.ceil(participantAddresses.length / 2),
+              leader: address!.toLowerCase(),
+              merkleTreeDepth: 8,
+              status: "pending", // Will be updated after real DKG completion
+            },
+            participantAddresses
+          );
+          console.log(
+            "✅ Channel saved to Firebase (Production mode - DKG pending)"
+          );
+        }
+      } catch (error) {
+        console.error("❌ Failed to save channel to Firebase:", error);
+        // Don't block UI, but log the error
+      }
+
       setShowSuccessPopup(true);
-      setTxHash('');
+      setTxHash("");
     },
     onError(error) {
-      console.error('Transaction failed:', error);
-      setTxHash('');
+      console.error("Transaction failed:", error);
+      setTxHash("");
     },
   });
 
@@ -211,12 +315,90 @@ export default function CreateChannelPage() {
     }
   };
 
+  // Helper function to generate random hex
+  const generateRandomHex = (length: number): string => {
+    const chars = "0123456789abcdef";
+    let result = "";
+    for (let i = 0; i < length; i++) {
+      result += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return result;
+  };
+
+  // Helper function to generate random Ethereum address
+  const generateRandomAddress = (): string => {
+    return "0x" + generateRandomHex(40);
+  };
+
+  // Auto-fill form fields with test data (DB development mode only)
+  const handleGenerateTestData = () => {
+    console.log("🎯 Fill Test Data button clicked!", { isDBDevelopment });
+
+    if (!isDBDevelopment) {
+      console.warn("⚠️ DB Development mode is not enabled!");
+      alert(
+        "DB Development mode is not enabled. Please check your .env.local file."
+      );
+      return;
+    }
+
+    setIsGeneratingTestData(true);
+    try {
+      // Fixed test addresses (in order)
+      const testAddresses = [
+        "0xf9fa94d45c49e879e46ea783fc133f41709f3bc7",
+        "0x322acfaa747f3ce5b5899611034fb4433f0edf34",
+        "0x31fbd690bf62cd8c60a93f3ad8e96a6085dc5647",
+        "0x38ab8ca70ab134085750bdae9cad95171ad4ce4c",
+        "0xe8b162ba510336b791905b85ed69588ea7ea4d85",
+      ];
+
+      // Use all 5 test addresses
+      const testParticipants = testAddresses.map((address) => ({ address }));
+
+      console.log("🧪 Auto-filling form with test data...", {
+        participantCount: testParticipants.length,
+        participants: testParticipants.map((p) => p.address),
+      });
+
+      // Fill participant fields
+      setParticipants(testParticipants);
+
+      // Fill PKX and PKY with random values
+      setPkx("0x" + generateRandomHex(64));
+      setPky("0x" + generateRandomHex(64));
+
+      // You can also fill token addresses if needed
+      // setAllowedTokens(["0x0000000000000000000000000000000000000000"]);
+
+      console.log(
+        "✅ Form auto-filled with test data! Now click 'Create Channel' to save."
+      );
+
+      // Show success message
+      alert(
+        "✅ Test data filled!\n\nParticipants: " +
+          testParticipants.length +
+          " (fixed test addresses)\n\nNow click 'Create Channel' button below to save to blockchain and Firebase."
+      );
+    } catch (error) {
+      console.error("❌ Failed to generate test data:", error);
+      alert("Failed to generate test data. Check console for details.");
+    } finally {
+      setIsGeneratingTestData(false);
+    }
+  };
+
   if (!isConnected) {
     return (
       <div className="min-h-screen flex items-center justify-center space-background">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-white mb-4">Connect Your Wallet</h1>
-          <p className="text-gray-300 mb-6">You need to connect your wallet to create a channel</p>
+          <h1 className="text-2xl font-bold text-white mb-4">
+            Connect Your Wallet
+          </h1>
+          <p className="text-gray-300 mb-6">
+            You need to connect your wallet to create a channel
+          </p>
           <ClientOnly>
             <ConnectButton />
           </ClientOnly>
@@ -233,324 +415,460 @@ export default function CreateChannelPage() {
       </ClientOnly>
 
       {/* Mobile Navigation Menu */}
-      <MobileNavigation 
-        showMobileMenu={showMobileMenu} 
-        setShowMobileMenu={setShowMobileMenu} 
+      <MobileNavigation
+        showMobileMenu={showMobileMenu}
+        setShowMobileMenu={setShowMobileMenu}
       />
 
       {/* Main Content Area */}
       <div className="ml-0 lg:ml-72 transition-all duration-300 flex flex-col min-h-screen">
         {/* Main Content */}
         <main className="flex-1 px-4 py-8 lg:px-8">
-        <div className="max-w-5xl mx-auto">
-          <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 mb-6 shadow-lg shadow-[#4fc3f7]/20">
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-white mb-2">Create Multi-Token Channel</h2>
-              <p className="text-gray-300">
-                Set up a collaborative bridge channel supporting multiple tokens for zero-knowledge proof operations with multiple participants.
-              </p>
-            </div>
-
-            {/* Warning for users already leading a channel */}
-            <ClientOnly>
-              {isAlreadyLeader && (
-                <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-500/50">
-                  <div className="flex items-center gap-3 mb-2">
-                    <AlertTriangle className="w-5 h-5 text-yellow-400" />
-                    <h3 className="text-lg font-semibold text-yellow-300">Channel Creation Restricted</h3>
+          <div className="max-w-5xl mx-auto">
+            {/* DB Development Mode Banner & Test Data Button */}
+            {isDBDevelopment && (
+              <div className="bg-gradient-to-r from-[#ff00ff]/20 to-[#ffa500]/20 border border-[#ff00ff] p-4 mb-6 shadow-lg shadow-[#ff00ff]/20 rounded-lg">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <Database className="w-6 h-6 text-[#ff00ff]" />
+                    <div>
+                      <h3 className="text-[#ff00ff] font-bold text-lg pixel-font">
+                        🧪 DB DEVELOPMENT MODE
+                      </h3>
+                      <p className="text-[#ffa500] text-sm">
+                        Auto-fill form fields with test data
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-yellow-200/90 mb-3">
-                    You are already leading an active channel. You can only lead one channel at a time.
-                  </p>
-                  <p className="text-sm text-yellow-300/80">
-                    Please close your current channel before creating a new one. You can manage your existing channel from the sidebar menu.
-                  </p>
+                  <button
+                    onClick={handleGenerateTestData}
+                    disabled={isGeneratingTestData}
+                    className="bg-[#ff00ff] hover:bg-[#ff00ff]/80 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 shadow-lg shadow-[#ff00ff]/50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 neon-glow-pink whitespace-nowrap"
+                  >
+                    {isGeneratingTestData ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Database className="w-5 h-5" />
+                        Fill Test Data
+                      </>
+                    )}
+                  </button>
                 </div>
-              )}
-            </ClientOnly>
+              </div>
+            )}
 
-            {/* Info message about leader bond requirement */}
-            <ClientOnly>
-              {!isAlreadyLeader && address && (
-                <div className="mb-6 p-4 bg-amber-900/20 border border-amber-500/50">
-                  <div className="flex items-center gap-3 mb-2">
-                    <AlertTriangle className="w-5 h-5 text-amber-400" />
-                    <h3 className="text-lg font-semibold text-amber-300">Leader Bond Required</h3>
-                  </div>
-                  <p className="text-amber-200/90 mb-3">
-                    Creating a channel requires a 0.001 ETH leader bond deposit. This bond will be returned when the channel is successfully closed.
-                  </p>
-                  <p className="text-sm text-amber-300/80">
-                    If you fail to submit proof within 7 days after the channel timeout, your bond may be slashed. Fill out the form below to create your channel.
-                  </p>
-                </div>
-              )}
-            </ClientOnly>
+            <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 mb-6 shadow-lg shadow-[#4fc3f7]/20">
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold text-white mb-2">
+                  Create Multi-Token Channel
+                </h2>
+                <p className="text-gray-300">
+                  Set up a collaborative bridge channel supporting multiple
+                  tokens for zero-knowledge proof operations with multiple
+                  participants.
+                </p>
+              </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Allowed Tokens */}
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                  <label className="block text-sm font-medium text-gray-300">
-                    Allowed Tokens ({allowedTokens.length}/4)
-                  </label>
-                  <div className="space-x-2">
-                    <button
-                      type="button"
-                      onClick={addToken}
-                      disabled={allowedTokens.length >= 4}
-                      className="px-3 py-1 text-sm bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 transition-colors duration-200"
-                    >
-                      Add Token
-                    </button>
+              {/* Warning for users already leading a channel */}
+              <ClientOnly>
+                {isAlreadyLeader && (
+                  <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-500/50">
+                    <div className="flex items-center gap-3 mb-2">
+                      <AlertTriangle className="w-5 h-5 text-yellow-400" />
+                      <h3 className="text-lg font-semibold text-yellow-300">
+                        Channel Creation Restricted
+                      </h3>
+                    </div>
+                    <p className="text-yellow-200/90 mb-3">
+                      You are already leading an active channel. You can only
+                      lead one channel at a time.
+                    </p>
+                    <p className="text-sm text-yellow-300/80">
+                      Please close your current channel before creating a new
+                      one. You can manage your existing channel from the sidebar
+                      menu.
+                    </p>
                   </div>
-                </div>
-                
-                <div className="space-y-4">
-                  {allowedTokens.map((token, index) => (
-                    <div key={index} className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4">
-                      <div className="flex justify-between items-start mb-3">
-                        <h4 className="font-medium text-white">Token {index + 1}</h4>
-                        {allowedTokens.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeToken(index)}
-                            className="text-red-400 hover:text-red-300 text-sm"
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                      
-                      <div className="flex flex-col gap-3">
-                        <input
-                          type="text"
-                          value={token}
-                          onChange={(e) => updateToken(index, e.target.value)}
-                          placeholder="0x... or use ETH address: 0x0000000000000000000000000000000000000001"
-                          className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
-                        />
-                        {token && token !== '0x0000000000000000000000000000000000000001' && !isValidEthereumAddress(token) && (
-                          <p className="text-red-400 text-xs mt-1">Invalid token address</p>
-                        )}
-                        {token && allowedTokens.filter(t => t === token).length > 1 && (
-                          <p className="text-red-400 text-xs mt-1">Duplicate token address - each token can only be used once</p>
-                        )}
-                        
-                        {/* Quick select buttons */}
-                        <div className="flex gap-2 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => updateToken(index, '0x0000000000000000000000000000000000000001')}
-                            className="px-2 py-1 text-xs bg-blue-600/20 border border-blue-500/50 text-blue-300 hover:bg-blue-600/40 transition-colors"
-                          >
-                            ETH
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateToken(index, '0x79E0d92670106c85E9067b56B8F674340dCa0Bbd')}
-                            className="px-2 py-1 text-xs bg-amber-600/20 border border-amber-500/50 text-amber-300 hover:bg-amber-600/40 transition-colors"
-                          >
-                            WTON
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateToken(index, '0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A')}
-                            className="px-2 py-1 text-xs bg-purple-600/20 border border-purple-500/50 text-purple-300 hover:bg-purple-600/40 transition-colors"
-                          >
-                            USDT
-                          </button>
+                )}
+              </ClientOnly>
+
+              {/* Info message about leader bond requirement */}
+              <ClientOnly>
+                {!isAlreadyLeader && address && (
+                  <div className="mb-6 p-4 bg-amber-900/20 border border-amber-500/50">
+                    <div className="flex items-center gap-3 mb-2">
+                      <AlertTriangle className="w-5 h-5 text-amber-400" />
+                      <h3 className="text-lg font-semibold text-amber-300">
+                        Leader Bond Required
+                      </h3>
+                    </div>
+                    <p className="text-amber-200/90 mb-3">
+                      Creating a channel requires a 0.001 ETH leader bond
+                      deposit. This bond will be returned when the channel is
+                      successfully closed.
+                    </p>
+                    <p className="text-sm text-amber-300/80">
+                      If you fail to submit proof within 7 days after the
+                      channel timeout, your bond may be slashed. Fill out the
+                      form below to create your channel.
+                    </p>
+                  </div>
+                )}
+              </ClientOnly>
+
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Allowed Tokens */}
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <label className="block text-sm font-medium text-gray-300">
+                      Allowed Tokens ({allowedTokens.length}/4)
+                    </label>
+                    <div className="space-x-2">
+                      <button
+                        type="button"
+                        onClick={addToken}
+                        disabled={allowedTokens.length >= 4}
+                        className="px-3 py-1 text-sm bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 transition-colors duration-200"
+                      >
+                        Add Token
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {allowedTokens.map((token, index) => (
+                      <div
+                        key={index}
+                        className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4"
+                      >
+                        <div className="flex justify-between items-start mb-3">
+                          <h4 className="font-medium text-white">
+                            Token {index + 1}
+                          </h4>
+                          {allowedTokens.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeToken(index)}
+                              className="text-red-400 hover:text-red-300 text-sm"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col gap-3">
+                          <input
+                            type="text"
+                            value={token}
+                            onChange={(e) => updateToken(index, e.target.value)}
+                            placeholder="0x... or use ETH address: 0x0000000000000000000000000000000000000001"
+                            className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
+                          />
+                          {token &&
+                            token !==
+                              "0x0000000000000000000000000000000000000001" &&
+                            !isValidEthereumAddress(token) && (
+                              <p className="text-red-400 text-xs mt-1">
+                                Invalid token address
+                              </p>
+                            )}
+                          {token &&
+                            allowedTokens.filter((t) => t === token).length >
+                              1 && (
+                              <p className="text-red-400 text-xs mt-1">
+                                Duplicate token address - each token can only be
+                                used once
+                              </p>
+                            )}
+
+                          {/* Quick select buttons */}
+                          <div className="flex gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateToken(
+                                  index,
+                                  "0x0000000000000000000000000000000000000001"
+                                )
+                              }
+                              className="px-2 py-1 text-xs bg-blue-600/20 border border-blue-500/50 text-blue-300 hover:bg-blue-600/40 transition-colors"
+                            >
+                              ETH
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateToken(
+                                  index,
+                                  "0x79E0d92670106c85E9067b56B8F674340dCa0Bbd"
+                                )
+                              }
+                              className="px-2 py-1 text-xs bg-amber-600/20 border border-amber-500/50 text-amber-300 hover:bg-amber-600/40 transition-colors"
+                            >
+                              WTON
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateToken(
+                                  index,
+                                  "0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A"
+                                )
+                              }
+                              className="px-2 py-1 text-xs bg-purple-600/20 border border-purple-500/50 text-purple-300 hover:bg-purple-600/40 transition-colors"
+                            >
+                              USDT
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-                
-                <p className="text-sm text-gray-400 mt-2">
-                  You can select up to 4 different tokens for your channel. Participants will be able to deposit any of these tokens.
-                </p>
-                
-                {/* Warning for supported tokens */}
-                <div className="mt-3 p-4 bg-amber-900/20 border border-amber-500/50">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-400" />
-                    <div className="flex-1">
-                      <h4 className="text-sm font-semibold text-amber-300 mb-2">
-                        Supported Tokens
-                      </h4>
-                      <p className="text-amber-200/90 text-sm mb-3">
-                        Currently supported: ETH (native), WTON, and USDT tokens. Use the quick select buttons above.
-                      </p>
-                      <p className="text-amber-200/90 text-sm">
-                        For ETH: 0x0000000000000000000000000000000000000001
-                      </p>
-                    </div>
+                    ))}
                   </div>
-                </div>
-              </div>
 
-              {/* Participants */}
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                  <label className="block text-sm font-medium text-gray-300">
-                    Participants ({participants.length}/{getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)})
-                  </label>
-                  <div className="space-x-2">
-                    <button
-                      type="button"
-                      onClick={addParticipant}
-                      disabled={participants.length >= getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)}
-                      className="px-3 py-1 text-sm bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 transition-colors duration-200"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="space-y-4">
-                  {participants.map((participant, index) => (
-                    <div key={index} className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4">
-                      <div className="flex justify-between items-start mb-3">
-                        <h4 className="font-medium text-white">Participant {index + 1}</h4>
-                        {participants.length > 3 && (
-                          <button
-                            type="button"
-                            onClick={() => removeParticipant(index)}
-                            className="text-red-400 hover:text-red-300 text-sm"
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1">
-                          L1 Address
-                        </label>
-                        <input
-                          type="text"
-                          value={participant.address}
-                          onChange={(e) => updateParticipant(index, e.target.value)}
-                          placeholder="0x..."
-                          className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
-                        />
-                        {participant.address && !isValidEthereumAddress(participant.address) && (
-                          <p className="text-red-400 text-xs mt-1">Invalid address</p>
-                        )}
+                  <p className="text-sm text-gray-400 mt-2">
+                    You can select up to 4 different tokens for your channel.
+                    Participants will be able to deposit any of these tokens.
+                  </p>
+
+                  {/* Warning for supported tokens */}
+                  <div className="mt-3 p-4 bg-amber-900/20 border border-amber-500/50">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-amber-400" />
+                      <div className="flex-1">
+                        <h4 className="text-sm font-semibold text-amber-300 mb-2">
+                          Supported Tokens
+                        </h4>
+                        <p className="text-amber-200/90 text-sm mb-3">
+                          Currently supported: ETH (native), WTON, and USDT
+                          tokens. Use the quick select buttons above.
+                        </p>
+                        <p className="text-amber-200/90 text-sm">
+                          For ETH: 0x0000000000000000000000000000000000000001
+                        </p>
                       </div>
                     </div>
-                  ))}
+                  </div>
                 </div>
-                
-                <p className="text-sm text-gray-400 mt-2">
-                  Minimum 3 participants, maximum {getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)} participants for {allowedTokens.filter(token => token !== '').length || 1} token(s).
-                </p>
-                
-                <div className="mt-3 p-4 bg-blue-900/20 border border-blue-500/50">
-                  <div className="flex items-start gap-3">
-                    <Lightbulb className="w-5 h-5 text-blue-400" />
-                    <div className="flex-1">
-                      <h4 className="text-sm font-semibold text-blue-300 mb-2">
-                        L2 MPT Keys
-                      </h4>
-                      <p className="text-blue-200/90 text-sm">
-                        L2 MPT keys are no longer provided during channel creation. Participants will provide their L2 MPT keys when making deposits for each token type.
-                      </p>
+
+                {/* Participants */}
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <label className="block text-sm font-medium text-gray-300">
+                      Participants ({participants.length}/
+                      {getMaxParticipants(
+                        allowedTokens.filter((token) => token !== "").length ||
+                          1
+                      )}
+                      )
+                    </label>
+                    <div className="space-x-2">
+                      <button
+                        type="button"
+                        onClick={addParticipant}
+                        disabled={
+                          participants.length >=
+                          getMaxParticipants(
+                            allowedTokens.filter((token) => token !== "")
+                              .length || 1
+                          )
+                        }
+                        className="px-3 py-1 text-sm bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 transition-colors duration-200"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {participants.map((participant, index) => (
+                      <div
+                        key={index}
+                        className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4"
+                      >
+                        <div className="flex justify-between items-start mb-3">
+                          <h4 className="font-medium text-white">
+                            Participant {index + 1}
+                          </h4>
+                          {participants.length > 3 && (
+                            <button
+                              type="button"
+                              onClick={() => removeParticipant(index)}
+                              className="text-red-400 hover:text-red-300 text-sm"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-400 mb-1">
+                            L1 Address
+                          </label>
+                          <input
+                            type="text"
+                            value={participant.address}
+                            onChange={(e) =>
+                              updateParticipant(index, e.target.value)
+                            }
+                            placeholder="0x..."
+                            className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
+                          />
+                          {participant.address &&
+                            !isValidEthereumAddress(participant.address) && (
+                              <p className="text-red-400 text-xs mt-1">
+                                Invalid address
+                              </p>
+                            )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-sm text-gray-400 mt-2">
+                    Minimum 3 participants, maximum{" "}
+                    {getMaxParticipants(
+                      allowedTokens.filter((token) => token !== "").length || 1
+                    )}{" "}
+                    participants for{" "}
+                    {allowedTokens.filter((token) => token !== "").length || 1}{" "}
+                    token(s).
+                  </p>
+
+                  <div className="mt-3 p-4 bg-blue-900/20 border border-blue-500/50">
+                    <div className="flex items-start gap-3">
+                      <Lightbulb className="w-5 h-5 text-blue-400" />
+                      <div className="flex-1">
+                        <h4 className="text-sm font-semibold text-blue-300 mb-2">
+                          L2 MPT Keys
+                        </h4>
+                        <p className="text-blue-200/90 text-sm">
+                          L2 MPT keys are no longer provided during channel
+                          creation. Participants will provide their L2 MPT keys
+                          when making deposits for each token type.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Timeout */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Channel Timeout (days)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="365"
-                  value={timeout}
-                  onChange={(e) => setTimeout(parseInt(e.target.value) || 1)}
-                  className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
-                />
-                <p className="text-sm text-gray-400 mt-1">
-                  Channel timeout period (1 day to 365 days)
-                </p>
-              </div>
-
-
-              {/* Group Public Key */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Timeout */}
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Public Key X Coordinate
+                    Channel Timeout (days)
                   </label>
                   <input
-                    type="text"
-                    value={pkx}
-                    onChange={(e) => setPkx(e.target.value)}
-                    placeholder="0x..."
+                    type="number"
+                    min="1"
+                    max="365"
+                    value={timeout}
+                    onChange={(e) => setTimeout(parseInt(e.target.value) || 1)}
                     className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
                   />
-                  {pkx && !isValidHex(pkx) && (
-                    <p className="text-red-400 text-sm mt-1">Invalid hex format</p>
-                  )}
+                  <p className="text-sm text-gray-400 mt-1">
+                    Channel timeout period (1 day to 365 days)
+                  </p>
                 </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Public Key Y Coordinate
-                  </label>
-                  <input
-                    type="text"
-                    value={pky}
-                    onChange={(e) => setPky(e.target.value)}
-                    placeholder="0x..."
-                    className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
-                  />
-                  {pky && !isValidHex(pky) && (
-                    <p className="text-red-400 text-sm mt-1">Invalid hex format</p>
-                  )}
+
+                {/* Group Public Key */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Public Key X Coordinate
+                    </label>
+                    <input
+                      type="text"
+                      value={pkx}
+                      onChange={(e) => setPkx(e.target.value)}
+                      placeholder="0x..."
+                      className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
+                    />
+                    {pkx && !isValidHex(pkx) && (
+                      <p className="text-red-400 text-sm mt-1">
+                        Invalid hex format
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Public Key Y Coordinate
+                    </label>
+                    <input
+                      type="text"
+                      value={pky}
+                      onChange={(e) => setPky(e.target.value)}
+                      placeholder="0x..."
+                      className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
+                    />
+                    {pky && !isValidHex(pky) && (
+                      <p className="text-red-400 text-sm mt-1">
+                        Invalid hex format
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              {/* Submit Button */}
-              <div className="pt-6">
-                <button
-                  type="submit"
-                  disabled={!isFormValid() || isCreating || isConfirming}
-                  className="w-full px-6 py-3 bg-gradient-to-r from-[#4fc3f7] to-[#029bee] text-white font-medium hover:from-[#029bee] hover:to-[#4fc3f7] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] transition-all duration-200"
-                >
-                  {isCreating 
-                    ? 'Submitting Transaction...' 
-                    : isConfirming
-                    ? 'Waiting for Confirmation...'
-                    : isAlreadyLeader 
-                    ? 'Already Leading a Channel' 
-                    : 'Create Channel (0.001 ETH bond)'}
-                </button>
-              </div>
-            </form>
-          </div>
+                {/* Submit Button */}
+                <div className="pt-6">
+                  <button
+                    type="submit"
+                    disabled={!isFormValid() || isCreating || isConfirming}
+                    className="w-full px-6 py-3 bg-gradient-to-r from-[#4fc3f7] to-[#029bee] text-white font-medium hover:from-[#029bee] hover:to-[#4fc3f7] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] transition-all duration-200"
+                  >
+                    {isCreating
+                      ? "Submitting Transaction..."
+                      : isConfirming
+                      ? "Waiting for Confirmation..."
+                      : isAlreadyLeader
+                      ? "Already Leading a Channel"
+                      : "Create Channel (0.001 ETH bond)"}
+                  </button>
+                </div>
+              </form>
+            </div>
 
-          {/* Info Panel */}
-          <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-8">
-            <h3 className="font-semibold text-[#4fc3f7] mb-4">Channel Requirements</h3>
-            <ul className="space-y-2 text-sm text-gray-300">
-              <li>• 1-4 unique tokens per channel (ETH, WTON, USDT supported)</li>
-              <li>• Maximum participants: 1 token = 16, 2 tokens = 8, 3 tokens = 5, 4 tokens = 4</li>
-              <li>• Minimum 3 participants required</li>
-              <li>• Each token can only be used once (no duplicates allowed)</li>
-              <li>• Each participant provides only L1 address during creation</li>
-              <li>• L2 MPT keys provided during token deposits (per token type)</li>
-              <li>• Timeout must be between 1 hour and 365 days</li>
-              <li>• Group public key coordinates required for FROST signatures</li>
-              <li>• 0.001 ETH leader bond required (refunded on successful completion)</li>
-              <li>• All token addresses must be pre-approved via setAllowedTargetContract</li>
-            </ul>
+            {/* Info Panel */}
+            <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-8">
+              <h3 className="font-semibold text-[#4fc3f7] mb-4">
+                Channel Requirements
+              </h3>
+              <ul className="space-y-2 text-sm text-gray-300">
+                <li>
+                  • 1-4 unique tokens per channel (ETH, WTON, USDT supported)
+                </li>
+                <li>
+                  • Maximum participants: 1 token = 16, 2 tokens = 8, 3 tokens =
+                  5, 4 tokens = 4
+                </li>
+                <li>• Minimum 3 participants required</li>
+                <li>
+                  • Each token can only be used once (no duplicates allowed)
+                </li>
+                <li>
+                  • Each participant provides only L1 address during creation
+                </li>
+                <li>
+                  • L2 MPT keys provided during token deposits (per token type)
+                </li>
+                <li>• Timeout must be between 1 hour and 365 days</li>
+                <li>
+                  • Group public key coordinates required for FROST signatures
+                </li>
+                <li>
+                  • 0.001 ETH leader bond required (refunded on successful
+                  completion)
+                </li>
+                <li>
+                  • All token addresses must be pre-approved via
+                  setAllowedTargetContract
+                </li>
+              </ul>
+            </div>
           </div>
-        </div>
         </main>
 
         {/* Footer */}
@@ -568,50 +886,80 @@ export default function CreateChannelPage() {
                   <CheckCircle className="w-7 h-7 text-green-400" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-white">Channel Created Successfully!</h2>
-                  <p className="text-sm text-gray-300">Channel ID: {createdChannelId}</p>
+                  <h2 className="text-xl font-bold text-white">
+                    Channel Created Successfully!
+                  </h2>
+                  <p className="text-sm text-gray-300">
+                    Channel ID: {createdChannelId}
+                  </p>
                 </div>
               </div>
             </div>
 
             {/* Content */}
             <div className="p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Next Steps</h3>
+              <h3 className="text-lg font-semibold text-white mb-4">
+                Next Steps
+              </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-300">
                 <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
                   <span className="text-[#4fc3f7] font-bold text-lg">1.</span>
                   <div>
-                    <p className="font-medium text-white mb-1">Wait for Participants to Deposit</p>
-                    <p>All participants need to deposit their tokens into the channel.</p>
+                    <p className="font-medium text-white mb-1">
+                      Wait for Participants to Deposit
+                    </p>
+                    <p>
+                      All participants need to deposit their tokens into the
+                      channel.
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
                   <span className="text-[#4fc3f7] font-bold text-lg">2.</span>
                   <div>
-                    <p className="font-medium text-white mb-1">Initialize Channel State</p>
-                    <p>As the channel leader, you'll need to initialize the channel state once all deposits are complete.</p>
+                    <p className="font-medium text-white mb-1">
+                      Initialize Channel State
+                    </p>
+                    <p>
+                      As the channel leader, you'll need to initialize the
+                      channel state once all deposits are complete.
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
                   <span className="text-[#4fc3f7] font-bold text-lg">3.</span>
                   <div>
-                    <p className="font-medium text-white mb-1">Proof Operations</p>
-                    <p>Submit aggregated proofs, collect signatures, and manage the channel lifecycle.</p>
+                    <p className="font-medium text-white mb-1">
+                      Proof Operations
+                    </p>
+                    <p>
+                      Submit aggregated proofs, collect signatures, and manage
+                      the channel lifecycle.
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
                   <span className="text-[#4fc3f7] font-bold text-lg">4.</span>
                   <div>
-                    <p className="font-medium text-white mb-1">Close & Withdraw</p>
-                    <p>Close the channel when operations are complete and allow participants to withdraw.</p>
+                    <p className="font-medium text-white mb-1">
+                      Close & Withdraw
+                    </p>
+                    <p>
+                      Close the channel when operations are complete and allow
+                      participants to withdraw.
+                    </p>
                   </div>
                 </div>
               </div>
 
               <div className="mt-6 p-4 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50">
                 <p className="text-sm text-gray-300">
-                  <span className="font-medium text-[#4fc3f7] inline-flex items-center gap-1"><Lightbulb className="w-4 h-4" /> Tip:</span> You can manage your channel and monitor participant deposits from the dashboard. 
-                  Use the sidebar menu to access channel leader functions.
+                  <span className="font-medium text-[#4fc3f7] inline-flex items-center gap-1">
+                    <Lightbulb className="w-4 h-4" /> Tip:
+                  </span>{" "}
+                  You can manage your channel and monitor participant deposits
+                  from the dashboard. Use the sidebar menu to access channel
+                  leader functions.
                 </p>
               </div>
             </div>
@@ -627,7 +975,7 @@ export default function CreateChannelPage() {
               <button
                 onClick={() => {
                   setShowSuccessPopup(false);
-                  router.push('/');
+                  router.push("/");
                 }}
                 className="flex-1 px-4 py-2 bg-gradient-to-r from-[#4fc3f7] to-[#029bee] text-white hover:from-[#029bee] hover:to-[#4fc3f7] transition-colors font-medium"
               >
