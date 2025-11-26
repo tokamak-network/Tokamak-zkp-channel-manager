@@ -10,6 +10,8 @@ interface DKGSessionJoinerProps {
   connectionStatus: 'disconnected' | 'connecting' | 'connected';
   authState: {
     isAuthenticated: boolean;
+    publicKeyHex?: string | null;
+    dkgPrivateKey?: string | null;
   };
   isJoiningSession: boolean;
   successMessage: string;
@@ -48,6 +50,36 @@ export function DKGSessionJoiner({
         </div>
       ) : (
         <>
+          {/* Warning if keys not generated OR not authenticated */}
+          {(!authState.isAuthenticated || !authState.dkgPrivateKey || !authState.publicKeyHex) && (
+            <div className="mb-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-md">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-yellow-800 dark:text-yellow-300 font-semibold text-sm mb-1">
+                    ⚠️ {!authState.publicKeyHex ? 'DKG Keys Required!' : 'Authenticating...'}
+                  </p>
+                  <p className="text-yellow-700 dark:text-yellow-200/80 text-xs mb-2">
+                    {!authState.publicKeyHex ? (
+                      <>You must generate your DKG keys BEFORE joining a session. The keys are needed for automatic DKG round submissions.</>
+                    ) : !authState.isAuthenticated ? (
+                      <>Authentication in progress. Please wait until you see "Ready to Join Sessions!" before joining.</>
+                    ) : (
+                      <>Keys generated but not fully available. Please try again in a moment.</>
+                    )}
+                  </p>
+                  <p className="text-yellow-800 dark:text-yellow-200 text-xs font-medium">
+                    {!authState.publicKeyHex ? (
+                      <>→ Go to "Connection Status" section above and click "Get My Public Key" first!</>
+                    ) : (
+                      <>→ Wait for authentication to complete (~2-3 seconds)</>
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="flex gap-4 mb-6">
             <Input
               placeholder="Session ID provided by creator (e.g., e2bb7be0-f196-4ce5-8a48-f9e892b6d88b)"

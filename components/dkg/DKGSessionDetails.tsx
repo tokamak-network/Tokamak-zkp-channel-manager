@@ -1,9 +1,8 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Clipboard, Settings, Users, CheckCircle2, Key, Sparkles } from 'lucide-react';
+import { Clipboard, Users, CheckCircle2, Key, ChevronDown, ChevronUp } from 'lucide-react';
+import { formatFrostId } from '@/lib/utils';
+import { useState } from 'react';
 
 interface DKGSession {
   id: string;
@@ -34,17 +33,20 @@ export function DKGSessionDetails({
   onClose,
   onDownloadKeyShare
 }: DKGSessionDetailsProps) {
+  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
+  const [showParticipants, setShowParticipants] = useState(false);
+  
   if (!session) return null;
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'waiting': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
-      case 'round1': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
-      case 'round2': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300';
-      case 'finalizing': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300';
-      case 'completed': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
-      case 'failed': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
+      case 'waiting': return 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30';
+      case 'round1': return 'bg-[#4fc3f7]/20 text-[#4fc3f7] border border-[#4fc3f7]/30';
+      case 'round2': return 'bg-purple-500/20 text-purple-300 border border-purple-500/30';
+      case 'finalizing': return 'bg-orange-500/20 text-orange-300 border border-orange-500/30';
+      case 'completed': return 'bg-green-500/20 text-green-300 border border-green-500/30';
+      case 'failed': return 'bg-red-500/20 text-red-300 border border-red-500/30';
+      default: return 'bg-gray-500/20 text-gray-300 border border-gray-500/30';
     }
   };
 
@@ -61,212 +63,213 @@ export function DKGSessionDetails({
   };
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-4xl overflow-y-auto">
-        <div className="p-6">
-          <div className="flex justify-between items-start mb-6">
+    <div className="fixed inset-0 flex items-center justify-center z-[100] p-2 sm:p-4 animate-in fade-in duration-200">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
+      
+      {/* Modal - Matching App Theme */}
+      <div className="relative z-[101] bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7]/30 shadow-2xl shadow-[#4fc3f7]/20 w-full max-w-[95vw] sm:max-w-2xl lg:max-w-3xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto rounded-none sm:rounded-lg animate-in slide-in-from-bottom-4 duration-300">
+        {/* Sticky Header */}
+        <div className="sticky top-0 bg-gradient-to-r from-[#1a2347] to-[#1a2347]/95 backdrop-blur-sm border-b border-[#4fc3f7]/30 p-4 sm:p-6 z-10">
+          <div className="flex justify-between items-start">
             <div>
-              <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+              <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
                 Session Details
               </h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                Complete information about this DKG session
-              </p>
+              <span className={`inline-flex items-center px-2 py-1 text-xs font-medium mt-2 ${getStatusColor(session.status)}`}>
+                {getStatusText(session.status)}
+              </span>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
+            <button
               onClick={onClose}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              className="flex items-center justify-center h-8 w-8 sm:h-10 sm:w-10 text-gray-400 hover:text-white hover:bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 hover:border-[#4fc3f7]/50 transition-all shrink-0"
             >
-              ✕
-            </Button>
+              <span className="text-lg">✕</span>
+            </button>
           </div>
+        </div>
+        
+        <div className="p-4 sm:p-6">
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Basic Information */}
-            <Card className="p-4">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
-                <Clipboard className="w-4 h-4" />
-                Basic Information
-              </h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Session ID:</span>
-                  <span className="font-mono text-sm text-gray-900 dark:text-gray-100">{session.id}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Status:</span>
-                  <Badge className={getStatusColor(session.status)}>
-                    {getStatusText(session.status)}
-                  </Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Your Role:</span>
-                  <Badge className={session.myRole === 'creator' 
-                    ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                    : "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                  }>
-                    {session.myRole === 'creator' ? 'Creator' : 'Participant'}
-                  </Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Created:</span>
-                  <span className="text-gray-900 dark:text-gray-100">{session.createdAt.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Group ID:</span>
-                  <span className="font-mono text-sm text-gray-900 dark:text-gray-100">{session.groupId}</span>
-                </div>
-                {session.topic && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Topic:</span>
-                    <span className="text-gray-900 dark:text-gray-100">{session.topic}</span>
+          {/* Essential Information - Always Visible */}
+          <div className="space-y-3 sm:space-y-4">
+            {/* Quick Summary Card */}
+            <div className="p-4 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 rounded-lg">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">Your Role</div>
+                  <div className="text-sm font-semibold text-white">
+                    {session.myRole === 'creator' ? '👑 Creator' : '👤 Participant'}
                   </div>
-                )}
-                {session.description && (
-                  <div>
-                    <span className="text-gray-600 dark:text-gray-400 block mb-1">Description:</span>
-                    <p className="text-sm text-gray-900 dark:text-gray-100 p-2 rounded border border-[#4fc3f7]/20">
-                      {session.description}
-                    </p>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">Participants</div>
+                  <div className="text-sm font-semibold text-[#4fc3f7]">
+                    {session.currentParticipants}/{session.maxSigners}
                   </div>
-                )}
-              </div>
-            </Card>
-
-            {/* Threshold Configuration */}
-            <Card className="p-4">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
-                <Settings className="w-4 h-4" />
-                Threshold Configuration
-              </h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Total Participants:</span>
-                  <span className="text-gray-900 dark:text-gray-100">{session.maxSigners}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Current Joined:</span>
-                  <span className="text-gray-900 dark:text-gray-100">{session.currentParticipants}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Required Signers:</span>
-                  <span className="text-gray-900 dark:text-gray-100">{session.minSigners}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Scheme:</span>
-                  <span className="text-gray-900 dark:text-gray-100">{session.minSigners}-of-{session.maxSigners} Threshold</span>
-                </div>
-                
-                {/* Progress Bar */}
-                <div className="mt-4">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-600 dark:text-gray-400">Participation Progress</span>
-                    <span className="text-gray-900 dark:text-gray-100">{session.currentParticipants}/{session.maxSigners}</span>
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">Threshold</div>
+                  <div className="text-sm font-semibold text-[#4fc3f7]">
+                    {session.minSigners}-of-{session.maxSigners}
                   </div>
-                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                    <div 
-                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${(session.currentParticipants / session.maxSigners) * 100}%` }}
-                    ></div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">Created</div>
+                  <div className="text-sm font-semibold text-white">
+                    {session.createdAt.toLocaleDateString()}
                   </div>
                 </div>
               </div>
-            </Card>
+            </div>
 
-            {/* Participants List */}
-            <Card className="p-4 lg:col-span-2">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                Participants
-              </h3>
-              {session.roster && session.roster.length > 0 ? (
-                <div className="space-y-2">
-                  {session.roster.map(([uid, idHex, ecdsaPubHex]) => (
-                    <div key={uid} className="flex items-center gap-3 p-3 border border-[#4fc3f7]/10 rounded-lg">
-                      <Badge variant="outline">#{uid}</Badge>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          Participant {uid}
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
-                          FROST ID: {idHex}
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
-                          Public Key: {ecdsaPubHex}
-                        </div>
-                      </div>
+            {/* Technical Details - Collapsible */}
+            <div className="bg-[#0f1729]/50 border border-[#4fc3f7]/20 rounded-lg p-4">
+              <button
+                onClick={() => setShowTechnicalDetails(!showTechnicalDetails)}
+                className="w-full flex items-center justify-between text-left hover:bg-[#4fc3f7]/10 p-2 -m-2 rounded transition-colors"
+              >
+                <h3 className="font-semibold text-white flex items-center gap-2">
+                  <Clipboard className="w-4 h-4 text-[#4fc3f7]" />
+                  Technical Details
+                </h3>
+                {showTechnicalDetails ? (
+                  <ChevronUp className="w-5 h-5 text-[#4fc3f7]" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-[#4fc3f7]" />
+                )}
+              </button>
+              
+              {showTechnicalDetails && (
+                <div className="mt-4 space-y-2 text-sm">
+                  <div className="flex flex-col sm:flex-row sm:justify-between gap-1 p-3 bg-black/30 border border-[#4fc3f7]/10 rounded">
+                    <span className="text-gray-400 font-medium">Session ID:</span>
+                    <span className="font-mono text-xs sm:text-sm text-[#4fc3f7] break-all">
+                      {session.id}
+                    </span>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between gap-1 p-3">
+                    <span className="text-gray-400 font-medium">Group ID:</span>
+                    <span className="font-mono text-xs text-gray-300 break-all">
+                      {session.groupId}
+                    </span>
+                  </div>
+                  {session.topic && (
+                    <div className="flex flex-col sm:flex-row sm:justify-between gap-1 p-3 bg-black/30 border border-[#4fc3f7]/10 rounded">
+                      <span className="text-gray-400 font-medium">Topic:</span>
+                      <span className="text-gray-300 break-all">{session.topic}</span>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-6">
-                  <p className="text-gray-600 dark:text-gray-400">No participants information available</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-500 mt-1">
-                    Participant details will appear once the session starts
-                  </p>
+                  )}
+                  {session.description && (
+                    <div className="p-2">
+                      <span className="text-gray-400 font-medium block mb-1">Description:</span>
+                      <p className="text-gray-300 text-xs p-2 rounded border border-[#4fc3f7]/20 bg-black/20">
+                        {session.description}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
-            </Card>
+            </div>
 
-            {/* Session Results */}
-            {session.status === 'completed' && (
-              <Card className="p-4 lg:col-span-2">
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4" />
-                  Session Results
-                </h3>
+            {/* Participants - Collapsible */}
+            {session.roster && session.roster.length > 0 && (
+              <div className="bg-[#0f1729]/50 border border-[#4fc3f7]/20 rounded-lg p-4">
+                <button
+                  onClick={() => setShowParticipants(!showParticipants)}
+                  className="w-full flex items-center justify-between text-left hover:bg-[#4fc3f7]/10 p-2 -m-2 rounded transition-colors"
+                >
+                  <h3 className="font-semibold text-white flex items-center gap-2">
+                    <Users className="w-4 h-4 text-[#4fc3f7]" />
+                    Participants ({session.roster.length})
+                  </h3>
+                  {showParticipants ? (
+                    <ChevronUp className="w-5 h-5 text-[#4fc3f7]" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-[#4fc3f7]" />
+                  )}
+                </button>
                 
-                <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg mb-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
-                    <h4 className="font-medium text-green-800 dark:text-green-200">
-                      DKG Ceremony Completed Successfully
-                    </h4>
-                  </div>
-                  <p className="text-sm text-green-700 dark:text-green-300">
-                    All participants have successfully completed the distributed key generation process. 
-                    The threshold signature scheme is now active with {session.minSigners}-of-{session.maxSigners} signing capability.
-                  </p>
-                </div>
-
-                {session.groupVerifyingKey && (
-                  <div className="mb-4">
-                    <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Group Verification Key</h4>
-                    <div className="p-3 rounded border border-[#4fc3f7]/20">
-                      <span className="font-mono text-xs text-gray-800 dark:text-gray-200 break-all select-all cursor-pointer">
-                        {session.groupVerifyingKey}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      This is the group's public verification key. Use it to verify threshold signatures created by this group.
-                    </p>
+                {showParticipants && (
+                  <div className="mt-4 space-y-2 max-h-48 sm:max-h-60 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-[#4fc3f7]/20 scrollbar-track-transparent">
+                    {session.roster.map(([uid, idHex, ecdsaPubHex]) => (
+                      <div key={uid} className="p-3 border border-[#4fc3f7]/10 rounded-lg bg-black/20 hover:border-[#4fc3f7]/30 transition-colors">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="inline-flex items-center justify-center h-6 w-6 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 text-[#4fc3f7] text-xs font-bold rounded">
+                            #{uid}
+                          </span>
+                          <span className="text-sm font-medium text-white">
+                            Participant {uid}
+                          </span>
+                        </div>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex flex-col">
+                            <span className="text-gray-400 mb-0.5">FROST ID:</span>
+                            <span className="font-mono text-gray-300 break-all">{formatFrostId(idHex)}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-gray-400 mb-0.5">Public Key:</span>
+                            <span className="font-mono text-gray-300 break-all">{ecdsaPubHex}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
+              </div>
+            )}
 
-                <div className="flex gap-3">
-                  <Button
-                    onClick={onDownloadKeyShare}
-                    className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
-                    disabled={!session.groupVerifyingKey}
-                  >
-                    <Key className="w-4 h-4" />
-                    Download Key Share (share_{session.id.slice(0, 8)}.json)
-                  </Button>
+            {/* Session Results - Always Visible for Completed Sessions */}
+            {session.status === 'completed' && (
+              <div className="p-4 border-2 border-green-500/30 bg-green-500/5 rounded-lg">
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle2 className="w-5 h-5 text-green-400" />
+                  <h3 className="font-semibold text-green-300">
+                    ✅ DKG Ceremony Completed
+                  </h3>
                 </div>
-              </Card>
+                <p className="text-sm text-green-200/90 mb-4">
+                  The threshold signature scheme is active with {session.minSigners}-of-{session.maxSigners} signing capability.
+                </p>
+
+                {session.groupVerifyingKey && (
+                  <div className="p-3 bg-black/40 rounded border border-green-500/20">
+                    <div className="text-xs text-gray-400 mb-1 font-medium flex items-center gap-2">
+                      <Key className="w-3 h-3 text-green-400" />
+                      Group Verification Key
+                    </div>
+                    <span className="font-mono text-xs text-green-300 break-all select-all block">
+                      {session.groupVerifyingKey}
+                    </span>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
-          {/* Close Button */}
-          <div className="flex justify-end mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <Button onClick={onClose} variant="outline">
-              Close
-            </Button>
+          {/* Action Buttons */}
+          <div className="sticky bottom-0 bg-gradient-to-t from-[#1a2347] to-[#1a2347]/95 backdrop-blur-sm border-t border-[#4fc3f7]/30 p-4 sm:p-6 -m-4 sm:-m-6 mt-6 sm:mt-6">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+              {session.status === 'completed' && (
+                <button
+                  onClick={onDownloadKeyShare}
+                  disabled={!session.groupVerifyingKey}
+                  className="flex-1 h-10 sm:h-11 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium transition-all text-sm sm:text-base rounded"
+                >
+                  <Key className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  Download Key Share
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="flex-1 h-10 sm:h-11 flex items-center justify-center gap-2 bg-transparent hover:bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 hover:border-[#4fc3f7]/50 text-white font-medium transition-all text-sm sm:text-base rounded"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
-      </Card>
+      </div>
     </div>
   );
 }

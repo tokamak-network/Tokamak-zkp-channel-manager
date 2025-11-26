@@ -181,12 +181,12 @@ export class DKGErrorHandler {
       }
     }
 
-    // Default error handling for unknown errors
+    // Default error handling for unknown errors - preserve the actual server message
     return {
       type: DKGErrorType.PROTOCOL_ERROR,
       code: 'UNKNOWN_ERROR',
       message: errorMessage,
-      userMessage: 'An unexpected error occurred during the DKG ceremony. Please try again.',
+      userMessage: errorMessage, // Show actual server error instead of generic message
       recoverable: true,
       retryable: true,
       metadata: context
