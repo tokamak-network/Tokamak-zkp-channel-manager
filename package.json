@@ -27,6 +27,7 @@
     "date-fns": "^2.30.0",
     "elliptic": "^6.6.1",
     "ethers": "^6.8.1",
+    "firebase": "^12.6.0",
     "js-sha256": "^0.11.1",
     "js-sha3": "^0.9.3",
     "lucide-react": "^0.292.0",
