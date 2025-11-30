@@ -177,7 +177,6 @@ export default function CreateChannelPage() {
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'openChannel',
     args: [channelParams],
-    value: BigInt('1000000000000000'), // Required 0.001 ETH leader bond (1e15 wei)
     enabled: isFormValid() && isConnected,
   } : {
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
@@ -256,7 +255,7 @@ export default function CreateChannelPage() {
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-white mb-2">Create Multi-Token Channel</h2>
               <p className="text-gray-300">
-                Set up a collaborative bridge channel supporting multiple tokens for zero-knowledge proof operations with multiple participants.
+                Set up a channel supporting multiple tokens for zero-knowledge proof operations with multiple participants.
               </p>
             </div>
 
@@ -278,23 +277,6 @@ export default function CreateChannelPage() {
               )}
             </ClientOnly>
 
-            {/* Info message about leader bond requirement */}
-            <ClientOnly>
-              {!isAlreadyLeader && address && (
-                <div className="mb-6 p-4 bg-amber-900/20 border border-amber-500/50">
-                  <div className="flex items-center gap-3 mb-2">
-                    <AlertTriangle className="w-5 h-5 text-amber-400" />
-                    <h3 className="text-lg font-semibold text-amber-300">Leader Bond Required</h3>
-                  </div>
-                  <p className="text-amber-200/90 mb-3">
-                    Creating a channel requires a 0.001 ETH leader bond deposit. This bond will be returned when the channel is successfully closed.
-                  </p>
-                  <p className="text-sm text-amber-300/80">
-                    If you fail to submit proof within 7 days after the channel timeout, your bond may be slashed. Fill out the form below to create your channel.
-                  </p>
-                </div>
-              )}
-            </ClientOnly>
 
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Allowed Tokens */}
@@ -464,19 +446,6 @@ export default function CreateChannelPage() {
                   Minimum 1 whitelisted participant, maximum {getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)} whitelisted participants.
                 </p>
                 
-                <div className="mt-3 p-4 bg-blue-900/20 border border-blue-500/50">
-                  <div className="flex items-start gap-3">
-                    <Lightbulb className="w-5 h-5 text-blue-400" />
-                    <div className="flex-1">
-                      <h4 className="text-sm font-semibold text-blue-300 mb-2">
-                        L2 MPT Keys
-                      </h4>
-                      <p className="text-blue-200/90 text-sm">
-                        L2 MPT keys are no longer provided during channel creation. Whitelisted participants will provide their L2 MPT keys when making deposits for each token type.
-                      </p>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {/* Timeout */}
@@ -498,24 +467,6 @@ export default function CreateChannelPage() {
               </div>
 
 
-              {/* DKG Management Information */}
-              <div className="p-4 bg-blue-900/20 border border-blue-500/50">
-                <div className="flex items-start gap-3">
-                  <Lightbulb className="w-5 h-5 text-blue-400" />
-                  <div className="flex-1">
-                    <h4 className="text-sm font-semibold text-blue-300 mb-2">
-                      Distributed Key Generation (DKG)
-                    </h4>
-                    <p className="text-blue-200/90 text-sm mb-3">
-                      The group public key will be set later through the DKG Management process after channel creation. This ensures proper key generation ceremony between all participants.
-                    </p>
-                    <p className="text-xs text-blue-200/80">
-                      After creating the channel, use the "DKG Management" page to coordinate the key generation ceremony with all participants.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
               {/* Submit Button */}
               <div className="pt-6">
                 <button
@@ -529,7 +480,7 @@ export default function CreateChannelPage() {
                     ? 'Waiting for Confirmation...'
                     : isAlreadyLeader 
                     ? 'Already Leading a Channel' 
-                    : 'Create Channel (0.001 ETH bond)'}
+                    : 'Create Channel'}
                 </button>
               </div>
             </form>
@@ -542,9 +493,7 @@ export default function CreateChannelPage() {
               <li>• Maximum participants: 128 total leaves (participants × tokens ≤ 128)</li>
               <li>• 1 token = 128 max participants, 2 tokens = 64 max, 3 tokens = 42 max</li>
               <li>• Minimum 1 whitelisted participant required</li>
-              <li>• L2 MPT keys provided during token deposits (per token type)</li>
               <li>• Timeout must be between 1 hour and 365 days</li>
-              <li>• 0.001 ETH leader bond required (refunded on successful completion)</li>
             </ul>
           </div>
         </div>
