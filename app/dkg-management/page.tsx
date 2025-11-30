@@ -1,15 +1,25 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, useSignMessage } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Flame, Plus, Link2, ClipboardList, CheckCircle, X, Trash2 } from 'lucide-react';
+import { Flame, Plus, Link2, ClipboardList, CheckCircle, X, Trash2, PenTool, Upload, Download, RefreshCw, FileText } from 'lucide-react';
 import { initWasm } from '@/lib/frost-wasm';
 import { DKG_CONFIG, getDKGServerUrl, shouldAutoConnect, debugLog } from '@/lib/dkg-config';
+import { 
+  get_signing_prerequisites,
+  get_key_package_metadata,
+  keccak256,
+  sign_part1_commit,
+  sign_part2_sign,
+  get_auth_payload_sign_r1,
+  get_auth_payload_sign_r2,
+  sign_message as sign_message_wasm
+} from '@/lib/wasm/pkg/tokamak_frost_wasm';
 
 // Import our new DKG components
 import { DKGConnectionStatus } from '@/components/dkg/DKGConnectionStatus';
@@ -56,6 +66,7 @@ interface DKGParticipant {
 
 export default function DKGManagementPage() {
   const { address, isConnected } = useAccount();
+  const { signMessageAsync } = useSignMessage();
   
   // UI state
   const [activeTab, setActiveTab] = useState('sessions');
@@ -67,6 +78,26 @@ export default function DKGManagementPage() {
   const [showConsoleSettings, setShowConsoleSettings] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedSessionForModal, setSelectedSessionForModal] = useState<DKGSession | null>(null);
+
+  // Signing state
+  const [keyPackage, setKeyPackage] = useState('');
+  const [keyPackageFile, setKeyPackageFile] = useState<File | null>(null);
+  const [availableKeyPackages, setAvailableKeyPackages] = useState<any[]>([]);
+  const [selectedKeyPackageId, setSelectedKeyPackageId] = useState<string>('');
+  const [signingGroupId, setSigningGroupId] = useState('');
+  const [signingThreshold, setSigningThreshold] = useState('');
+  const [signingGroupVk, setSigningGroupVk] = useState('');
+  const [signingRoster, setSigningRoster] = useState<string[]>([]);
+  const [messageToSign, setMessageToSign] = useState('');
+  const [messageHash, setMessageHash] = useState('');
+  const [signingSessionId, setSigningSessionId] = useState('');
+  const signingSessionIdRef = useState({ current: '' });
+  const [pendingSigningSessions, setPendingSigningSessions] = useState<any[]>([]);
+  const [finalSignature, setFinalSignature] = useState('');
+  const [finalSignatureData, setFinalSignatureData] = useState<any>(null);
+  const signingState = useState({ current: {} as any });
+  const [joiningSigningSession, setJoiningSigningSession] = useState<string | null>(null);
+  const [showSignatureSuccessModal, setShowSignatureSuccessModal] = useState(false);
 
   // Use our custom hooks
   const {
@@ -113,12 +144,74 @@ export default function DKGManagementPage() {
     initWasm()
       .then(() => {
         debugLog('FROST WASM module initialized successfully');
+        // Load available key packages from localStorage
+        loadAvailableKeyPackages();
       })
       .catch(err => {
         console.error('❌ Failed to initialize FROST WASM:', err);
         setError('Failed to initialize cryptographic module. Please refresh the page.');
       });
   }, []);
+
+  // Load available key packages from localStorage
+  const loadAvailableKeyPackages = () => {
+    const packages: any[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('dkg_key_package_')) {
+        try {
+          const data = JSON.parse(localStorage.getItem(key) || '{}');
+          packages.push({
+            id: key,
+            sessionId: data.session_id,
+            groupId: data.group_id,
+            threshold: data.threshold ?? 0,
+            total: data.total ?? 0,
+            timestamp: data.timestamp,
+            keyPackageHex: data.key_package_hex,
+            groupPublicKeyHex: data.group_public_key_hex
+          });
+        } catch (e) {
+          console.error('Failed to parse key package:', key);
+        }
+      }
+    }
+    setAvailableKeyPackages(packages.sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    ));
+  };
+
+  // Load key package metadata when selected
+  useEffect(() => {
+    if (keyPackage.trim() !== '' && authState.publicKeyHex) {
+      try {
+        const metadata = JSON.parse(get_key_package_metadata(keyPackage));
+        setSigningGroupId(metadata.group_id);
+        setSigningThreshold(metadata.threshold.toString());
+        setSigningGroupVk(metadata.group_public_key);
+        const pubkeys = Object.values(metadata.roster) as string[];
+        if (!pubkeys.includes(authState.publicKeyHex)) {
+          pubkeys.unshift(authState.publicKeyHex);
+        }
+        setSigningRoster(pubkeys);
+        setSuccessMessage('✅ Key package loaded successfully!');
+      } catch (e: any) {
+        setError(`Invalid key package: ${e.message}`);
+      }
+    }
+  }, [keyPackage, authState.publicKeyHex]);
+
+  // Calculate message hash
+  useEffect(() => {
+    try {
+      if (messageToSign) {
+        const hash = keccak256(messageToSign);
+        setMessageHash(hash);
+      }
+    } catch (e) {
+      setMessageHash('');
+    }
+  }, [messageToSign]);
 
   // Auto-connect to DKG server on mount (if enabled in config)
   useEffect(() => {
@@ -155,7 +248,14 @@ export default function DKGManagementPage() {
     }
   }, [connectionStatus, authState.isAuthenticated, wsConnection]);
 
-  // Listen for WebSocket messages and handle DKG rounds
+  // Show signature success modal when signature is created
+  useEffect(() => {
+    if (finalSignature) {
+      setShowSignatureSuccessModal(true);
+    }
+  }, [finalSignature]);
+
+  // Listen for WebSocket messages and handle DKG rounds + Signing rounds
   useEffect(() => {
     if (!wsConnection) return;
 
@@ -163,16 +263,93 @@ export default function DKGManagementPage() {
       try {
         const message = JSON.parse(event.data);
         
-        // Handle Round1All - all participants' Round 1 packages
+        // Handle Round1All - all participants' Round 1 packages (DKG)
         if (message.type === 'Round1All' && message.payload?.session && message.payload?.packages) {
           console.log('📦 Handling Round1All message');
           handleRound1All(message.payload.session, message.payload.packages);
         }
         
-        // Handle Round2All - encrypted Round 2 packages for this participant
+        // Handle Round2All - encrypted Round 2 packages for this participant (DKG)
         if (message.type === 'Round2All' && message.payload?.session && message.payload?.packages) {
           console.log('📦 Handling Round2All message');
           handleRound2All(message.payload.session, message.payload.packages);
+        }
+
+        // Handle Signing messages
+        if (message.type === 'SignSessionCreated') {
+          const newSessionId = message.payload.session;
+          setSigningSessionId(newSessionId);
+          signingSessionIdRef[0].current = newSessionId;
+          setSuccessMessage('✅ Signing session created!');
+          console.log('🎉 Signing session created:', newSessionId);
+          if (wsConnection) {
+            wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+          }
+        }
+
+        if (message.type === 'SignSessionAnnounced') {
+          console.log('🎯 New signing session announced:', message.payload.session);
+          setSuccessMessage('✅ New signing session announced');
+          // Request updated session list from server for accurate data
+          if (wsConnection) {
+            console.log('🔄 Requesting updated signing sessions list after announcement');
+            wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+          }
+        }
+
+        if (message.type === 'SignSessionJoined') {
+          console.log('✅ Successfully joined signing session:', message.payload.session);
+          setJoiningSigningSession(null);
+          setSuccessMessage(`✅ Joined signing session: ${message.payload.session}`);
+          // Request updated session list from server to get accurate participant count
+          if (wsConnection) {
+            console.log('🔄 Requesting updated signing sessions list after join');
+            wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+          }
+        }
+
+        if (message.type === 'PendingSigningSessions') {
+          setPendingSigningSessions(message.payload.sessions);
+          console.log(`📋 Found ${message.payload.sessions.length} pending signing sessions`);
+        }
+
+        if (message.type === 'SignReadyRound1') {
+          console.log('🚀 All participants joined. Starting Signing Round 1...');
+          handleSigningRound1(message);
+        }
+
+        if (message.type === 'SignSigningPackage') {
+          console.log('📦 Received signing package. Starting Round 2...');
+          handleSigningRound2(message);
+        }
+
+        if (message.type === 'SignatureReady') {
+          console.log('✅ Signature Ready!');
+          setFinalSignature(message.payload.signature_bincode_hex);
+          setFinalSignatureData({
+            signature: message.payload.signature_bincode_hex,
+            px: message.payload.px,
+            py: message.payload.py,
+            rx: message.payload.rx,
+            ry: message.payload.ry,
+            s: message.payload.s,
+            message: message.payload.message,
+          });
+          setSuccessMessage('🎉 Threshold signature created successfully!');
+        }
+
+        // Handle server errors for signing sessions
+        if (message.type === 'Error') {
+          const serverError = message.payload?.message || message.payload || 'Unknown server error';
+          console.error('❌ Server Error:', serverError);
+          
+          // Clear joining state on error
+          if (joiningSigningSession !== null) {
+            setJoiningSigningSession(null);
+          }
+          
+          // Show the actual server error message
+          setError(`Server Error: ${serverError}`);
         }
       } catch (error) {
         console.error('Error handling WebSocket message:', error);
@@ -184,7 +361,7 @@ export default function DKGManagementPage() {
     return () => {
       wsConnection.removeEventListener('message', handleMessage);
     };
-  }, [wsConnection, handleRound1All, handleRound2All]);
+  }, [wsConnection, handleRound1All, handleRound2All, keyPackage, authState.dkgPrivateKey, authState.publicKeyHex]);
 
   // Automated DKG ceremony flow
   const {
@@ -242,7 +419,7 @@ export default function DKGManagementPage() {
       // Use setTimeout to ensure the state update completes before sending the WebSocket message
       setTimeout(() => {
         const message = {
-          type: 'AnnounceSession',
+          type: 'AnnounceDKGSession',
           payload: {
             min_signers: params.minSigners,
             max_signers: params.maxSigners,
@@ -266,16 +443,24 @@ export default function DKGManagementPage() {
   };
 
   const handleJoinSession = (sessionId: string) => {
+    console.log('🎯 handleJoinSession called with sessionId:', sessionId);
+    console.log('🎯 Current WebSocket state:', {
+      connected: !!wsConnection,
+      readyState: wsConnection?.readyState,
+      authenticated: authState.isAuthenticated,
+      hasPublicKey: !!authState.publicKeyHex,
+      hasPrivateKey: !!authState.dkgPrivateKey
+    });
     joinSession(sessionId);
   };
 
   const handleRefreshSession = (sessionId: string) => {
     if (wsConnection && authState.isAuthenticated) {
       const message = {
-        type: 'JoinSession',
+        type: 'JoinDKGSession',
         payload: { session: sessionId }
       };
-      console.log('📤 Sending JoinSession to refresh state:', message);
+      console.log('📤 Sending JoinDKGSession to refresh state:', message);
       wsConnection.send(JSON.stringify(message));
     }
   };
@@ -348,6 +533,245 @@ export default function DKGManagementPage() {
     }
   };
 
+  // Signing ceremony handlers
+  const handleSigningRound1 = async (message: any) => {
+    try {
+      const { nonces_hex, commitments_hex } = JSON.parse(sign_part1_commit(keyPackage));
+      signingState[0].current.nonces = nonces_hex;
+
+      const myRosterEntry = message.payload.roster.find((p: [number, string, string]) => p[2] === authState.publicKeyHex);
+      if (!myRosterEntry) {
+        throw new Error("Could not find myself in session roster");
+      }
+      const myIdHex = myRosterEntry[1];
+      signingState[0].current.identifier = myIdHex;
+      signingState[0].current.group_id = message.payload.group_id;
+      signingState[0].current.msg32_hex = message.payload.msg_keccak32_hex;
+
+      const payload_hex = get_auth_payload_sign_r1(
+        signingSessionIdRef[0].current,
+        message.payload.group_id,
+        myIdHex,
+        commitments_hex
+      );
+      const signature = sign_message_wasm(authState.dkgPrivateKey!, payload_hex);
+
+      if (wsConnection) {
+        wsConnection.send(JSON.stringify({
+          type: 'SignRound1Submit',
+          payload: {
+            session: signingSessionIdRef[0].current,
+            id_hex: myIdHex,
+            commitments_bincode_hex: commitments_hex,
+            sig_ecdsa_hex: signature,
+          }
+        }));
+      }
+      setSuccessMessage('✅ Round 1 commitments submitted');
+    } catch (e: any) {
+      setError(`Signing Round 1 failed: ${e.message}`);
+    }
+  };
+
+  const handleSigningRound2 = async (message: any) => {
+    try {
+      const signature_share_hex = sign_part2_sign(
+        keyPackage,
+        signingState[0].current.nonces,
+        message.payload.signing_package_bincode_hex
+      );
+
+      const payload_hex = get_auth_payload_sign_r2(
+        signingSessionIdRef[0].current,
+        signingState[0].current.group_id,
+        signingState[0].current.identifier,
+        signature_share_hex,
+        signingState[0].current.msg32_hex
+      );
+      const signature = sign_message_wasm(authState.dkgPrivateKey!, payload_hex);
+
+      if (wsConnection) {
+        wsConnection.send(JSON.stringify({
+          type: 'SignRound2Submit',
+          payload: {
+            session: signingSessionIdRef[0].current,
+            id_hex: signingState[0].current.identifier,
+            signature_share_bincode_hex: signature_share_hex,
+            sig_ecdsa_hex: signature,
+          }
+        }));
+      }
+      setSuccessMessage('✅ Round 2 signature share submitted');
+    } catch (e: any) {
+      setError(`Signing Round 2 failed: ${e.message}`);
+    }
+  };
+
+  const handleLoadKeyPackage = (packageId: string) => {
+    const pkg = availableKeyPackages.find(p => p.id === packageId);
+    if (pkg) {
+      setKeyPackage(pkg.keyPackageHex);
+      setSelectedKeyPackageId(packageId);
+      setSuccessMessage(`✅ Loaded key package for ${pkg.groupId}`);
+    }
+  };
+
+  // Load key package and join session in one action (avoids state timing issues)
+  const handleLoadAndJoinSession = (packageId: string, sessionId: string) => {
+    const pkg = availableKeyPackages.find(p => p.id === packageId);
+    if (!pkg) {
+      setError('Key package not found');
+      return;
+    }
+
+    // Set the key package state for future use
+    setKeyPackage(pkg.keyPackageHex);
+    setSelectedKeyPackageId(packageId);
+    
+    // Load metadata from key package
+    try {
+      const metadata = JSON.parse(get_key_package_metadata(pkg.keyPackageHex));
+      setSigningGroupId(metadata.group_id);
+      setSigningThreshold(metadata.threshold.toString());
+      setSigningGroupVk(metadata.group_public_key);
+    } catch (e) {
+      console.warn('Could not load key package metadata:', e);
+    }
+
+    // Join immediately using the key package directly (not from state)
+    try {
+      setJoiningSigningSession(sessionId);
+      signingSessionIdRef[0].current = sessionId;
+      const prereqs = JSON.parse(get_signing_prerequisites(pkg.keyPackageHex));
+      
+      if (wsConnection) {
+        wsConnection.send(JSON.stringify({
+          type: 'JoinSignSession',
+          payload: {
+            session: sessionId,
+            signer_id_bincode_hex: prereqs.signer_id_bincode_hex,
+            verifying_share_bincode_hex: prereqs.verifying_share_bincode_hex,
+          }
+        }));
+      }
+      console.log(`📤 Loaded key package and joining signing session: ${sessionId}`);
+      setSuccessMessage(`Loaded key package and joining session...`);
+    } catch (e: any) {
+      setError(`Failed to join session: ${e.message}`);
+      setJoiningSigningSession(null);
+    }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setKeyPackageFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const text = e.target?.result as string;
+          const data = JSON.parse(text);
+          if (data.key_package_hex) {
+            setKeyPackage(data.key_package_hex);
+            setSuccessMessage(`✅ Loaded key package from ${file.name}`);
+          } else {
+            throw new Error('Invalid key package format');
+          }
+        } catch (error) {
+          setError('Failed to load key package file');
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  const handleAnnounceSigningSession = () => {
+    if (keyPackage.trim() === '') {
+      setError('Please load a key package first');
+      return;
+    }
+    if (!messageToSign || !messageHash) {
+      setError('Please enter a message to sign');
+      return;
+    }
+
+    const thresholdNum = parseInt(signingThreshold);
+    const participants = signingRoster.map((_, i) => i + 1);
+    const participants_pubs = signingRoster.map((pubkey, i) => [i + 1, pubkey]);
+
+    if (wsConnection) {
+      wsConnection.send(JSON.stringify({
+        type: 'AnnounceSignSession',
+        payload: {
+          group_id: signingGroupId,
+          threshold: thresholdNum,
+          participants,
+          participants_pubs,
+          group_vk_sec1_hex: signingGroupVk,
+          message: messageToSign,
+          message_hex: messageHash,
+        }
+      }));
+      console.log('📤 Signing session announced');
+    }
+  };
+
+  const handleJoinSigningSession = (session: string) => {
+    if (keyPackage.trim() === '') {
+      setError('Please load a key package first');
+      return;
+    }
+    try {
+      setJoiningSigningSession(session);
+      signingSessionIdRef[0].current = session;
+      const prereqs = JSON.parse(get_signing_prerequisites(keyPackage));
+      
+      if (wsConnection) {
+        wsConnection.send(JSON.stringify({
+          type: 'JoinSignSession',
+          payload: {
+            session,
+            signer_id_bincode_hex: prereqs.signer_id_bincode_hex,
+            verifying_share_bincode_hex: prereqs.verifying_share_bincode_hex,
+          }
+        }));
+      }
+      console.log(`📤 Joining signing session: ${session}`);
+    } catch (e: any) {
+      setError(`Failed to join session: ${e.message}`);
+    }
+  };
+
+  const handleDownloadSignature = () => {
+    if (!finalSignatureData) return;
+
+    const signatureJSON = {
+      signature_bincode_hex: finalSignatureData.signature,
+      message: finalSignatureData.message,
+      message_hex: messageHash,
+      rx: finalSignatureData.rx,
+      ry: finalSignatureData.ry,
+      z: finalSignatureData.s,
+      px: finalSignatureData.px,
+      py: finalSignatureData.py,
+      group_id: signingGroupId,
+      threshold: signingThreshold,
+      created_at: new Date().toISOString(),
+    };
+
+    const blob = new Blob([JSON.stringify(signatureJSON, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `frost_signature_${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    setSuccessMessage('✅ Signature downloaded successfully!');
+  };
+
   const handleClearAllData = () => {
     // Confirm before clearing
     const confirmed = window.confirm(
@@ -371,10 +795,17 @@ export default function DKGManagementPage() {
       localStorage.removeItem('dkg_last_public_key');
       localStorage.removeItem('dkg_last_private_key');
       
-      // Show success message
-      setSuccessMessage('✅ All DKG data cleared successfully! Refresh recommended.');
+      // Clear all key packages
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('dkg_key_package_')) {
+          localStorage.removeItem(key);
+        }
+      });
       
       console.log('✅ All DKG localStorage data cleared');
+      
+      // Force reload to reset all state
+      window.location.reload();
       
       // Optionally refresh the page after a short delay
       setTimeout(() => {
@@ -468,12 +899,7 @@ export default function DKGManagementPage() {
           serverUrl={serverUrl}
           setServerUrl={setServerUrl}
           connectToServer={handleConnectToServer}
-          authState={{
-            isAuthenticated: authState.isAuthenticated,
-            userId: authState.userId ?? null,
-            publicKeyHex: authState.publicKeyHex ?? null,
-            challenge: authState.challenge ?? null
-          }}
+          authState={authState}
           onRequestChallenge={requestChallenge}
           onGetPublicKey={getDeterministicPublicKey}
           onAuthenticate={authenticate}
@@ -525,20 +951,34 @@ export default function DKGManagementPage() {
         {/* Tab Navigation */}
         <div className="flex space-x-1 bg-[#0a1930] border border-[#4fc3f7]/30 p-1">
           {[
-            { id: 'sessions', label: 'Sessions', icon: ClipboardList },
-            { id: 'create', label: 'Create Session', icon: Plus },
-            { id: 'join', label: 'Join Session', icon: Link2 }
+            { id: 'sessions', label: 'DKG Sessions', icon: ClipboardList },
+            { id: 'create', label: 'Create DKG', icon: Plus },
+            { id: 'join', label: 'Join DKG', icon: Link2 },
+            { id: 'signing', label: 'Signing Sessions', icon: PenTool, badge: pendingSigningSessions.length },
           ].map((tab) => {
             const Icon = tab.icon;
             return (
               <Button
                 key={tab.id}
                 variant={activeTab === tab.id ? 'default' : 'ghost'}
-                onClick={() => setActiveTab(tab.id)}
-                className="flex-1 justify-center"
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  if (tab.id === 'signing') {
+                    loadAvailableKeyPackages();
+                    if (wsConnection && authState.isAuthenticated) {
+                      wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+                    }
+                  }
+                }}
+                className="flex-1 justify-center text-sm relative"
               >
                 <Icon className="w-4 h-4 mr-2" />
                 {tab.label}
+                {tab.badge && tab.badge > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-[#028bee] text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5 shadow-lg shadow-[#028bee]/50 animate-pulse">
+                    {tab.badge}
+                  </span>
+                )}
               </Button>
             );
           })}
@@ -559,18 +999,16 @@ export default function DKGManagementPage() {
               }}
               onViewMore={handleViewMore}
               onRefreshSession={handleRefreshSession}
-              onSubmitRound1={openCommitmentModal}
-              onSubmitRound2={submitRound2}
-              onSubmitFinalization={submitFinalization}
+              onSubmitRound1={undefined}  // Disabled: Now automatic via WebSocket
+              onSubmitRound2={undefined}  // Disabled: Now automatic via WebSocket
+              onSubmitFinalization={undefined}  // Disabled: Now automatic via WebSocket
               onStartAutomatedCeremony={startAutomatedCeremony}
               onJoinSession={handleJoinSession}
-              isSubmittingRound1={isSubmittingRound1}
-              isSubmittingRound2={isSubmittingRound2}
-              isSubmittingFinalize={isSubmittingFinalize}
+              isSubmittingRound1={false}
+              isSubmittingRound2={false}
+              isSubmittingFinalize={false}
               isJoiningSession={isJoiningSession}
-              authState={{
-                isAuthenticated: authState.isAuthenticated
-              }}
+              authState={authState}
               wsConnection={wsConnection}
             />
           </div>
@@ -581,7 +1019,7 @@ export default function DKGManagementPage() {
             connectionStatus={connectionStatus}
             authState={{
               isAuthenticated: authState.isAuthenticated,
-              publicKeyHex: authState.publicKeyHex || undefined
+              publicKeyHex: authState.publicKeyHex ?? undefined
             }}
             isCreatingSession={isCreatingSession}
             onCreateSession={handleCreateSession}
@@ -591,15 +1029,294 @@ export default function DKGManagementPage() {
         {activeTab === 'join' && (
           <DKGSessionJoiner
             connectionStatus={connectionStatus}
-            authState={{
-              isAuthenticated: authState.isAuthenticated
-            }}
+            authState={authState}
             isJoiningSession={isJoiningSession}
             successMessage={successMessage}
             error={error}
             onJoinSession={handleJoinSession}
             onDismissSuccess={() => setSuccessMessage('')}
           />
+        )}
+
+        {activeTab === 'signing' && (
+          <div className="space-y-6">
+            {/* Pending Signing Sessions */}
+            <Card className="p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 flex items-center justify-center">
+                    <PenTool className="w-5 h-5 text-[#4fc3f7]" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Pending Signing Sessions</h3>
+                    <p className="text-sm text-gray-400">
+                      {pendingSigningSessions.length > 0 
+                        ? `${pendingSigningSessions.length} session${pendingSigningSessions.length !== 1 ? 's' : ''} waiting for participants` 
+                        : 'No pending sessions'}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => {
+                    if (wsConnection) {
+                      wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+                    }
+                  }}
+                  variant="outline"
+                  size="sm"
+                  disabled={!wsConnection}
+                  className="bg-[#028bee] hover:bg-[#0277d4] text-white border-[#028bee]"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Refresh
+                </Button>
+              </div>
+
+              {pendingSigningSessions.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-[#4fc3f7]/10 border-2 border-dashed border-[#4fc3f7]/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <PenTool className="w-8 h-8 text-[#4fc3f7]/50" />
+                  </div>
+                  <p className="text-gray-300 mb-2 font-medium">No Signing Sessions Available</p>
+                  <p className="text-gray-400 text-sm">Create a new session or wait for others to announce one</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {pendingSigningSessions.map((session: any) => {
+                    const matchingPkg = availableKeyPackages.find(pkg => pkg.groupId === session.group_id);
+                    const hasKey = keyPackage || matchingPkg;
+                    const progress = (session.joined.length / session.participants.length) * 100;
+                    
+                    return (
+                      <Card key={session.session} className="p-5 bg-[#0a1930] border-[#4fc3f7]/30 hover:border-[#4fc3f7]/60 transition-all">
+                        <div className="space-y-4">
+                          {/* Header */}
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Badge className="bg-[#4fc3f7]/20 text-[#4fc3f7] border-[#4fc3f7]/30 text-xs">
+                                  Session
+                                </Badge>
+                                <p className="text-white font-mono text-sm">{session.session.slice(0, 18)}...</p>
+                              </div>
+                              <p className="text-gray-300 font-medium mb-1">Group: {session.group_id}</p>
+                              <div className="bg-[#0f1729]/50 border border-[#4fc3f7]/20 p-3 mt-2">
+                                <p className="text-xs text-gray-400 mb-1">Message to Sign:</p>
+                                <p className="text-white text-sm">{session.message}</p>
+                              </div>
+                            </div>
+                            {hasKey ? (
+                              <div className="ml-4 flex items-center gap-2 px-3 py-1.5 bg-green-500/20 border border-green-500/30 text-green-300 text-xs font-medium">
+                                <CheckCircle className="w-3.5 h-3.5" />
+                                Key Available
+                              </div>
+                            ) : (
+                              <div className="ml-4 flex items-center gap-2 px-3 py-1.5 bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-medium">
+                                <X className="w-3.5 h-3.5" />
+                                No Key
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Progress Bar */}
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs text-gray-400">Participants</span>
+                              <span className="text-xs font-medium text-white">
+                                {session.joined.length}/{session.participants.length}
+                              </span>
+                            </div>
+                            <div className="w-full h-2 bg-[#0f1729] border border-[#4fc3f7]/20 overflow-hidden">
+                              <div 
+                                className="h-full bg-gradient-to-r from-[#4fc3f7] to-[#028bee] transition-all duration-300"
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Action Button */}
+                          {!hasKey ? (
+                            <Button
+                              disabled
+                              className="w-full bg-gray-600 cursor-not-allowed"
+                              size="sm"
+                            >
+                              No Key Package for {session.group_id}
+                            </Button>
+                          ) : (
+                            <Button
+                              onClick={() => {
+                                // Auto-load key package if needed, then join
+                                if (!keyPackage && matchingPkg) {
+                                  // Use the combined function that loads and joins atomically
+                                  handleLoadAndJoinSession(matchingPkg.id, session.session);
+                                } else {
+                                  handleJoinSigningSession(session.session);
+                                }
+                              }}
+                              disabled={joiningSigningSession !== null || !authState.isAuthenticated}
+                              className="w-full bg-[#028bee] hover:bg-[#0277d4]"
+                              size="sm"
+                            >
+                              {joiningSigningSession === session.session ? 'Joining...' : 'Join Session'}
+                            </Button>
+                          )}
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+
+            {/* Create New Signing Session Section */}
+            <Card className="p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 bg-[#028bee]/20 border border-[#028bee]/50 flex items-center justify-center">
+                  <Plus className="w-5 h-5 text-[#028bee]" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Create New Signing Session</h3>
+                  <p className="text-sm text-gray-400">Select a key package and create a signing session</p>
+                </div>
+              </div>
+
+              {/* Key Package Selection */}
+              <div className="mb-6">
+                <h4 className="text-md font-semibold text-white mb-4">1. Select Key Package</h4>
+              
+              {availableKeyPackages.length === 0 ? (
+                  <div className="text-center py-8 border-2 border-dashed border-[#4fc3f7]/30">
+                  <PenTool className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-300 mb-2">No key packages found</p>
+                  <p className="text-gray-400 text-sm">Complete a DKG ceremony first to generate key packages</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid gap-2">
+                    {availableKeyPackages.map((pkg) => (
+                      <Card
+                        key={pkg.id}
+                        className={`p-4 cursor-pointer transition-all ${
+                          selectedKeyPackageId === pkg.id
+                            ? 'bg-[#4fc3f7]/20 border-[#4fc3f7]'
+                            : 'bg-[#0a1930] border-[#4fc3f7]/30 hover:border-[#4fc3f7]/50'
+                        }`}
+                        onClick={() => handleLoadKeyPackage(pkg.id)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-white font-medium">{pkg.groupId}</p>
+                            <p className="text-gray-400 text-sm">
+                              Threshold: {pkg.threshold || 0}-of-{pkg.total || 0} | 
+                              Created: {new Date(pkg.timestamp).toLocaleDateString()}
+                            </p>
+                          </div>
+                          {selectedKeyPackageId === pkg.id && (
+                            <CheckCircle className="w-5 h-5 text-[#4fc3f7]" />
+                          )}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+
+                  <div className="border-t border-[#4fc3f7]/30 pt-4">
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Or upload key package file
+                    </label>
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleFileUpload}
+                      className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-white"
+                    />
+                  </div>
+                </div>
+              )}
+              </div>
+
+              {/* Create Signing Session Form */}
+            {keyPackage && (
+                <div className="border-t border-[#4fc3f7]/30 pt-6">
+                  <h4 className="text-md font-semibold text-white mb-4">2. Create Signing Session</h4>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Group ID (from DKG)
+                    </label>
+                    <input
+                      type="text"
+                      value={signingGroupId}
+                      disabled
+                      className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-gray-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Message to Sign
+                    </label>
+                    <input
+                      type="text"
+                      value={messageToSign}
+                      onChange={(e) => setMessageToSign(e.target.value)}
+                      placeholder="Enter message to sign..."
+                        className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-white placeholder-gray-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Message Hash (Keccak256)
+                    </label>
+                    <input
+                      type="text"
+                      value={messageHash}
+                      disabled
+                      className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-gray-400 font-mono text-sm"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Threshold
+                      </label>
+                      <input
+                        type="text"
+                        value={signingThreshold}
+                        disabled
+                        className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-gray-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Participants
+                      </label>
+                      <input
+                        type="text"
+                        value={signingRoster.length}
+                        disabled
+                        className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-gray-400"
+                      />
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={handleAnnounceSigningSession}
+                    disabled={!connectionStatus || connectionStatus !== 'connected' || !authState.isAuthenticated || !messageHash}
+                      className="w-full bg-[#028bee] hover:bg-[#0277d4]"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Signing Session
+                  </Button>
+                </div>
+                </div>
+              )}
+            </Card>
+
+          </div>
         )}
 
         {/* Modals */}
@@ -610,7 +1327,7 @@ export default function DKGManagementPage() {
           frostIdMap={frostIdMap}
           authState={{
             isAuthenticated: authState.isAuthenticated,
-            publicKeyHex: authState.publicKeyHex || undefined
+            publicKeyHex: authState.publicKeyHex ?? undefined
           }}
           onClose={closeCommitmentModal}
           onSubmit={handleSubmitCommitment}
@@ -648,6 +1365,80 @@ export default function DKGManagementPage() {
           frostIdMap={frostIdMap}
           isNewlyCreated={false}
         />
+
+        {/* Signature Success Modal */}
+        {showSignatureSuccessModal && finalSignature && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 animate-in fade-in duration-300">
+            {/* Backdrop with stronger blur */}
+            <div 
+              className="absolute inset-0 bg-black/80 backdrop-blur-md" 
+              onClick={() => setShowSignatureSuccessModal(false)}
+            />
+            
+            {/* Modal */}
+            <div className="relative z-[201] bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-2 border-[#4fc3f7] shadow-2xl shadow-[#4fc3f7]/50 w-full max-w-2xl rounded-lg animate-in zoom-in-95 slide-in-from-bottom-8 duration-500">
+              {/* Header */}
+              <div className="p-8 text-center border-b border-[#4fc3f7]/30">
+                <div className="inline-flex items-center justify-center w-20 h-20 mb-6 bg-[#4fc3f7]/20 border-2 border-[#4fc3f7] rounded-full animate-pulse">
+                  <CheckCircle className="w-12 h-12 text-[#4fc3f7]" />
+                </div>
+                <h2 className="text-4xl font-bold text-white mb-3">
+                  Signature Created Successfully
+                </h2>
+                <p className="text-lg text-gray-300">
+                  Your threshold signature has been generated and is ready to use
+                </p>
+              </div>
+
+              {/* Content */}
+              <div className="p-6 space-y-4">
+                {/* Signature Display */}
+                <div className="bg-[#0f1729]/50 p-4 rounded-lg border border-[#4fc3f7]/30">
+                  <label className="block text-sm font-medium text-[#4fc3f7] mb-2 flex items-center gap-2">
+                    <FileText className="w-4 h-4" />
+                    Final Signature (bincode hex)
+                  </label>
+                  <textarea
+                    readOnly
+                    value={finalSignature}
+                    rows={4}
+                    className="w-full px-4 py-3 bg-[#0a1930] border border-[#4fc3f7]/50 rounded-md text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] resize-none"
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div className="space-y-3">
+                  {/* Download Button - Primary Action */}
+                  <Button 
+                    onClick={() => {
+                      handleDownloadSignature();
+                      setShowSignatureSuccessModal(false);
+                    }}
+                    className="w-full h-16 bg-[#028bee] hover:bg-[#0277d4] text-white font-bold text-lg shadow-lg hover:shadow-xl transition-all transform hover:scale-105"
+                  >
+                    <Download className="w-6 h-6 mr-3" />
+                    Download Signature JSON
+                  </Button>
+
+                  {/* Next Steps Info */}
+                  <div className="p-4 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 rounded-lg">
+                    <p className="text-sm text-gray-200 text-center font-medium">
+                      <strong className="text-[#4fc3f7]">Next Step:</strong> Use this signature file in the "Sign Proof" page to submit to the blockchain
+                    </p>
+                  </div>
+
+                  {/* Close Button */}
+                  <button
+                    onClick={() => setShowSignatureSuccessModal(false)}
+                    className="w-full h-12 bg-transparent hover:bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 hover:border-[#4fc3f7] text-white font-medium rounded transition-all"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   );

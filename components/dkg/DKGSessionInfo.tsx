@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { formatFrostId } from '@/lib/utils';
 import { 
   ChevronDown, 
   ChevronUp, 
@@ -130,10 +131,10 @@ export function DKGSessionInfo({ session, myFrostId, authState }: DKGSessionInfo
                 <span className="text-xs text-gray-400">Threshold</span>
               </div>
               <p className="text-lg font-semibold text-white">
-                {session.minSigners}-of-{session.maxSigners}
+                {session.minSigners || 0}-of-{session.maxSigners || 0}
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                {session.minSigners} signatures required
+                {session.minSigners || 0} signatures required
               </p>
             </div>
 
@@ -159,7 +160,7 @@ export function DKGSessionInfo({ session, myFrostId, authState }: DKGSessionInfo
                 <span className="text-sm font-medium text-gray-300">My FROST Identifier:</span>
               </div>
               <div className="bg-green-900/20 p-3 rounded border border-green-500/30 flex items-center justify-between">
-                <code className="text-xs text-green-300 break-all">{myFrostId}</code>
+                <code className="text-xs text-green-300 break-all">{formatFrostId(myFrostId)}</code>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -240,7 +241,7 @@ export function DKGSessionInfo({ session, myFrostId, authState }: DKGSessionInfo
                           )}
                         </td>
                         <td className="px-3 py-2">
-                          <code className="text-[#4fc3f7]">{formatAddress(frostId)}</code>
+                          <code className="text-[#4fc3f7]">{formatFrostId(frostId)}</code>
                         </td>
                         <td className="px-3 py-2">
                           <code className="text-gray-300">{formatAddress(ecdsaPub)}</code>
@@ -303,7 +304,7 @@ export function DKGSessionInfo({ session, myFrostId, authState }: DKGSessionInfo
                   </div>
                   <div>
                     <span className="text-gray-400">Threshold:</span>
-                    <p className="text-purple-300 font-mono">{keyPackage.threshold}-of-{keyPackage.total}</p>
+                    <p className="text-purple-300 font-mono">{keyPackage.threshold || 0}-of-{keyPackage.total || 0}</p>
                   </div>
                   <div>
                     <span className="text-gray-400">Group ID:</span>

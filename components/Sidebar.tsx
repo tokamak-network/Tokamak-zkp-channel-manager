@@ -5,10 +5,11 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAccount, useContractRead } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import Image from 'next/image';
+import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { ClientOnly } from '@/components/ClientOnly';
 import { NetworkDropdown } from '@/components/NetworkDropdown';
-import { Home, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Search, Settings, FileCheck, XCircle, Activity } from 'lucide-react';
+import { Home, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Search, Settings, FileCheck, PenTool, XCircle, Trash2, Activity, FileSignature } from 'lucide-react';
 
 interface SidebarProps {
   isConnected: boolean;
@@ -63,15 +64,6 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       });
     }
 
-    // DKG Management - available for all connected users
-    userActions.push({
-      name: 'DKG Management',
-      href: '/dkg-management',
-      icon: Key,
-      description: 'Distributed Key Generation',
-      requiresConnection: true
-    });
-
     // Deposit and Withdraw - available for both participants and leaders
     if (isParticipant || hasChannels) {
       userActions.push(
@@ -91,6 +83,27 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
         }
       );
     }
+  }
+
+  // Threshold Signature section - available for all connected users
+  const thresholdSignatureActions = [];
+  if (isConnected) {
+    thresholdSignatureActions.push(
+      {
+        name: 'DKG Management',
+        href: '/dkg-management',
+        icon: Key,
+        description: 'Key generation ceremonies',
+        requiresConnection: true
+      },
+      {
+        name: 'Signing',
+        href: '/threshold-signing',
+        icon: FileSignature,
+        description: 'Threshold signature signing',
+        requiresConnection: true
+      }
+    );
   }
 
   // Channel explorer actions - shown only when user has channels or is a participant
@@ -162,6 +175,10 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
     ...(userActions.length > 0 ? [{
       title: 'Channel Actions',
       items: userActions
+    }] : []),
+    ...(thresholdSignatureActions.length > 0 ? [{
+      title: 'Threshold Signature',
+      items: thresholdSignatureActions
     }] : []),
     ...(channelActions.length > 0 ? [{
       title: 'Explorer',

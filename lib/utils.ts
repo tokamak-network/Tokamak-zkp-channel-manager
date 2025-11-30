@@ -244,3 +244,24 @@ export function sortChannels<T extends { id: bigint; totalDeposits: bigint; part
       return sorted;
   }
 }
+
+// Format FROST ID for display (removes leading zeros)
+export function formatFrostId(frostId: string | null | undefined): string {
+  // Handle null/undefined cases
+  if (!frostId || frostId.trim() === '') {
+    return 'N/A';
+  }
+  
+  // Remove any '0x' prefix if present
+  let cleaned = frostId.toLowerCase().replace('0x', '');
+  
+  // Remove leading zeros
+  cleaned = cleaned.replace(/^0+/, '');
+  
+  // If all zeros, return '0'
+  if (cleaned === '') {
+    return '0';
+  }
+  
+  return cleaned;
+}
