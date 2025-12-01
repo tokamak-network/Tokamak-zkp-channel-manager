@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ChevronDown, ChevronUp, Wifi, WifiOff, ClipboardCopy, Check, Lightbulb } from 'lucide-react';
+import { ChevronDown, ChevronUp, Wifi, WifiOff, ClipboardCopy, Check, Lightbulb, CheckCircle } from 'lucide-react';
 
 interface DKGConnectionStatusProps {
   connectionStatus: 'disconnected' | 'connecting' | 'connected';
@@ -169,6 +169,26 @@ export function DKGConnectionStatus({
                     <Lightbulb className="w-3.5 h-3.5" />
                     Share this with the session creator so they can add you to the roster BEFORE creating the session
                   </p>
+                  
+                  {/* Show ready status - Below public key */}
+                  {authState.isAuthenticated && (
+                    <div className="mt-3 p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+                      <div className="text-sm text-green-300 flex items-center gap-2 font-semibold">
+                        <CheckCircle className="w-5 h-5" />
+                        Ready to Join Sessions!
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Show authenticating status - Below public key */}
+                  {!authState.isAuthenticated && (
+                    <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                      <div className="text-sm text-yellow-300 flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-yellow-300 border-t-transparent rounded-full animate-spin"></div>
+                        <span className="font-semibold">Authenticating... Please wait!</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -183,14 +203,6 @@ export function DKGConnectionStatus({
                 >
                   Get My Public Key
                 </Button>
-              )}
-              
-              {/* Show authenticating status */}
-              {authState.publicKeyHex && !authState.isAuthenticated && (
-                <div className="text-sm text-yellow-300 flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-yellow-300 border-t-transparent rounded-full animate-spin"></div>
-                  Authenticating...
-                </div>
               )}
               
               {/* Show authenticated status */}

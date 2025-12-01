@@ -11,7 +11,7 @@ import { MobileMenuButton } from '@/components/MobileMenuButton';
 import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI, ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS, ROLLUP_BRIDGE_DEPOSIT_MANAGER_ABI, ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 import { getTokenSymbol, getTokenDecimals } from '@/lib/tokenUtils';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
-import { ArrowDownCircle, Clock, Inbox, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowDownCircle, Clock, Inbox, CheckCircle2, AlertCircle, Key, AlertTriangle, X } from 'lucide-react';
 
 export default function DepositTokensPage() {
   const { address, isConnected } = useAccount();
@@ -46,9 +46,27 @@ export default function DepositTokensPage() {
     txHash: string;
   } | null>(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [showPublicKeyWarning, setShowPublicKeyWarning] = useState(false);
 
   // Use dynamic hook to get channels where user participates
   const { participatingChannels, channelStatsData } = useUserRolesDynamic();
+
+  // Get public key status for selected channel
+  const { data: isPublicKeySet } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'isChannelPublicKeySet',
+    args: selectedChannel ? [selectedChannel.channelId] : undefined,
+    enabled: !!selectedChannel,
+  });
+
+  const { data: publicKey } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelPublicKey',
+    args: selectedChannel ? [selectedChannel.channelId] : undefined,
+    enabled: !!selectedChannel,
+  });
 
   // Get available channels for deposits (state = 1 means initialized)
   const availableChannels = participatingChannels
@@ -668,6 +686,12 @@ export default function DepositTokensPage() {
                         {/* Deposit button */}
                         <button
                           onClick={() => {
+                            // Check if public key is set before allowing deposit
+                            if (!isPublicKeySet) {
+                              setShowPublicKeyWarning(true);
+                              return;
+                            }
+                            
                             if (selectedToken.isETH) {
                               depositETH?.();
                             } else {
@@ -688,6 +712,7 @@ export default function DepositTokensPage() {
                         >
                           {(isDepositingETH || isDepositingToken) ? 'Depositing...' : 
                            isWaitingDeposit ? 'Confirming...' : 
+                           !isPublicKeySet ? 'Public Key Required' :
                            'Deposit'}
                         </button>
                       </div>
@@ -700,6 +725,56 @@ export default function DepositTokensPage() {
                         </p>
                       )}
 
+                      {/* Public Key Status Section */}
+                      <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Key className="h-5 w-5 text-[#4fc3f7]" />
+                          <h4 className="font-semibold text-[#4fc3f7]">Channel Public Key Status</h4>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-300">Status:</span>
+                            {isPublicKeySet ? (
+                              <span className="px-2 py-1 bg-green-500/20 border border-green-500/50 text-green-400 text-xs rounded">
+                                Set
+                              </span>
+                            ) : (
+                              <span className="px-2 py-1 bg-red-500/20 border border-red-500/50 text-red-400 text-xs rounded">
+                                Not Set
+                              </span>
+                            )}
+                          </div>
+                          
+                          <div className="grid grid-cols-1 gap-2 text-sm">
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-400 w-12">pkx:</span>
+                              <span className="font-mono text-gray-300 text-xs break-all">
+                                {isPublicKeySet && publicKey ? String(publicKey[0]) : '0x'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-400 w-12">pky:</span>
+                              <span className="font-mono text-gray-300 text-xs break-all">
+                                {isPublicKeySet && publicKey ? String(publicKey[1]) : '0x'}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {!isPublicKeySet && (
+                            <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/50 rounded">
+                              <div className="flex items-start gap-2">
+                                <AlertTriangle className="h-4 w-4 text-yellow-400 mt-0.5 flex-shrink-0" />
+                                <div className="text-xs text-yellow-300">
+                                  <p className="font-medium mb-1">DKG Required</p>
+                                  <p>The channel leader must complete the DKG ceremony to set the public key before deposits can be made.</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
                       {/* Status Messages */}
                       <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-4">
                         <h4 className="font-semibold text-[#4fc3f7] mb-2">Deposit Summary</h4>
@@ -719,6 +794,56 @@ export default function DepositTokensPage() {
           </div>
         </main>
       </div>
+
+      {/* Public Key Warning Modal */}
+      {showPublicKeyWarning && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-xl shadow-[#4fc3f7]/30 max-w-md w-full mx-4">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-[#4fc3f7]/30">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 bg-red-500/20 border border-red-500/50 rounded-full flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-white">
+                  Transaction Will Revert
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowPublicKeyWarning(false)}
+                className="p-1 hover:bg-gray-700 rounded"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            
+            {/* Content */}
+            <div className="p-6">
+              <p className="text-gray-300 mb-4">
+                The channel's public key has not been set yet. Any deposit transaction will revert and fail.
+              </p>
+              <div className="bg-yellow-500/10 border border-yellow-500/50 rounded-lg p-4">
+                <h4 className="font-medium text-yellow-300 mb-2">
+                  Required Action:
+                </h4>
+                <p className="text-sm text-yellow-200">
+                  The channel leader must complete the DKG (Distributed Key Generation) ceremony first to set the group public key before any deposits can be made.
+                </p>
+              </div>
+            </div>
+            
+            {/* Footer */}
+            <div className="p-6 border-t border-[#4fc3f7]/30">
+              <button 
+                onClick={() => setShowPublicKeyWarning(false)}
+                className="w-full px-4 py-2 bg-[#4fc3f7] text-white hover:bg-[#029bee] transition-colors"
+              >
+                Understood
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Success Popup */}
       {showDepositSuccessPopup && successDepositInfo && (

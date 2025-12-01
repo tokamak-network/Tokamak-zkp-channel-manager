@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { formatFrostId } from '@/lib/utils';
 // import { DKGAutomatedCeremonyModal } from './DKGAutomatedCeremonyModal'; // Disabled - requires spawner service
 import { Crown, Users, RefreshCw, Lock, LockKeyhole, FileText, Eye, AlertTriangle, User, Link2, ClipboardList } from 'lucide-react';
 
@@ -24,6 +25,7 @@ interface DKGSession {
   groupVerifyingKey?: string;
   automationMode?: 'manual' | 'automatic';
   _serverMissing?: boolean;
+  _isJoining?: boolean; // Temporary flag to show joining state in UI
 }
 
 interface DKGSessionsListProps {
@@ -35,9 +37,9 @@ interface DKGSessionsListProps {
   onSelectSession: (session: DKGSession) => void;
   onViewMore: (session: DKGSession) => void;
   onRefreshSession: (sessionId: string) => void;
-  onSubmitRound1: (session: DKGSession) => void;
-  onSubmitRound2: (session: DKGSession) => void;
-  onSubmitFinalization: (session: DKGSession) => void;
+  onSubmitRound1?: (session: DKGSession) => void;  // Optional: automatic mode doesn't need this
+  onSubmitRound2?: (session: DKGSession) => void;  // Optional: automatic mode doesn't need this
+  onSubmitFinalization?: (session: DKGSession) => void;  // Optional: automatic mode doesn't need this
   onStartAutomatedCeremony?: (sessionId: string) => Promise<boolean>;
   onJoinSession?: (sessionId: string) => void;
   isSubmittingRound1: boolean;
@@ -232,6 +234,16 @@ export function DKGSessionsList({
       }
       
       // Already joined (currentParticipants > 0 and user has joined), waiting for others
+      // Check if this session is currently being joined (optimistic update)
+      if (session._isJoining) {
+        return (
+          <div className="w-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 font-semibold h-10 rounded-md flex items-center justify-center gap-2 border border-blue-300 dark:border-blue-700 animate-pulse">
+            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            Joining Session...
+          </div>
+        );
+      }
+      
         return (
         <div className="w-full bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 font-semibold h-10 rounded-md flex items-center justify-center gap-2 border border-amber-300 dark:border-amber-700">
           <Users className="w-4 h-4 animate-pulse" />
@@ -246,6 +258,18 @@ export function DKGSessionsList({
     }
 
     if (session.status === 'round1' && frostIdMap[session.id]) {
+      // If onSubmitRound1 is not provided, DKG is automatic
+      if (!onSubmitRound1) {
+        return (
+          <div className="w-full text-center py-3 px-4 bg-blue-500/20 border border-blue-500/30 rounded-md">
+            <div className="flex items-center justify-center gap-2 text-blue-300">
+              <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-sm font-medium">Round 1 processing automatically...</span>
+            </div>
+          </div>
+        );
+      }
+      
       return (
         <Button
           onClick={() => onSubmitRound1(session)}
@@ -268,6 +292,18 @@ export function DKGSessionsList({
     }
 
     if (session.status === 'round2') {
+      // If onSubmitRound2 is not provided, DKG is automatic
+      if (!onSubmitRound2) {
+        return (
+          <div className="w-full text-center py-3 px-4 bg-purple-500/20 border border-purple-500/30 rounded-md">
+            <div className="flex items-center justify-center gap-2 text-purple-300">
+              <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-sm font-medium">Round 2 processing automatically...</span>
+            </div>
+          </div>
+        );
+      }
+      
       return (
         <Button
           onClick={() => onSubmitRound2(session)}
@@ -290,6 +326,18 @@ export function DKGSessionsList({
     }
 
     if (session.status === 'finalizing') {
+      // If onSubmitFinalization is not provided, DKG is automatic
+      if (!onSubmitFinalization) {
+        return (
+          <div className="w-full text-center py-3 px-4 bg-green-500/20 border border-green-500/30 rounded-md">
+            <div className="flex items-center justify-center gap-2 text-green-300">
+              <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-sm font-medium">Finalizing automatically...</span>
+            </div>
+          </div>
+        );
+      }
+      
       return (
         <Button
           onClick={() => onSubmitFinalization(session)}
@@ -334,8 +382,8 @@ export function DKGSessionsList({
         ? 'bg-gradient-to-br from-blue-50 via-indigo-50 to-blue-50 dark:from-blue-900/20 dark:via-indigo-900/20 dark:to-blue-900/20 border-blue-200 dark:border-blue-800'
         : 'bg-gradient-to-br from-green-50 via-emerald-50 to-green-50 dark:from-green-900/20 dark:via-emerald-900/20 dark:to-green-900/20 border-green-200 dark:border-green-800'
     }`}>
-      {/* Server Missing Warning */}
-      {session._serverMissing && (
+      {/* Server Missing Warning - Only show for non-completed sessions */}
+      {session._serverMissing && session.status !== 'completed' && (
         <div className="mb-4 p-3 bg-orange-100 dark:bg-orange-900/40 border-2 border-orange-400 dark:border-orange-600 rounded-lg">
           <div className="flex items-start gap-2">
             <AlertTriangle className="w-5 h-5 text-orange-600 dark:text-orange-400 flex-shrink-0" />
@@ -344,7 +392,7 @@ export function DKGSessionsList({
                 Session Not Found on Server
               </p>
               <p className="text-xs text-orange-800 dark:text-orange-200 mt-1">
-                This session was lost from the server (likely due to restart). It only exists in your browser's local storage.
+                This session was lost from the server (likely due to restart). You may need to restart the DKG ceremony.
               </p>
             </div>
           </div>
@@ -406,13 +454,22 @@ export function DKGSessionsList({
         <div className="bg-white/60 dark:bg-gray-800/60 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">FROST ID</p>
           <p className="font-mono text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-            {frostIdMap[session.id] || (
+            {frostIdMap[session.id] ? formatFrostId(frostIdMap[session.id]) : (
               <span className="text-orange-600 dark:text-orange-400">Not assigned</span>
             )}
           </p>
         </div>
-        <div className="bg-white/60 dark:bg-gray-800/60 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Participants</p>
+        <div className={`bg-white/60 dark:bg-gray-800/60 rounded-lg p-3 border border-gray-200 dark:border-gray-700 transition-all ${
+          session._isJoining ? 'ring-2 ring-blue-400 ring-offset-2 animate-pulse' : ''
+        }`}>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1">
+            Participants
+            {session._isJoining && (
+              <span className="text-blue-500 text-xs">
+                <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin inline-block"></div>
+              </span>
+            )}
+          </p>
           <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             {session.currentParticipants}/{session.maxSigners}
           </p>
@@ -420,7 +477,7 @@ export function DKGSessionsList({
         <div className="bg-white/60 dark:bg-gray-800/60 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Threshold</p>
           <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            {session.minSigners} of {session.maxSigners}
+            {session.minSigners || 0} of {session.maxSigners || 0}
           </p>
         </div>
         <div className="bg-white/60 dark:bg-gray-800/60 rounded-lg p-3 border border-gray-200 dark:border-gray-700">

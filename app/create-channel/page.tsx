@@ -465,21 +465,18 @@ export default function CreateChannelPage() {
       }
     : undefined;
 
-  const contractConfig = channelParams
-    ? {
-        address: ROLLUP_BRIDGE_CORE_ADDRESS,
-        abi: ROLLUP_BRIDGE_CORE_ABI,
-        functionName: "openChannel",
-        args: [channelParams],
-        value: BigInt("1000000000000000"), // Required 0.001 ETH leader bond (1e15 wei)
-        enabled: isFormValid() && isConnected,
-      }
-    : {
-        address: ROLLUP_BRIDGE_CORE_ADDRESS,
-        abi: ROLLUP_BRIDGE_CORE_ABI,
-        functionName: "openChannel",
-        enabled: false,
-      };
+  const contractConfig = channelParams ? {
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'openChannel',
+    args: [channelParams],
+    enabled: isFormValid() && isConnected,
+  } : {
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'openChannel',
+    enabled: false,
+  };
 
   const {
     config,
@@ -614,22 +611,42 @@ export default function CreateChannelPage() {
       <div className="ml-0 lg:ml-72 transition-all duration-300 flex flex-col min-h-screen">
         {/* Main Content */}
         <main className="flex-1 px-4 py-8 lg:px-8">
-          <div className="max-w-5xl mx-auto">
-            <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 mb-6 shadow-lg shadow-[#4fc3f7]/20">
-              <div className="mb-8">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-2xl font-bold text-white mb-2">
-                      Create Multi-Token Channel
-                    </h2>
-                    <p className="text-gray-300">
-                      Set up a collaborative bridge channel supporting multiple
-                      tokens for zero-knowledge proof operations with multiple
-                      participants.
-                    </p>
+        <div className="max-w-5xl mx-auto">
+          <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 mb-6 shadow-lg shadow-[#4fc3f7]/20">
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold text-white mb-2">Create Multi-Token Channel</h2>
+              <p className="text-gray-300">
+                Set up a channel supporting multiple tokens for zero-knowledge proof operations with multiple participants.
+              </p>
+            </div>
+
+            {/* Warning for users already leading a channel */}
+            <ClientOnly>
+              {isAlreadyLeader && (
+                <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-500/50">
+                  <div className="flex items-center gap-3 mb-2">
+                    <AlertTriangle className="w-5 h-5 text-yellow-400" />
+                    <h3 className="text-lg font-semibold text-yellow-300">Channel Creation Restricted</h3>
                   </div>
-                  {/* Dev Mode: Auto-fill test data button */}
-                  {isDevMode && (
+                  <p className="text-yellow-200/90 mb-3">
+                    You are already leading an active channel. You can only lead one channel at a time.
+                  </p>
+                  <p className="text-sm text-yellow-300/80">
+                    Please close your current channel before creating a new one. You can manage your existing channel from the sidebar menu.
+                  </p>
+                </div>
+              )}
+            </ClientOnly>
+
+
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Allowed Tokens */}
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <label className="block text-sm font-medium text-gray-300">
+                    Allowed Tokens ({allowedTokens.length}/3)
+                  </label>
+                  <div className="space-x-2">
                     <button
                       type="button"
                       onClick={fillTestData}
@@ -1033,120 +1050,64 @@ export default function CreateChannelPage() {
                         </ul>
                       </div>
                     </div>
-                  </div>
-                )}
-
-                {/* Contract Prepare Error Message */}
-                {isPrepareError && prepareError && isFormValid() && (
-                  <div className="p-4 bg-red-900/20 border border-red-500/50">
-                    <div className="flex items-start gap-3">
-                      <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5" />
-                      <div>
-                        <h4 className="text-sm font-semibold text-red-300 mb-1">
-                          Transaction Preparation Error
-                        </h4>
-                        <p className="text-red-200/90 text-sm">
-                          {prepareError.message.includes(
-                            "Channel limit reached"
-                          )
-                            ? "You are already leading a channel. Each address can only lead one channel at a time. Please close your existing channel first or use a different wallet."
-                            : prepareError.message.includes("insufficient")
-                            ? "Insufficient ETH balance. You need at least 0.001 ETH for the leader bond plus gas fees."
-                            : prepareError.message.includes("network")
-                            ? "Network error. Please make sure you are connected to Sepolia testnet."
-                            : prepareError.message.includes("Token not allowed")
-                            ? "One or more tokens are not allowed. Please use only supported tokens (TON, WTON, USDT)."
-                            : prepareError.message.includes("Invalid timeout")
-                            ? "Invalid timeout value. Must be between 1 hour and 365 days."
-                            : prepareError.message.includes("revert")
-                            ? "Contract error: " +
-                              (prepareError.message.match(
-                                /reason:\s*([^\n]+)/
-                              )?.[1] || prepareError.message.slice(0, 150))
-                            : prepareError.message.slice(0, 200)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Write Error Message */}
-                {writeError && (
-                  <div className="p-4 bg-red-900/20 border border-red-500/50">
-                    <div className="flex items-start gap-3">
-                      <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5" />
-                      <div>
-                        <h4 className="text-sm font-semibold text-red-300 mb-1">
-                          Transaction Error
-                        </h4>
-                        <p className="text-red-200/90 text-sm">
-                          {writeError.message.includes("rejected")
-                            ? "Transaction was rejected by user."
-                            : writeError.message.slice(0, 200)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Submit Button */}
-                <div className="pt-6">
-                  <button
-                    type="submit"
-                    disabled={
-                      !isFormValid() ||
-                      isCreating ||
-                      isConfirming ||
-                      !createChannel
-                    }
-                    className="w-full px-6 py-3 bg-gradient-to-r from-[#4fc3f7] to-[#029bee] text-white font-medium hover:from-[#029bee] hover:to-[#4fc3f7] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] transition-all duration-200"
-                  >
-                    {isCreating
-                      ? "Submitting Transaction..."
-                      : isConfirming
-                      ? "Waiting for Confirmation..."
-                      : isAlreadyLeader
-                      ? "Already Leading a Channel"
-                      : !createChannel && isFormValid()
-                      ? "Preparing Transaction..."
-                      : "Create Channel (0.001 ETH bond)"}
-                  </button>
-                  {!createChannel && isFormValid() && !isPrepareError && (
-                    <p className="text-sm text-yellow-400 mt-2 text-center">
-                      ⏳ Waiting for transaction to be prepared. Make sure you
-                      have enough ETH for gas + 0.001 ETH bond.
-                    </p>
-                  )}
+                  ))}
                 </div>
-              </form>
-            </div>
+                
+                <p className="text-sm text-gray-400 mt-2">
+                  Minimum 1 whitelisted participant, maximum {getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)} whitelisted participants.
+                </p>
+                
+              </div>
 
-            {/* Info Panel */}
-            <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-8">
-              <h3 className="font-semibold text-[#4fc3f7] mb-4">
-                Channel Requirements & Workflow
-              </h3>
-              <ul className="space-y-2 text-sm text-gray-300">
-                <li>
-                  • Maximum participants: 128 total leaves (participants ×
-                  tokens ≤ 128)
-                </li>
-                <li>
-                  • 1 token = 128 max participants, 2 tokens = 64 max, 3 tokens
-                  = 42 max
-                </li>
-                <li>• Minimum 1 whitelisted participant required</li>
-                <li>
-                  • L2 MPT keys provided during token deposits (per token type)
-                </li>
-                <li>• Timeout must be between 1 hour and 365 days</li>
-                <li>
-                  • 0.001 ETH leader bond required (refunded on successful
-                  completion)
-                </li>
-              </ul>
-            </div>
+              {/* Timeout */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Channel Timeout (days)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={timeout}
+                  onChange={(e) => setTimeout(parseInt(e.target.value) || 1)}
+                  className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
+                />
+                <p className="text-sm text-gray-400 mt-1">
+                  Channel timeout period (1 day to 365 days)
+                </p>
+              </div>
+
+
+              {/* Submit Button */}
+              <div className="pt-6">
+                <button
+                  type="submit"
+                  disabled={!isFormValid() || isCreating || isConfirming}
+                  className="w-full px-6 py-3 bg-gradient-to-r from-[#4fc3f7] to-[#029bee] text-white font-medium hover:from-[#029bee] hover:to-[#4fc3f7] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] transition-all duration-200"
+                >
+                  {isCreating 
+                    ? 'Submitting Transaction...' 
+                    : isConfirming
+                    ? 'Waiting for Confirmation...'
+                    : isAlreadyLeader 
+                    ? 'Already Leading a Channel' 
+                    : 'Create Channel'}
+                </button>
+              </div>
+            </form>
           </div>
+
+          {/* Info Panel */}
+          <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-8">
+            <h3 className="font-semibold text-[#4fc3f7] mb-4">Channel Requirements & Workflow</h3>
+            <ul className="space-y-2 text-sm text-gray-300">
+              <li>• Maximum participants: 128 total leaves (participants × tokens ≤ 128)</li>
+              <li>• 1 token = 128 max participants, 2 tokens = 64 max, 3 tokens = 42 max</li>
+              <li>• Minimum 1 whitelisted participant required</li>
+              <li>• Timeout must be between 1 hour and 365 days</li>
+            </ul>
+          </div>
+        </div>
         </main>
 
         {/* Footer */}

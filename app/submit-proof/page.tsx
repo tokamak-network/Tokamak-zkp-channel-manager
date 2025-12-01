@@ -1,15 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useContractRead, useContractWrite, usePrepareContractWrite, useWaitForTransaction, useAccount } from 'wagmi';
+import { keccak256, encodePacked } from 'viem';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { Footer } from '@/components/Footer';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 import { ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS, ROLLUP_BRIDGE_PROOF_MANAGER_ABI, ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
-import { FileText, Link, ShieldOff, CheckCircle2, Clock, AlertCircle, Download } from 'lucide-react';
+import { FileText, Link, ShieldOff, CheckCircle2, Clock, AlertCircle, Download, Hash } from 'lucide-react';
 
 interface ProofData {
   proofPart1: bigint[];
@@ -21,7 +22,18 @@ interface ProofData {
     preprocessedPart1: bigint[];
     preprocessedPart2: bigint[];
   }[];
-  finalBalances: bigint[][];
+}
+
+interface UploadedProof {
+  id: string;
+  file: File;
+  data: ProofData;
+}
+
+interface SignatureInputs {
+  rx: string;
+  ry: string;
+  z: string;
 }
 
 interface Signature {
@@ -32,58 +44,93 @@ interface Signature {
 }
 
 export default function SubmitProofPage() {
-  const { isConnected, hasAccess, isMounted, leaderChannel } = useLeaderAccess();
+  const { isConnected, isMounted } = useLeaderAccess();
   const { address } = useAccount();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   
   // Form state
-  const [proofData, setProofData] = useState<ProofData>({
-    proofPart1: [],
-    proofPart2: [],
-    publicInputs: [],
-    smax: BigInt(0),
-    functions: [],
-    finalBalances: []
-  });
+  const [selectedChannelId, setSelectedChannelId] = useState<string>('');
+  const [uploadedProofs, setUploadedProofs] = useState<UploadedProof[]>([]);
   
-  const [signature, setSignature] = useState<Signature>({
-    message: '0x0000000000000000000000000000000000000000000000000000000000000000',
-    rx: BigInt(0),
-    ry: BigInt(0),
-    z: BigInt(0)
+  const [signatureInputs, setSignatureInputs] = useState<SignatureInputs>({
+    rx: '',
+    ry: '',
+    z: ''
   });
-  
-  const [uploadedProofFile, setUploadedProofFile] = useState<File | null>(null);
-  const [uploadedSignatureFile, setUploadedSignatureFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [proofError, setProofError] = useState('');
   const [signatureError, setSignatureError] = useState('');
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   
   // Channel information from core contract
   const { data: channelInfo } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelInfo',
-    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
-    enabled: Boolean(leaderChannel?.id !== undefined)
+    args: selectedChannelId ? [BigInt(selectedChannelId)] : undefined,
+    enabled: Boolean(selectedChannelId)
   });
   
   const { data: channelParticipants } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelParticipants',
-    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
-    enabled: Boolean(leaderChannel?.id !== undefined)
+    args: selectedChannelId ? [BigInt(selectedChannelId)] : undefined,
+    enabled: Boolean(selectedChannelId)
   });
 
   const { data: allowedTokens } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelAllowedTokens',
-    args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
-    enabled: Boolean(leaderChannel?.id !== undefined)
+    args: selectedChannelId ? [BigInt(selectedChannelId)] : undefined,
+    enabled: Boolean(selectedChannelId)
   });
+  
+  // Compute final state root from the last proof's publicInputs[0]
+  const finalStateRoot = useMemo(() => {
+    if (uploadedProofs.length === 0) return null;
+    const lastProof = uploadedProofs[uploadedProofs.length - 1];
+    if (lastProof.data.publicInputs.length === 0) return null;
+    
+    // Extract finalStateRoot from the first slot of the last proof's publicInputs
+    return `0x${lastProof.data.publicInputs[0].toString(16).padStart(64, '0')}` as `0x${string}`;
+  }, [uploadedProofs]);
+  
+  // Compute message hash for signature: keccak256(abi.encodePacked(channelId, finalStateRoot))
+  const computedMessageHash = useMemo(() => {
+    if (!selectedChannelId || !finalStateRoot) return null;
+    
+    try {
+      return keccak256(encodePacked(
+        ['uint256', 'bytes32'],
+        [BigInt(selectedChannelId), finalStateRoot]
+      ));
+    } catch (error) {
+      console.error('Error computing message hash:', error);
+      return null;
+    }
+  }, [selectedChannelId, finalStateRoot]);
+  
+  // Build signature object for contract call
+  const signature = useMemo<Signature | null>(() => {
+    if (!computedMessageHash || !signatureInputs.rx || !signatureInputs.ry || !signatureInputs.z) {
+      return null;
+    }
+    
+    try {
+      return {
+        message: computedMessageHash,
+        rx: BigInt(signatureInputs.rx),
+        ry: BigInt(signatureInputs.ry),
+        z: BigInt(signatureInputs.z)
+      };
+    } catch (error) {
+      console.error('Error parsing signature inputs:', error);
+      return null;
+    }
+  }, [computedMessageHash, signatureInputs]);
   
   // Helper function to get channel state display name
   const getChannelStateDisplay = (stateNumber: number) => {
@@ -116,12 +163,12 @@ export default function SubmitProofPage() {
     address: ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS,
     abi: ROLLUP_BRIDGE_PROOF_MANAGER_ABI,
     functionName: 'submitProofAndSignature',
-    args: leaderChannel && isFormValid() ? [
-      BigInt(leaderChannel.id),
-      proofData,
+    args: selectedChannelId && signature && isFormValid() ? [
+      BigInt(selectedChannelId),
+      uploadedProofs.map(p => p.data),
       signature
     ] : undefined,
-    enabled: Boolean(leaderChannel && isFormValid())
+    enabled: Boolean(selectedChannelId && signature && isFormValid())
   });
   
   const { data, write } = useContractWrite(config);
@@ -135,35 +182,36 @@ export default function SubmitProofPage() {
     try {
       setProofError('');
       
+      // Check if we already have 5 proofs
+      if (uploadedProofs.length >= 5) {
+        setProofError('Maximum of 5 proofs allowed');
+        return;
+      }
+      
       const text = await file.text();
       const jsonData = JSON.parse(text);
       
-      // Validate required proof fields
-      const requiredFields = ['proofPart1', 'proofPart2', 'publicInputs', 'smax', 'functions', 'finalBalances'];
+      // Validate required proof fields (removed finalBalances as it's not per-proof)
+      const requiredFields = ['proofPart1', 'proofPart2', 'publicInputs', 'smax', 'functions'];
       const missingFields = requiredFields.filter(field => !jsonData[field]);
       
       if (missingFields.length > 0) {
         throw new Error(`Missing required proof fields: ${missingFields.join(', ')}`);
       }
       
-      // Validate function count (1-5 maximum)
-      if (!Array.isArray(jsonData.functions) || jsonData.functions.length === 0) {
-        throw new Error('Must provide at least 1 function proof');
+      // Validate function structure (each proof should have exactly 1 function)
+      if (!Array.isArray(jsonData.functions) || jsonData.functions.length !== 1) {
+        throw new Error('Each proof must contain exactly one function');
       }
       
-      if (jsonData.functions.length > 5) {
-        throw new Error('Cannot provide more than 5 function proofs');
+      // Validate function structure
+      const func = jsonData.functions[0];
+      if (!func.functionSignature || !func.preprocessedPart1 || !func.preprocessedPart2) {
+        throw new Error('Function missing required fields: functionSignature, preprocessedPart1, or preprocessedPart2');
       }
-      
-      // Validate each function structure
-      jsonData.functions.forEach((func: any, index: number) => {
-        if (!func.functionSignature || !func.preprocessedPart1 || !func.preprocessedPart2) {
-          throw new Error(`Function ${index + 1} missing required fields: functionSignature, preprocessedPart1, or preprocessedPart2`);
-        }
-        if (!Array.isArray(func.preprocessedPart1) || !Array.isArray(func.preprocessedPart2)) {
-          throw new Error(`Function ${index + 1} preprocessed parts must be arrays`);
-        }
-      });
+      if (!Array.isArray(func.preprocessedPart1) || !Array.isArray(func.preprocessedPart2)) {
+        throw new Error('Function preprocessed parts must be arrays');
+      }
       
       // Convert and validate proof data
       const newProofData: ProofData = {
@@ -171,18 +219,21 @@ export default function SubmitProofPage() {
         proofPart2: jsonData.proofPart2.map((x: any) => BigInt(x)),
         publicInputs: jsonData.publicInputs.map((x: any) => BigInt(x)),
         smax: BigInt(jsonData.smax),
-        functions: jsonData.functions.map((func: any) => ({
+        functions: [{
           functionSignature: func.functionSignature as `0x${string}`,
           preprocessedPart1: func.preprocessedPart1.map((x: any) => BigInt(x)),
           preprocessedPart2: func.preprocessedPart2.map((x: any) => BigInt(x))
-        })),
-        finalBalances: jsonData.finalBalances.map((participantBalances: any[]) => 
-          participantBalances.map((balance: any) => BigInt(balance))
-        )
+        }]
       };
       
-      setProofData(newProofData);
-      setUploadedProofFile(file);
+      // Create new uploaded proof with unique ID
+      const newUploadedProof: UploadedProof = {
+        id: `proof_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        file,
+        data: newProofData
+      };
+      
+      setUploadedProofs(prev => [...prev, newUploadedProof]);
       
     } catch (error) {
       console.error('Error parsing proof file:', error);
@@ -190,36 +241,43 @@ export default function SubmitProofPage() {
     }
   };
   
-  const handleSignatureFileUpload = async (file: File) => {
-    try {
-      setSignatureError('');
-      
-      const text = await file.text();
-      const jsonData = JSON.parse(text);
-      
-      // Validate required signature fields
-      const requiredFields = ['message', 'rx', 'ry', 'z'];
-      const missingFields = requiredFields.filter(field => !jsonData[field]);
-      
-      if (missingFields.length > 0) {
-        throw new Error(`Missing required signature fields: ${missingFields.join(', ')}`);
-      }
-      
-      // Convert signature data
-      const newSignature: Signature = {
-        message: jsonData.message as `0x${string}`,
-        rx: BigInt(jsonData.rx),
-        ry: BigInt(jsonData.ry),
-        z: BigInt(jsonData.z)
-      };
-      
-      setSignature(newSignature);
-      setUploadedSignatureFile(file);
-      
-    } catch (error) {
-      console.error('Error parsing signature file:', error);
-      setSignatureError(error instanceof Error ? error.message : 'Invalid signature file format');
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, proofId: string) => {
+    setDraggedItemId(proofId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+  
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    
+    if (!draggedItemId || draggedItemId === targetId) {
+      setDraggedItemId(null);
+      return;
     }
+    
+    setUploadedProofs(prev => {
+      const draggedIndex = prev.findIndex(p => p.id === draggedItemId);
+      const targetIndex = prev.findIndex(p => p.id === targetId);
+      
+      if (draggedIndex === -1 || targetIndex === -1) return prev;
+      
+      const newProofs = [...prev];
+      const [draggedItem] = newProofs.splice(draggedIndex, 1);
+      newProofs.splice(targetIndex, 0, draggedItem);
+      
+      return newProofs;
+    });
+    
+    setDraggedItemId(null);
+  };
+  
+  const removeProof = (proofId: string) => {
+    setUploadedProofs(prev => prev.filter(p => p.id !== proofId));
   };
   
   // Template download handlers
@@ -234,30 +292,21 @@ export default function SubmitProofPage() {
           functionSignature: "0xa5bd20250df117ee1576cde77471907f0792dabd126e96e46ea0b2c71299ea1e",
           preprocessedPart1: ["0x1236d4364cc024d1bb70d584096fae2c"],
           preprocessedPart2: ["0xd107861dd8cac07bc427c136bc12f424521b3e3aaab440fdcdd66a902e22c0a4"]
-        },
-        {
-          functionSignature: "0xb5bd20250df117ee1576cde77471907f0792dabd126e96e46ea0b2c71299ea2f",
-          preprocessedPart1: ["0x2346e4364cc024d1bb70d584096fae3d"],
-          preprocessedPart2: ["0xe217961dd8cac07bc427c136bc12f424521b3e3aaab440fdcdd66a902e22c0b5"]
         }
       ],
-      finalBalances: [
-        ["1000000000000000000", "2000000000000000000"], // Participant 1 balances for each token
-        ["1500000000000000000", "1800000000000000000"]  // Participant 2 balances for each token
-      ],
       _template_info: {
-        description: "Template for multi-proof data submission",
+        description: "Template for individual proof data submission",
         notes: [
           "Replace all placeholder values with your actual proof data",
-          "MULTIPLE PROOFS: You can include 1-5 function proofs in the functions array",
-          "proofPart1/proofPart2: Combined ZK proof components for all functions (as hex strings)",
-          "publicInputs: Combined public signals for all proofs",
+          "IMPORTANT: Each file should contain exactly ONE proof",
+          "Upload separate files for each proof (max 5 total)",
+          "Drag and drop to reorder proofs - order matters!",
+          "proofPart1/proofPart2: ZK proof components for this function (as hex strings)",
+          "publicInputs: Public signals for this specific proof",
           "smax: Maximum S value from proof generation",
-          "functions: Array of 1-5 registered functions used in the proofs",
-          "finalBalances: 2D array - finalBalances[participantIndex][tokenIndex]",
+          "functions: Array with exactly 1 function for this proof",
           "Each function entry contains its signature and preprocessed proof parts",
-          "All numeric values should be provided as strings to avoid precision loss",
-          "Contract validates each function proof and enforces balance conservation"
+          "All numeric values should be provided as strings to avoid precision loss"
         ]
       }
     };
@@ -269,56 +318,25 @@ export default function SubmitProofPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `multi-proof-template-${Date.now()}.json`;
+    a.download = `single-proof-template-${Date.now()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
   
-  const handleDownloadSignatureTemplate = () => {
-    const template = {
-      message: "0x0000000000000000000000000000000000000000000000000000000000000000",
-      rx: "0",
-      ry: "0", 
-      z: "0",
-      _template_info: {
-        description: "Template for group threshold signature submission",
-        notes: [
-          "Replace all placeholder values with your actual signature data",
-          "message: 32-byte message hash as hex string (0x...)",
-          "rx: Signature R point x coordinate as decimal string",
-          "ry: Signature R point y coordinate as decimal string", 
-          "z: Schnorr signature scalar as decimal string",
-          "All numeric values should be provided as decimal strings"
-        ]
-      }
-    };
-    
-    const blob = new Blob([JSON.stringify(template, null, 2)], { 
-      type: 'application/json' 
-    });
-    
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `signature-template-${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
   
   // Form validation
   function isFormValid(): boolean {
     return Boolean(
-      uploadedProofFile &&
-      uploadedSignatureFile &&
-      proofData.proofPart1.length > 0 &&
-      proofData.proofPart2.length > 0 &&
-      proofData.functions.length > 0 &&
-      proofData.finalBalances.length > 0 &&
-      signature.message !== '0x0000000000000000000000000000000000000000000000000000000000000000'
+      selectedChannelId &&
+      uploadedProofs.length > 0 &&
+      uploadedProofs.length <= 5 &&
+      signatureInputs.rx &&
+      signatureInputs.ry &&
+      signatureInputs.z &&
+      computedMessageHash &&
+      signature
     );
   }
   
@@ -348,7 +366,7 @@ export default function SubmitProofPage() {
   // Check if channel is in correct state for proof submission (Open=2 or Active=3)
   const isChannelStateValid = channelInfo && (Number(channelInfo[1]) === 2 || Number(channelInfo[1]) === 3);
   
-  const canSubmit = isConnected && hasAccess && leaderChannel && isFormValid() && isChannelStateValid && !isLoading && !isTransactionLoading;
+  const canSubmit = isConnected && selectedChannelId && isFormValid() && isChannelStateValid && !isLoading && !isTransactionLoading;
 
   if (!isMounted) {
     return <div className="min-h-screen bg-gray-50 dark:bg-gray-900"></div>;
@@ -373,10 +391,10 @@ export default function SubmitProofPage() {
               <div className="h-10 w-10 bg-[#4fc3f7] flex items-center justify-center shadow-lg shadow-[#4fc3f7]/30">
                 <FileText className="w-6 h-6 text-white" />
               </div>
-              <h1 className="text-3xl font-bold text-white">Submit Multi-Proof & Signature</h1>
+              <h1 className="text-3xl font-bold text-white">Submit Ordered Proofs & Signature</h1>
             </div>
             <p className="text-gray-300 ml-13">
-              Submit 1-5 ZK function proofs and group threshold signature to finalize the channel
+              Upload individual proof files (max 5), arrange in order, and submit with group signature
             </p>
           </div>
 
@@ -391,37 +409,55 @@ export default function SubmitProofPage() {
               </p>
               <ConnectButton />
             </div>
-          ) : !hasAccess ? (
-            <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 text-center shadow-lg shadow-[#4fc3f7]/20">
-              <div className="h-16 w-16 bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
-                <ShieldOff className="w-8 h-8 text-red-400" />
-              </div>
-              <h3 className="text-xl font-semibold text-white mb-2">Access Denied</h3>
-              <p className="text-gray-300">
-                Only channel leaders can submit proofs and signatures
-              </p>
-            </div>
           ) : (
             <div className="space-y-6">
-              {/* Channel Overview */}
+              {/* Channel Selection */}
               <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-6 shadow-lg shadow-[#4fc3f7]/20">
                 <div className="flex items-center gap-4 mb-6">
                   <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center shadow-lg shadow-[#4fc3f7]/30">
                     <FileText className="w-7 h-7 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-white">Channel Information</h2>
+                    <h2 className="text-2xl font-bold text-white">Channel Selection</h2>
                     <p className="text-gray-300 mt-1">
-                      Review your channel status before submitting proof
+                      Select the channel you want to submit proofs for
                     </p>
                   </div>
                 </div>
                 
-                {leaderChannel && (
+                <div className="max-w-md">
+                  <label className="block text-sm font-medium text-white mb-2">
+                    Channel ID *
+                  </label>
+                  <input
+                    type="text"
+                    value={selectedChannelId}
+                    onChange={(e) => setSelectedChannelId(e.target.value)}
+                    placeholder="Enter channel ID (e.g., 1, 2, 3...)"
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-[#4fc3f7] focus:ring-1 focus:ring-[#4fc3f7]"
+                  />
+                </div>
+              </div>
+
+              {/* Channel Overview */}
+              {selectedChannelId && (
+                <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-6 shadow-lg shadow-[#4fc3f7]/20">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center shadow-lg shadow-[#4fc3f7]/30">
+                      <FileText className="w-7 h-7 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-white">Channel Information</h2>
+                      <p className="text-gray-300 mt-1">
+                        Review channel status before submitting proofs
+                      </p>
+                    </div>
+                  </div>
+                  
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 rounded-lg p-4">
                       <div className="text-sm text-gray-400">Channel ID</div>
-                      <div className="text-lg font-semibold text-white">#{leaderChannel.id}</div>
+                      <div className="text-lg font-semibold text-white">#{selectedChannelId}</div>
                     </div>
                     <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 rounded-lg p-4">
                       <div className="text-sm text-gray-400">Status</div>
@@ -442,17 +478,17 @@ export default function SubmitProofPage() {
                       </div>
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
               
               {/* Proof Data Upload */}
               <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/20">
                 <div className="p-6 border-b border-[#4fc3f7]/30">
                   <h3 className="text-xl font-semibold text-white mb-2">
-                    Multi-Proof Data
+                    Individual Proof Files
                   </h3>
                   <p className="text-gray-400">
-                    Upload JSON containing 1-5 ZK function proofs, balances, and verification data
+                    Upload separate JSON files for each proof (max 5). Drag to reorder - order matters!
                   </p>
                 </div>
                 
@@ -463,16 +499,18 @@ export default function SubmitProofPage() {
                       className="inline-flex items-center gap-2 px-4 py-2 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 text-[#4fc3f7] rounded-lg hover:bg-[#4fc3f7]/20 transition-colors"
                     >
                       <Download className="h-4 w-4" />
-                      Download Multi-Proof Template
+                      Download Single Proof Template
                     </button>
                   </div>
 
+                  {/* Upload area */}
                   <div className="max-w-2xl mx-auto">
                     <label className="block text-sm font-medium text-white mb-4">
-                      Proof Data File (JSON) *
+                      Add Proof File (JSON) - {uploadedProofs.length}/5
                     </label>
-                    {!uploadedProofFile ? (
-                      <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center hover:border-[#4fc3f7] transition-colors">
+                    
+                    {uploadedProofs.length < 5 && (
+                      <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center hover:border-[#4fc3f7] transition-colors mb-6">
                         <input
                           type="file"
                           accept=".json"
@@ -486,57 +524,63 @@ export default function SubmitProofPage() {
                         <label htmlFor="proof-file" className="cursor-pointer">
                           <div className="text-gray-500 dark:text-gray-400">
                             <FileText className="mx-auto h-16 w-16 mb-4" />
-                            <p className="text-lg font-medium mb-2">Click to upload multi-proof file</p>
-                            <p className="text-sm">Upload JSON containing 1-5 function proofs and final balances</p>
+                            <p className="text-lg font-medium mb-2">Click to upload proof file</p>
+                            <p className="text-sm">Upload JSON containing exactly one function proof</p>
                           </div>
                         </label>
                       </div>
-                    ) : (
-                      <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl p-6">
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex items-center gap-3">
-                            <CheckCircle2 className="h-12 w-12 text-green-400" />
-                            <div>
-                              <h3 className="text-lg font-semibold text-green-800 dark:text-green-200">{uploadedProofFile.name}</h3>
-                              <p className="text-sm text-green-400">Multi-proof data loaded successfully</p>
+                    )}
+                    
+                    {/* Uploaded proofs list with drag and drop */}
+                    {uploadedProofs.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="text-sm text-white font-medium">
+                          Uploaded Proofs (drag to reorder):
+                        </div>
+                        {uploadedProofs.map((proof, index) => (
+                          <div
+                            key={proof.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, proof.id)}
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleDrop(e, proof.id)}
+                            className={`bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl p-4 cursor-move hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors ${
+                              draggedItemId === proof.id ? 'opacity-50' : ''
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="bg-[#4fc3f7] text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center">
+                                    {index + 1}
+                                  </span>
+                                  <div className="text-sm">
+                                    <div className="font-semibold text-green-800 dark:text-green-200">
+                                      {proof.file.name}
+                                    </div>
+                                    <div className="text-green-600 dark:text-green-400 text-xs">
+                                      Function: {proof.data.functions[0].functionSignature.slice(0, 10)}...
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="text-gray-400 text-xs">≡</div>
+                                <button
+                                  onClick={() => removeProof(proof.id)}
+                                  className="text-red-400 hover:text-red-600 p-1"
+                                >
+                                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
                             </div>
                           </div>
-                          <button
-                            onClick={() => {
-                              setUploadedProofFile(null);
-                              setProofData({
-                                proofPart1: [],
-                                proofPart2: [],
-                                publicInputs: [],
-                                smax: BigInt(0),
-                                functions: [],
-                                finalBalances: []
-                              });
-                            }}
-                            className="text-red-400 hover:text-red-800 dark:hover:text-red-300 p-2"
-                          >
-                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        </div>
-                        
-                        <div className="grid grid-cols-3 gap-4 text-xs">
-                          <div className="bg-white dark:bg-gray-800 rounded-lg p-3">
-                            <div className="text-gray-400">Function Proofs</div>
-                            <div className="font-semibold text-green-800 dark:text-green-200">{proofData.functions.length}/5</div>
-                          </div>
-                          <div className="bg-white dark:bg-gray-800 rounded-lg p-3">
-                            <div className="text-gray-400">Participants</div>
-                            <div className="font-semibold text-green-800 dark:text-green-200">{proofData.finalBalances.length}</div>
-                          </div>
-                          <div className="bg-white dark:bg-gray-800 rounded-lg p-3">
-                            <div className="text-gray-400">Public Inputs</div>
-                            <div className="font-semibold text-green-800 dark:text-green-200">{proofData.publicInputs.length}</div>
-                          </div>
-                        </div>
+                        ))}
                       </div>
                     )}
+                    
                     {proofError && (
                       <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
                         <p className="text-red-400 text-sm">{proofError}</p>
@@ -546,92 +590,101 @@ export default function SubmitProofPage() {
                 </div>
               </div>
 
-              {/* Signature Upload */}
+              {/* Signature Input */}
               <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/20">
                 <div className="p-6 border-b border-[#4fc3f7]/30">
                   <h3 className="text-xl font-semibold text-white mb-2">
                     Group Threshold Signature
                   </h3>
                   <p className="text-gray-400">
-                    Upload the group threshold signature from your off-chain signing ceremony
+                    Enter the signature components (rx, ry, z) from your off-chain signing ceremony
                   </p>
                 </div>
                 
                 <div className="p-6 space-y-6">
-                  <div className="text-center mb-6">
-                    <button
-                      onClick={handleDownloadSignatureTemplate}
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 text-[#4fc3f7] rounded-lg hover:bg-[#4fc3f7]/20 transition-colors"
-                    >
-                      <Download className="h-4 w-4" />
-                      Download Signature Template
-                    </button>
-                  </div>
-
-                  <div className="max-w-2xl mx-auto">
-                    <label className="block text-sm font-medium text-white mb-4">
-                      Signature File (JSON) *
-                    </label>
-                    {!uploadedSignatureFile ? (
-                      <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center hover:border-[#4fc3f7] transition-colors">
-                        <input
-                          type="file"
-                          accept=".json"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) handleSignatureFileUpload(file);
-                          }}
-                          className="hidden"
-                          id="signature-file"
-                        />
-                        <label htmlFor="signature-file" className="cursor-pointer">
-                          <div className="text-gray-500 dark:text-gray-400">
-                            <FileText className="mx-auto h-16 w-16 mb-4" />
-                            <p className="text-lg font-medium mb-2">Click to upload signature file</p>
-                            <p className="text-sm">Upload a JSON file containing the group threshold signature</p>
+                  {/* Message Hash Display */}
+                  {computedMessageHash && finalStateRoot && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-4 mb-6">
+                      <div className="flex items-start gap-3">
+                        <Hash className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
+                            Computed Message Hash
                           </div>
-                        </label>
-                      </div>
-                    ) : (
-                      <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl p-6">
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex items-center gap-3">
-                            <CheckCircle2 className="h-12 w-12 text-green-400" />
-                            <div>
-                              <h3 className="text-lg font-semibold text-green-800 dark:text-green-200">{uploadedSignatureFile.name}</h3>
-                              <p className="text-sm text-green-400">Signature loaded successfully</p>
-                            </div>
+                          <div className="text-xs font-mono text-blue-600 dark:text-blue-300 break-all bg-white dark:bg-blue-900/30 p-2 rounded border">
+                            {computedMessageHash}
                           </div>
-                          <button
-                            onClick={() => {
-                              setUploadedSignatureFile(null);
-                              setSignature({
-                                message: '0x0000000000000000000000000000000000000000000000000000000000000000',
-                                rx: BigInt(0),
-                                ry: BigInt(0),
-                                z: BigInt(0)
-                              });
-                            }}
-                            className="text-red-400 hover:text-red-800 dark:hover:text-red-300 p-2"
-                          >
-                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                          <div className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                            keccak256(abi.encodePacked(channelId: {selectedChannelId}, finalStateRoot: {finalStateRoot}))
+                          </div>
                         </div>
-                        
-                        <div className="grid grid-cols-2 gap-4 text-xs">
-                          <div className="bg-white dark:bg-gray-800 rounded-lg p-3">
-                            <div className="text-gray-400">Message</div>
-                            <div className="font-semibold text-green-800 dark:text-green-200 truncate">{signature.message.slice(0, 10)}...</div>
-                          </div>
-                          <div className="bg-white dark:bg-gray-800 rounded-lg p-3">
-                            <div className="text-gray-400">Signature Valid</div>
-                            <div className="font-semibold text-green-800 dark:text-green-200">✓ Ready</div>
-                          </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="max-w-2xl mx-auto space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-2">
+                        Signature Component rx *
+                      </label>
+                      <input
+                        type="text"
+                        value={signatureInputs.rx}
+                        onChange={(e) => {
+                          setSignatureInputs(prev => ({ ...prev, rx: e.target.value }));
+                          setSignatureError('');
+                        }}
+                        placeholder="Enter rx value (decimal)"
+                        className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-[#4fc3f7] focus:ring-1 focus:ring-[#4fc3f7]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-2">
+                        Signature Component ry *
+                      </label>
+                      <input
+                        type="text"
+                        value={signatureInputs.ry}
+                        onChange={(e) => {
+                          setSignatureInputs(prev => ({ ...prev, ry: e.target.value }));
+                          setSignatureError('');
+                        }}
+                        placeholder="Enter ry value (decimal)"
+                        className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-[#4fc3f7] focus:ring-1 focus:ring-[#4fc3f7]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-2">
+                        Signature Component z *
+                      </label>
+                      <input
+                        type="text"
+                        value={signatureInputs.z}
+                        onChange={(e) => {
+                          setSignatureInputs(prev => ({ ...prev, z: e.target.value }));
+                          setSignatureError('');
+                        }}
+                        placeholder="Enter z value (decimal)"
+                        className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-[#4fc3f7] focus:ring-1 focus:ring-[#4fc3f7]"
+                      />
+                    </div>
+
+                    {signature && (
+                      <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl p-4 mt-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <CheckCircle2 className="h-5 w-5 text-green-400" />
+                          <span className="text-sm font-medium text-green-800 dark:text-green-200">
+                            Signature Ready
+                          </span>
+                        </div>
+                        <div className="text-xs text-green-600 dark:text-green-400">
+                          All signature components are valid and message hash computed successfully
                         </div>
                       </div>
                     )}
+
                     {signatureError && (
                       <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
                         <p className="text-red-400 text-sm">{signatureError}</p>
@@ -650,7 +703,10 @@ export default function SubmitProofPage() {
                       <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
                       <div className="text-sm text-amber-300">
                         <strong className="block mb-1">Missing Required Data</strong>
-                        Please upload both proof data and signature files
+                        {!selectedChannelId && "Please enter a channel ID"}
+                        {selectedChannelId && uploadedProofs.length === 0 && "Please upload at least one proof file"}
+                        {selectedChannelId && uploadedProofs.length > 0 && (!signatureInputs.rx || !signatureInputs.ry || !signatureInputs.z) && "Please enter all signature components (rx, ry, z)"}
+                        {selectedChannelId && uploadedProofs.length > 0 && signatureInputs.rx && signatureInputs.ry && signatureInputs.z && !signature && "Invalid signature values - please check your inputs"}
                       </div>
                     </div>
                   )}
@@ -690,7 +746,7 @@ export default function SubmitProofPage() {
                         <span>Submitting...</span>
                       </div>
                     ) : (
-                      'Submit Multi-Proof & Signature'
+                      'Submit Ordered Proofs & Signature'
                     )}
                   </button>
                 </div>

@@ -1,23 +1,23 @@
 import { Address } from 'wagmi';
 
 // Modular Contract addresses - Updated for new architecture
-export const ROLLUP_BRIDGE_CORE_ADDRESS: Address = '0x780ad1b236390C42479b62F066F5cEeAa4c77ad6' as Address;
-export const ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS: Address = '0x2873519dea0C8fE39e12f5E93a94B78d270F0401' as Address;
-export const ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS: Address = '0xd89A53b0edC82351A300a0779A6f4bA5a310f34E' as Address;
-export const ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS: Address = '0x0773f8cC78eb11947ab0410e793DAfb6a479F619' as Address;
-export const ROLLUP_BRIDGE_ADMIN_MANAGER_ADDRESS: Address = '0xbace644D6946b0DE268A56496EA20c09245D3eed' as Address;
+export const ROLLUP_BRIDGE_CORE_ADDRESS: Address = '0x3e47aeefffec5e4bce34426ed6c8914937a65435' as Address;
+export const ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS: Address = '0xD5E8B17058809B9491F99D35B67A089A2618f5fB' as Address;
+export const ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS: Address = '0xF0396B7547C7447FBb14A127D3751425893322fc' as Address;
+export const ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS: Address = '0xAf833c7109DB3BfDAc54a98EA7b123CFDE51d777' as Address;
+export const ROLLUP_BRIDGE_ADMIN_MANAGER_ADDRESS: Address = '0x1c38A6739bDb55f357fcd1aF258E0359ed77c662' as Address;
 
 // Legacy address for backwards compatibility
 export const ROLLUP_BRIDGE_ADDRESS: Address = ROLLUP_BRIDGE_CORE_ADDRESS;
 // Legacy verifier for backwards compatibility
-export const VERIFIER_ADDRESS: Address = '0x708fbfE3acC1F65948304015f1789a05383a674b' as Address;
+export const VERIFIER_ADDRESS: Address = '0xF43C2a14A8e5Ab3FC8740ea4AABc45010ED9fb52' as Address;
 
 // Groth16 Verifiers for different tree sizes
-export const GROTH16_VERIFIER_16_ADDRESS: Address = '0x578aC466D5295F22939309b3F4314Af27020C3b8' as Address;
-export const GROTH16_VERIFIER_32_ADDRESS: Address = '0x4a0EB337004B59Af044206d2A8F52332EAB0aB46' as Address;
-export const GROTH16_VERIFIER_64_ADDRESS: Address = '0x75489d5FE5b7325c0f399582bd896cD5100d4687' as Address;
-export const GROTH16_VERIFIER_128_ADDRESS: Address = '0xdCE76C202689257c7c31fAdCfe9c1ce0931659c6' as Address; 
-export const ZECFROST_ADDRESS: Address = '0x0829fa48016a19efd87b3d24efb8e07ec5cc2482' as Address; 
+export const GROTH16_VERIFIER_16_ADDRESS: Address = '0x27f453C0f7eAC419A390edaae6b0ABA64D6490c9' as Address;
+export const GROTH16_VERIFIER_32_ADDRESS: Address = '0xCF85A85856237C8B1E9FE43e117ca8245c2AbE6A' as Address;
+export const GROTH16_VERIFIER_64_ADDRESS: Address = '0x9192Ab6CCe1FF89393153BD54CE95F7aEE0Cf831' as Address;
+export const GROTH16_VERIFIER_128_ADDRESS: Address = '0xdb70a38547f6Bcc655786b2cf19D0f34e7B3ebED' as Address; 
+export const ZECFROST_ADDRESS: Address = '0x910eEE98A93d54AD52694cBf2B45B1534C8c8D10' as Address; 
 
 // Supported token addresses on Sepolia testnet
 export const TON_TOKEN_ADDRESS: Address = '0xa30fe40285B8f5c0457DbC3B7C8A280373c40044' as Address; // TON token (18 decimals)
@@ -158,6 +158,13 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
   },
   {
     inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'isChannelPublicKeySet',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'channelId', type: 'uint256' }],
     name: 'getChannelTimeout',
     outputs: [{ name: 'openTimestamp', type: 'uint256' }, { name: 'timeout', type: 'uint256' }],
     stateMutability: 'view',
@@ -225,6 +232,20 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
     type: 'function'
   },
   {
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelInitialStateRoot',
+    outputs: [{ name: '', type: 'bytes32' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelFinalStateRoot',
+    outputs: [{ name: '', type: 'bytes32' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
     inputs: [],
     name: 'owner',
     outputs: [{ name: '', type: 'address' }],
@@ -239,6 +260,17 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
       { indexed: false, name: 'allowedTokens', type: 'address[]' }
     ],
     name: 'ChannelOpened',
+    type: 'event'
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'channelId', type: 'uint256' },
+      { indexed: false, name: 'pkx', type: 'uint256' },
+      { indexed: false, name: 'pky', type: 'uint256' },
+      { indexed: false, name: 'signerAddr', type: 'address' }
+    ],
+    name: 'ChannelPublicKeySet',
     type: 'event'
   }
 ] as const;
@@ -302,8 +334,8 @@ export const ROLLUP_BRIDGE_PROOF_MANAGER_ABI = [
     inputs: [
       { name: 'channelId', type: 'uint256' },
       {
-        name: 'proofData',
-        type: 'tuple',
+        name: 'proofs',
+        type: 'tuple[]',
         components: [
           { name: 'proofPart1', type: 'uint128[]' },
           { name: 'proofPart2', type: 'uint256[]' },
@@ -317,8 +349,7 @@ export const ROLLUP_BRIDGE_PROOF_MANAGER_ABI = [
               { name: 'preprocessedPart1', type: 'uint128[]' },
               { name: 'preprocessedPart2', type: 'uint256[]' }
             ]
-          },
-          { name: 'finalBalances', type: 'uint256[][]' }
+          }
         ]
       },
       {
@@ -333,6 +364,25 @@ export const ROLLUP_BRIDGE_PROOF_MANAGER_ABI = [
       }
     ],
     name: 'submitProofAndSignature',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function'
+  },
+  {
+    inputs: [
+      { name: 'channelId', type: 'uint256' },
+      { name: 'finalBalances', type: 'uint256[][]' },
+      {
+        name: 'groth16Proof',
+        type: 'tuple',
+        components: [
+          { name: 'pA', type: 'uint256[4]' },
+          { name: 'pB', type: 'uint256[8]' },
+          { name: 'pC', type: 'uint256[4]' }
+        ]
+      }
+    ],
+    name: 'verifyFinalBalancesGroth16',
     outputs: [],
     stateMutability: 'nonpayable',
     type: 'function'

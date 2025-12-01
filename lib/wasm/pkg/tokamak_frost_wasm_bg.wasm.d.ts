@@ -1,0 +1,32 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const keccak256: (a: number, b: number) => [number, number];
+export const generate_ecdsa_keypair: () => [number, number];
+export const derive_key_from_signature: (a: number, b: number) => [number, number, number, number];
+export const sign_challenge: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+export const sign_message: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+export const get_identifier_hex: (a: number) => [number, number, number, number];
+export const get_auth_payload_round1: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
+export const get_auth_payload_round2: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => [number, number, number, number];
+export const get_auth_payload_finalize: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
+export const get_auth_payload_sign_r1: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
+export const get_auth_payload_sign_r2: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number, number, number];
+export const dkg_part1: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+export const dkg_part2: (a: number, b: number, c: any) => [number, number, number, number];
+export const dkg_part3: (a: number, b: number, c: any, d: any, e: number, f: number, g: any) => [number, number, number, number];
+export const get_key_package_metadata: (a: number, b: number) => [number, number, number, number];
+export const get_signing_prerequisites: (a: number, b: number) => [number, number, number, number];
+export const sign_part1_commit: (a: number, b: number) => [number, number, number, number];
+export const sign_part2_sign: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
+export const ecies_encrypt: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+export const ecies_decrypt: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
+export const init_panic_hook: () => void;
+export const __wbindgen_malloc: (a: number, b: number) => number;
+export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_exn_store: (a: number) => void;
+export const __externref_table_alloc: () => number;
+export const __wbindgen_export_4: WebAssembly.Table;
+export const __wbindgen_free: (a: number, b: number, c: number) => void;
+export const __externref_table_dealloc: (a: number) => void;
+export const __wbindgen_start: () => void;
