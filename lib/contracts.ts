@@ -232,6 +232,20 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
     type: 'function'
   },
   {
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelInitialStateRoot',
+    outputs: [{ name: '', type: 'bytes32' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelFinalStateRoot',
+    outputs: [{ name: '', type: 'bytes32' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
     inputs: [],
     name: 'owner',
     outputs: [{ name: '', type: 'address' }],
@@ -320,8 +334,8 @@ export const ROLLUP_BRIDGE_PROOF_MANAGER_ABI = [
     inputs: [
       { name: 'channelId', type: 'uint256' },
       {
-        name: 'proofData',
-        type: 'tuple',
+        name: 'proofs',
+        type: 'tuple[]',
         components: [
           { name: 'proofPart1', type: 'uint128[]' },
           { name: 'proofPart2', type: 'uint256[]' },
@@ -335,8 +349,7 @@ export const ROLLUP_BRIDGE_PROOF_MANAGER_ABI = [
               { name: 'preprocessedPart1', type: 'uint128[]' },
               { name: 'preprocessedPart2', type: 'uint256[]' }
             ]
-          },
-          { name: 'finalBalances', type: 'uint256[][]' }
+          }
         ]
       },
       {
@@ -351,6 +364,25 @@ export const ROLLUP_BRIDGE_PROOF_MANAGER_ABI = [
       }
     ],
     name: 'submitProofAndSignature',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function'
+  },
+  {
+    inputs: [
+      { name: 'channelId', type: 'uint256' },
+      { name: 'finalBalances', type: 'uint256[][]' },
+      {
+        name: 'groth16Proof',
+        type: 'tuple',
+        components: [
+          { name: 'pA', type: 'uint256[4]' },
+          { name: 'pB', type: 'uint256[8]' },
+          { name: 'pC', type: 'uint256[4]' }
+        ]
+      }
+    ],
+    name: 'verifyFinalBalancesGroth16',
     outputs: [],
     stateMutability: 'nonpayable',
     type: 'function'
