@@ -19,8 +19,8 @@ import {
 } from '@/lib/contracts';
 import { getTokenSymbol, getTokenDecimals } from '@/lib/tokenUtils';
 import { generateClientSideProof, isClientProofGenerationSupported, getMemoryRequirement, requiresExternalDownload, getDownloadSize } from '@/lib/clientProofGeneration';
-import { useLeaderAccess } from '@/hooks/useLeaderAccess';
-import { Settings, Link, ShieldOff, Users, CheckCircle2, XCircle, Calculator } from 'lucide-react';
+import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
+import { Settings, Link, ShieldOff, Users, CheckCircle2, XCircle, Calculator, ChevronRight } from 'lucide-react';
 
 // Custom animations
 const animations = `
@@ -86,8 +86,10 @@ const animations = `
 `;
 
 export default function InitializeStatePage() {
-  const { isConnected, hasAccess, isMounted, leaderChannel: hookLeaderChannel } = useLeaderAccess();
-  const { address } = useAccount();
+  const { address, isConnected } = useAccount();
+  const { hasChannels, leadingChannels, channelStatsData } = useUserRolesDynamic();
+  const [isMounted, setIsMounted] = useState(false);
+  const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -98,15 +100,40 @@ export default function InitializeStatePage() {
   const [generatedProof, setGeneratedProof] = useState<any>(null);
   const [browserCompatible, setBrowserCompatible] = useState<boolean | null>(null);
 
-  // Get total number of channels from Core contract
-  const { data: totalChannels } = useContractRead({
-    address: ROLLUP_BRIDGE_CORE_ADDRESS,
-    abi: ROLLUP_BRIDGE_CORE_ABI,
-    functionName: 'nextChannelId',
-    enabled: isMounted && isConnected,
-  });
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
-  // Note: Channel stats are handled by useLeaderAccess hook
+  // Get channels that can be initialized (leading channels with state = 1)
+  const initializableChannels = leadingChannels
+    .map(channelId => {
+      const stats = channelStatsData[channelId];
+      if (!stats || stats[2] !== 1) return null; // Only "Initialized" state channels
+      return {
+        id: channelId,
+        stats,
+        allowedTokens: stats[1] as readonly `0x${string}`[],
+        state: stats[2],
+        participantCount: stats[3]
+      };
+    })
+    .filter(Boolean) as {
+      id: number;
+      stats: readonly [bigint, readonly `0x${string}`[], number, bigint, `0x${string}`];
+      allowedTokens: readonly `0x${string}`[];
+      state: number;
+      participantCount: bigint;
+    }[];
+
+  // Auto-select first channel if only one available
+  useEffect(() => {
+    if (initializableChannels.length === 1 && !selectedChannelId) {
+      setSelectedChannelId(initializableChannels[0].id);
+    }
+  }, [initializableChannels, selectedChannelId]);
+
+  // Get selected channel data
+  const selectedChannel = selectedChannelId ? initializableChannels.find(ch => ch.id === selectedChannelId) : null;
 
 
   // Initialize channel state transaction - now uses ProofManager
@@ -131,13 +158,13 @@ export default function InitializeStatePage() {
 
   // Animate cards on mount
   useEffect(() => {
-    if (isMounted && hookLeaderChannel) {
+    if (isMounted && (initializableChannels.length > 0 || selectedChannel)) {
       const timer = setTimeout(() => {
         setAnimateCards(true);
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [isMounted, hookLeaderChannel]);
+  }, [isMounted, initializableChannels.length, selectedChannel]);
 
   // Check browser compatibility for client-side proof generation
   useEffect(() => {
@@ -146,18 +173,18 @@ export default function InitializeStatePage() {
     }
   }, []);
 
-  // Get participants for leader channel from Core contract
+  // Get participants for selected channel from Core contract
   const { data: channelParticipants } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelParticipants',
-    args: hookLeaderChannel ? [BigInt(hookLeaderChannel.id)] : undefined,
-    enabled: isMounted && isConnected && !!hookLeaderChannel,
+    args: selectedChannel ? [BigInt(selectedChannel.id)] : undefined,
+    enabled: isMounted && isConnected && !!selectedChannel,
   });
 
-  // Get first non-ETH token from allowed tokens for debug info
+  // Get first non-ETH token from selected channel's allowed tokens for debug info
   const getFirstToken = () => {
-    const allowedTokens = hookLeaderChannel?.stats?.[1] as readonly `0x${string}`[];
+    const allowedTokens = selectedChannel?.allowedTokens;
     if (!Array.isArray(allowedTokens)) return null;
     
     return allowedTokens.find(token => 
@@ -169,13 +196,13 @@ export default function InitializeStatePage() {
 
   const firstToken = getFirstToken();
 
-  // Get tree size for the channel to determine circuit size
+  // Get tree size for the selected channel to determine circuit size
   const { data: channelTreeSize } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelTreeSize',
-    args: hookLeaderChannel ? [BigInt(hookLeaderChannel.id)] : undefined,
-    enabled: isMounted && isConnected && !!hookLeaderChannel,
+    args: selectedChannel ? [BigInt(selectedChannel.id)] : undefined,
+    enabled: isMounted && isConnected && !!selectedChannel,
   });
 
   // TODO: debugTokenInfo function removed from new contract architecture
@@ -201,7 +228,7 @@ export default function InitializeStatePage() {
 
   // Generate Groth16 proof for channel initialization
   const generateGroth16Proof = async () => {
-    if (!hookLeaderChannel || !channelParticipants) {
+    if (!selectedChannel || !channelParticipants) {
       throw new Error('Missing channel data');
     }
 
@@ -209,7 +236,7 @@ export default function InitializeStatePage() {
     
     // Determine required tree size first from contract or calculate based on channel data
     const participantCount = channelParticipants.length;
-    const allowedTokens = hookLeaderChannel.stats[1] as readonly `0x${string}`[];
+    const allowedTokens = selectedChannel.allowedTokens;
     const tokenCount = allowedTokens.length;
     
     // Calculate expected number of entries (participants × tokens)
@@ -246,7 +273,7 @@ export default function InitializeStatePage() {
       
       // Try bulk API first
       try {
-        const keysResponse = await fetch(`/api/get-l2-mpt-keys-list?channelId=${hookLeaderChannel.id}&token=${token}`, {
+        const keysResponse = await fetch(`/api/get-l2-mpt-keys-list?channelId=${selectedChannel.id}&token=${token}`, {
           signal: AbortSignal.timeout(10000) // 10 second timeout
         });
         
@@ -275,7 +302,7 @@ export default function InitializeStatePage() {
           } else {
             // Fallback to individual call with timeout
             try {
-              const keyResponse = await fetch(`/api/get-l2-mpt-key?participant=${participant}&token=${token}&channelId=${hookLeaderChannel.id}`, {
+              const keyResponse = await fetch(`/api/get-l2-mpt-key?participant=${participant}&token=${token}&channelId=${selectedChannel.id}`, {
                 signal: AbortSignal.timeout(5000)
               });
               if (keyResponse.ok) {
@@ -291,7 +318,7 @@ export default function InitializeStatePage() {
           
           // Get deposit amount with timeout
           try {
-            const depositResponse = await fetch(`/api/get-participant-deposit?participant=${participant}&token=${token}&channelId=${hookLeaderChannel.id}`, {
+            const depositResponse = await fetch(`/api/get-participant-deposit?participant=${participant}&token=${token}&channelId=${selectedChannel.id}`, {
               signal: AbortSignal.timeout(5000)
             });
             if (depositResponse.ok) {
@@ -324,7 +351,7 @@ export default function InitializeStatePage() {
     setProofGenerationStatus('Preparing circuit input...');
     
     console.log('🔍 PROOF GENERATION DEBUG:');
-    console.log('  Channel ID:', hookLeaderChannel.id);
+    console.log('  Channel ID:', selectedChannel.id);
     console.log('  Channel Tree Size:', channelTreeSize);
     console.log('  Requested Tree Size:', treeSize);
     console.log('  Storage Keys Length:', storageKeysL2MPT.length);
@@ -379,7 +406,7 @@ export default function InitializeStatePage() {
   };
 
   const handleInitializeState = async () => {
-    if (!hookLeaderChannel) return;
+    if (!selectedChannel) return;
     
     setButtonClicked(true);
     setIsGeneratingProof(true);
@@ -391,7 +418,7 @@ export default function InitializeStatePage() {
       setGeneratedProof(proof);
       
       console.log('🔍 CONTRACT SUBMISSION DEBUG:');
-      console.log('  Channel ID:', hookLeaderChannel.id);
+      console.log('  Channel ID:', selectedChannel.id);
       console.log('  Channel Tree Size:', channelTreeSize);
       console.log('  Generated Proof:', proof);
       console.log('  Proof Structure:', {
@@ -405,10 +432,10 @@ export default function InitializeStatePage() {
       
       // Then submit to contract with proof
       console.log('🔍 CALLING CONTRACT: initializeChannelState');
-      console.log('  Args:', [BigInt(hookLeaderChannel.id), proof]);
+      console.log('  Args:', [BigInt(selectedChannel.id), proof]);
       
       initializeChannelState({
-        args: [BigInt(hookLeaderChannel.id), proof]
+        args: [BigInt(selectedChannel.id), proof]
       });
     } catch (error) {
       console.error('Error during initialization:', error);
@@ -476,7 +503,7 @@ export default function InitializeStatePage() {
                 Please connect your wallet to initialize channel state
               </p>
             </div>
-          ) : !hasAccess ? (
+          ) : !hasChannels ? (
             <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 text-center shadow-lg shadow-[#4fc3f7]/20">
               <div className="h-16 w-16 bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
                 <ShieldOff className="w-8 h-8 text-red-400" />
@@ -489,53 +516,103 @@ export default function InitializeStatePage() {
                 You need to be a channel leader to initialize channel state
               </p>
             </div>
-          ) : !hookLeaderChannel ? (
+          ) : initializableChannels.length === 0 ? (
             <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 text-center shadow-lg shadow-[#4fc3f7]/20">
               <div className="h-16 w-16 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 flex items-center justify-center mx-auto mb-4">
                 <Settings className="w-8 h-8 text-[#4fc3f7]" />
               </div>
               <h3 className="text-xl font-semibold text-white mb-2">No Channel to Initialize</h3>
               <p className="text-gray-300 mb-4">
-                You don't have a channel in "Initialized" state that can be opened
+                You don't have any channels in "Initialized" state that can be opened
               </p>
               <p className="text-sm text-gray-400">
-                Create a new channel or wait for participants to deposit tokens in your existing channel
+                Create a new channel or wait for participants to deposit tokens in your existing channels
               </p>
             </div>
           ) : (
             <div className="space-y-4 sm:space-y-6">
-              {/* Channel Info */}
-              <div className={`bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 sm:p-6 shadow-lg shadow-[#4fc3f7]/20 transform transition-all duration-700 ${
-                animateCards ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
-              }`}>
-                <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center gap-2">
-                  <Settings className="w-5 h-5 text-[#4fc3f7]" />
-                  Channel {hookLeaderChannel.id} - Ready to Initialize
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                  <div className="text-center p-3 sm:p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/30">
-                    <div className="text-xs sm:text-sm text-gray-400">Channel ID</div>
-                    <div className="text-lg sm:text-xl font-bold text-white">{hookLeaderChannel.id}</div>
-                  </div>
-                  <div className="text-center p-3 sm:p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/30">
-                    <div className="text-xs sm:text-sm text-gray-400">Current State</div>
-                    <div className="text-lg sm:text-xl font-bold text-[#4fc3f7]">{getChannelStateName(hookLeaderChannel.stats[2])}</div>
-                  </div>
-                  <div className="text-center p-3 sm:p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/30">
-                    <div className="text-xs sm:text-sm text-gray-400">Participants</div>
-                    <div className="text-lg sm:text-xl font-bold text-green-400">{channelParticipants?.length || '0'}</div>
+              {/* Channel Selection */}
+              {initializableChannels.length > 1 && (
+                <div className={`bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 sm:p-6 shadow-lg shadow-[#4fc3f7]/20 transform transition-all duration-700 ${
+                  animateCards ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
+                }`}>
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-[#4fc3f7]" />
+                    Select Channel to Initialize
+                  </h3>
+                  <p className="text-sm text-gray-300 mb-4">
+                    You have {initializableChannels.length} channels ready for initialization. Select one to proceed:
+                  </p>
+                  <div className="grid gap-3">
+                    {initializableChannels.map((channel) => (
+                      <div
+                        key={channel.id}
+                        onClick={() => setSelectedChannelId(channel.id)}
+                        className={`border p-4 cursor-pointer transition-all duration-300 ${
+                          selectedChannelId === channel.id
+                            ? 'border-[#4fc3f7] bg-[#4fc3f7]/10'
+                            : 'border-[#4fc3f7]/30 bg-[#0a1930]/50 hover:border-[#4fc3f7]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 flex items-center justify-center">
+                              <span className="text-[#4fc3f7] font-semibold">#{channel.id}</span>
+                            </div>
+                            <div>
+                              <h4 className="text-lg font-semibold text-white">Channel {channel.id}</h4>
+                              <p className="text-sm text-gray-400">
+                                {channel.allowedTokens.length} tokens, {Number(channel.participantCount)} participants
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {selectedChannelId === channel.id && (
+                              <CheckCircle2 className="w-6 h-6 text-[#4fc3f7]" />
+                            )}
+                            <ChevronRight className="w-5 h-5 text-gray-400" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              </div>
+              )}
+
+              {/* Selected Channel Info */}
+              {selectedChannel && (
+                <div className={`bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 sm:p-6 shadow-lg shadow-[#4fc3f7]/20 transform transition-all duration-700 ${
+                  animateCards ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
+                }`}>
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-[#4fc3f7]" />
+                    Channel {selectedChannel.id} - Ready to Initialize
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                    <div className="text-center p-3 sm:p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/30">
+                      <div className="text-xs sm:text-sm text-gray-400">Channel ID</div>
+                      <div className="text-lg sm:text-xl font-bold text-white">{selectedChannel.id}</div>
+                    </div>
+                    <div className="text-center p-3 sm:p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/30">
+                      <div className="text-xs sm:text-sm text-gray-400">Current State</div>
+                      <div className="text-lg sm:text-xl font-bold text-[#4fc3f7]">{getChannelStateName(selectedChannel.stats[2])}</div>
+                    </div>
+                    <div className="text-center p-3 sm:p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/30">
+                      <div className="text-xs sm:text-sm text-gray-400">Participants</div>
+                      <div className="text-lg sm:text-xl font-bold text-green-400">{channelParticipants?.length || '0'}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Participant Info Display */}
-              {channelParticipants && (
+              {selectedChannel && channelParticipants && (
                 <div className={`bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 sm:p-6 shadow-lg shadow-[#4fc3f7]/20 transform transition-all duration-700 delay-150 ${
                   animateCards ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
                 }`}>
                   <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center gap-2">
                     <Users className="w-5 h-5 text-[#4fc3f7]" />
-                    <span className="hidden sm:inline">Channel {hookLeaderChannel.id} - </span>Participants
+                    <span className="hidden sm:inline">Channel {selectedChannel.id} - </span>Participants
                   </h3>
 
                   <div className="space-y-2 sm:space-y-3">
@@ -584,9 +661,10 @@ export default function InitializeStatePage() {
               )}
 
               {/* Submit State & Open Channel Button */}
-              <div className={`bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 sm:p-6 shadow-lg shadow-[#4fc3f7]/20 transform transition-all duration-700 delay-300 ${
-                animateCards ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-8 opacity-0 scale-95'
-              }`}>
+              {selectedChannel && (
+                <div className={`bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 sm:p-6 shadow-lg shadow-[#4fc3f7]/20 transform transition-all duration-700 delay-300 ${
+                  animateCards ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-8 opacity-0 scale-95'
+                }`}>
                   <div className="text-center">
                     <h3 className="text-base sm:text-lg font-semibold text-white mb-2">Ready to Initialize</h3>
                     <p className="text-sm sm:text-base text-gray-300 mb-4 sm:mb-6">
@@ -641,11 +719,11 @@ export default function InitializeStatePage() {
                     
                     <button
                       onClick={handleInitializeState}
-                      disabled={isInitializingTransaction || isGeneratingProof || hookLeaderChannel.stats[2] !== 1 || browserCompatible === false}
+                      disabled={!selectedChannel || isInitializingTransaction || isGeneratingProof || selectedChannel.stats[2] !== 1 || browserCompatible === false}
                       className={`px-6 sm:px-8 py-3 sm:py-4 font-semibold text-white text-base sm:text-lg transition-all duration-300 transform ${
                         buttonClicked ? 'scale-95' : 'hover:scale-105'
                       } ${
-                        isInitializingTransaction || isGeneratingProof || hookLeaderChannel.stats[2] !== 1 || browserCompatible === false
+                        !selectedChannel || isInitializingTransaction || isGeneratingProof || selectedChannel.stats[2] !== 1 || browserCompatible === false
                           ? 'bg-gray-600 cursor-not-allowed'
                           : 'bg-[#4fc3f7] hover:bg-[#029bee] shadow-lg shadow-[#4fc3f7]/30 hover:shadow-xl hover:shadow-[#4fc3f7]/40'
                       } ${(isInitializingTransaction || isGeneratingProof) ? 'animate-pulse' : ''}`}
@@ -660,16 +738,21 @@ export default function InitializeStatePage() {
                           <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                           Submitting to Blockchain...
                         </div>
-                      ) : hookLeaderChannel.stats[2] !== 1 ? (
+                      ) : !selectedChannel ? (
                         <div className="flex items-center gap-3 justify-center">
-                          {hookLeaderChannel.stats[2] >= 2 ? (
+                          <XCircle className="w-5 h-5" />
+                          Select a Channel First
+                        </div>
+                      ) : selectedChannel.stats[2] !== 1 ? (
+                        <div className="flex items-center gap-3 justify-center">
+                          {selectedChannel.stats[2] >= 2 ? (
                             <CheckCircle2 className="w-5 h-5" />
                           ) : (
                             <XCircle className="w-5 h-5" />
                           )}
-                          {hookLeaderChannel.stats[2] >= 2 
-                            ? `Channel Already Initialized (State: ${getChannelStateName(hookLeaderChannel.stats[2])})`
-                            : `Channel Not Ready (State: ${getChannelStateName(hookLeaderChannel.stats[2])})`
+                          {selectedChannel.stats[2] >= 2 
+                            ? `Channel Already Initialized (State: ${getChannelStateName(selectedChannel.stats[2])})`
+                            : `Channel Not Ready (State: ${getChannelStateName(selectedChannel.stats[2])})`
                           }
                         </div>
                       ) : (
@@ -698,7 +781,7 @@ export default function InitializeStatePage() {
                         </div>
                       </div>
                       <div className="text-xs text-gray-400 mt-2">
-                        Participants × Tokens = {channelParticipants?.length || 0} × {(hookLeaderChannel?.stats?.[1] as any[])?.length || 0} = {(channelParticipants?.length || 0) * ((hookLeaderChannel?.stats?.[1] as any[])?.length || 0)} entries
+                        Participants × Tokens = {channelParticipants?.length || 0} × {selectedChannel?.allowedTokens?.length || 0} = {(channelParticipants?.length || 0) * (selectedChannel?.allowedTokens?.length || 0)} entries
                       </div>
                     </div>
                     
@@ -707,6 +790,7 @@ export default function InitializeStatePage() {
                     </p>
                   </div>
                 </div>
+              )}
             </div>
           )}
         </main>
@@ -731,7 +815,7 @@ export default function InitializeStatePage() {
                 From now on, all transactions should be managed directly from the channel itself.
               </p>
               <p className="text-sm text-[#4fc3f7] mb-6">
-                Channel {hookLeaderChannel?.id} is ready for active operations!
+                Channel {selectedChannel?.id} is ready for active operations!
               </p>
               <button
                 onClick={() => setShowSuccessPopup(false)}
