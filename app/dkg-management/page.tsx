@@ -20,6 +20,7 @@ import {
   get_auth_payload_sign_r2,
   sign_message as sign_message_wasm
 } from '@/lib/wasm/pkg/tokamak_frost_wasm';
+import { encodeAbiParameters, keccak256 as ethersKeccak256 } from 'viem';
 
 // Import our new DKG components
 import { DKGConnectionStatus } from '@/components/dkg/DKGConnectionStatus';
@@ -98,6 +99,11 @@ export default function DKGManagementPage() {
   const signingState = useState({ current: {} as any });
   const [joiningSigningSession, setJoiningSigningSession] = useState<string | null>(null);
   const [showSignatureSuccessModal, setShowSignatureSuccessModal] = useState(false);
+  
+  // Signature creator state for keccak256(abi.encodePacked(channelId, finalStateRoot))
+  const [channelId, setChannelId] = useState('');
+  const [finalStateRoot, setFinalStateRoot] = useState('');
+  const [computedHash, setComputedHash] = useState('');
 
   // Use our custom hooks
   const {
@@ -212,6 +218,47 @@ export default function DKGManagementPage() {
       setMessageHash('');
     }
   }, [messageToSign]);
+
+  // Calculate keccak256(abi.encodePacked(channelId, finalStateRoot)) hash
+  useEffect(() => {
+    try {
+      if (channelId && finalStateRoot) {
+        // Validate channelId is a valid number
+        const channelIdNum = parseInt(channelId);
+        if (isNaN(channelIdNum) || channelIdNum < 0) {
+          setComputedHash('');
+          return;
+        }
+        
+        // Validate finalStateRoot is a valid hex string (32 bytes)
+        const cleanStateRoot = finalStateRoot.startsWith('0x') ? finalStateRoot : `0x${finalStateRoot}`;
+        if (!/^0x[a-fA-F0-9]{64}$/.test(cleanStateRoot)) {
+          setComputedHash('');
+          return;
+        }
+
+        // Use viem's encodeAbiParameters for proper abi.encodePacked equivalent
+        // abi.encodePacked(uint256, bytes32) concatenates the values without padding
+        const encoded = encodeAbiParameters(
+          [{ type: 'uint256' }, { type: 'bytes32' }],
+          [BigInt(channelIdNum), cleanStateRoot as `0x${string}`]
+        );
+        
+        // Remove the padding that encodeAbiParameters adds (we want packed encoding)
+        // For uint256: take last 32 bytes, for bytes32: take as-is
+        const channelIdHex = BigInt(channelIdNum).toString(16).padStart(64, '0');
+        const stateRootHex = cleanStateRoot.slice(2);
+        const packedData = `0x${channelIdHex}${stateRootHex}` as `0x${string}`;
+        
+        const hash = ethersKeccak256(packedData);
+        setComputedHash(hash);
+      } else {
+        setComputedHash('');
+      }
+    } catch (e) {
+      setComputedHash('');
+    }
+  }, [channelId, finalStateRoot]);
 
   // Auto-connect to DKG server on mount (if enabled in config)
   useEffect(() => {
@@ -1169,6 +1216,107 @@ export default function DKGManagementPage() {
               )}
             </Card>
 
+            {/* Signature Creator Section */}
+            <Card className="p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 bg-purple-500/20 border border-purple-500/50 flex items-center justify-center">
+                  <FileText className="w-5 h-5 text-purple-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Channel State Signature Creator</h3>
+                  <p className="text-sm text-gray-400">Generate keccak256(abi.encodePacked(channelId, finalStateRoot)) for signing</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Channel ID
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={channelId}
+                      onChange={(e) => setChannelId(e.target.value)}
+                      placeholder="Enter channel ID (e.g., 1)"
+                      className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-white placeholder-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Final State Root
+                    </label>
+                    <input
+                      type="text"
+                      value={finalStateRoot}
+                      onChange={(e) => setFinalStateRoot(e.target.value)}
+                      placeholder="0x... (32 bytes hex)"
+                      className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-white placeholder-gray-500 font-mono text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Hash Preview */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Computed Hash (keccak256)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={computedHash}
+                      readOnly
+                      placeholder="Hash will appear here when both fields are valid"
+                      className="w-full px-3 py-2 bg-[#0f1729] border border-[#4fc3f7]/50 rounded-md text-green-400 placeholder-gray-500 font-mono text-sm"
+                    />
+                    {computedHash && (
+                      <Button
+                        onClick={() => {
+                          navigator.clipboard.writeText(computedHash);
+                          setSuccessMessage('Hash copied to clipboard!');
+                        }}
+                        size="sm"
+                        variant="ghost"
+                        className="absolute right-2 top-1 h-8 px-2 text-green-400 hover:bg-green-500/20"
+                      >
+                        Copy
+                      </Button>
+                    )}
+                  </div>
+                  {computedHash && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      ✅ This hash can be used as the message in the signing session below
+                    </p>
+                  )}
+                </div>
+
+                {/* Quick Set Button */}
+                {computedHash && (
+                  <Button
+                    onClick={() => {
+                      setMessageToSign(computedHash);
+                      setSuccessMessage('Hash set as message to sign!');
+                    }}
+                    className="w-full bg-purple-600 hover:bg-purple-700"
+                  >
+                    Use This Hash as Message to Sign
+                  </Button>
+                )}
+
+                {/* Help text */}
+                <div className="p-4 bg-blue-900/20 border border-blue-500/50 rounded-lg">
+                  <h4 className="text-sm font-semibold text-blue-300 mb-2">How to use:</h4>
+                  <ul className="text-xs text-blue-200/90 space-y-1">
+                    <li>• Enter the channel ID (number) and final state root (32-byte hex)</li>
+                    <li>• The app will compute keccak256(abi.encodePacked(channelId, finalStateRoot))</li>
+                    <li>• Use the computed hash as the message in the signing session below</li>
+                    <li>• This creates a signature that can be used for channel state verification</li>
+                  </ul>
+                </div>
+              </div>
+            </Card>
+
             {/* Create New Signing Session Section */}
             <Card className="p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]">
               <div className="flex items-center gap-3 mb-6">
@@ -1262,19 +1410,7 @@ export default function DKGManagementPage() {
                       value={messageToSign}
                       onChange={(e) => setMessageToSign(e.target.value)}
                       placeholder="Enter message to sign..."
-                        className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-white placeholder-gray-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Message Hash (Keccak256)
-                    </label>
-                    <input
-                      type="text"
-                      value={messageHash}
-                      disabled
-                      className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-gray-400 font-mono text-sm"
+                        className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-white placeholder-gray-500 font-mono text-sm"
                     />
                   </div>
 

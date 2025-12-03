@@ -8,7 +8,7 @@ import {
   ROLLUP_BRIDGE_CORE_ABI, 
   ROLLUP_BRIDGE_CORE_ADDRESS, 
   TON_TOKEN_ADDRESS,
-  WTON_TOKEN_ADDRESS,
+  USDC_TOKEN_ADDRESS,
   USDT_TOKEN_ADDRESS 
 } from '@/lib/contracts';
 import { Sidebar } from '@/components/Sidebar';
@@ -120,8 +120,8 @@ export default function CreateChannelPage() {
     switch (address.toLowerCase()) {
       case TON_TOKEN_ADDRESS.toLowerCase():
         return 'TON';
-      case WTON_TOKEN_ADDRESS.toLowerCase():
-        return 'WTON';
+      case USDC_TOKEN_ADDRESS.toLowerCase():
+        return 'USDC';
       case USDT_TOKEN_ADDRESS.toLowerCase():
         return 'USDT';
       default:
@@ -153,7 +153,7 @@ export default function CreateChannelPage() {
       allowedTokens.every(token => 
         token === '' || // Allow empty tokens during editing
         token === TON_TOKEN_ADDRESS || // TON
-        token === WTON_TOKEN_ADDRESS || // WTON
+        token === USDC_TOKEN_ADDRESS || // USDC
         token === USDT_TOKEN_ADDRESS || // USDT
         isValidEthereumAddress(token)
       ) &&
@@ -253,7 +253,7 @@ export default function CreateChannelPage() {
         <div className="max-w-5xl mx-auto">
           <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 mb-6 shadow-lg shadow-[#4fc3f7]/20">
             <div className="mb-8">
-              <h2 className="text-2xl font-bold text-white mb-2">Create Multi-Token Channel</h2>
+              <h2 className="text-2xl font-bold text-white mb-2">Create Private Channel</h2>
               <p className="text-gray-300">
                 Set up a channel supporting multiple tokens for zero-knowledge proof operations with multiple participants.
               </p>
@@ -328,7 +328,7 @@ export default function CreateChannelPage() {
                           placeholder="Enter token address or use quick select buttons below"
                           className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
                         />
-                        {token && token !== TON_TOKEN_ADDRESS && token !== WTON_TOKEN_ADDRESS && token !== USDT_TOKEN_ADDRESS && !isValidEthereumAddress(token) && (
+                        {token && token !== TON_TOKEN_ADDRESS && token !== USDC_TOKEN_ADDRESS && token !== USDT_TOKEN_ADDRESS && !isValidEthereumAddress(token) && (
                           <p className="text-red-400 text-xs mt-1">Invalid token address</p>
                         )}
                         {token && allowedTokens.filter(t => t === token).length > 1 && (
@@ -346,10 +346,10 @@ export default function CreateChannelPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => updateToken(index, WTON_TOKEN_ADDRESS)}
-                            className="px-2 py-1 text-xs bg-amber-600/20 border border-amber-500/50 text-amber-300 hover:bg-amber-600/40 transition-colors"
+                            onClick={() => updateToken(index, USDC_TOKEN_ADDRESS)}
+                            className="px-2 py-1 text-xs bg-blue-600/20 border border-blue-500/50 text-blue-300 hover:bg-blue-600/40 transition-colors"
                           >
-                            WTON
+                            USDC
                           </button>
                           <button
                             type="button"
@@ -377,11 +377,11 @@ export default function CreateChannelPage() {
                         Supported Tokens
                       </h4>
                       <p className="text-blue-200/90 text-sm mb-3">
-                        Currently supported: TON (18 decimals), WTON, and USDT tokens. Use the quick select buttons above for easy selection.
+                        Currently supported: TON (18 decimals), USDC (6 decimals), and USDT (6 decimals) tokens. Use the quick select buttons above for easy selection.
                       </p>
                       <div className="space-y-1 text-xs text-blue-200/80">
                         <p>• TON: {TON_TOKEN_ADDRESS}</p>
-                        <p>• WTON: {WTON_TOKEN_ADDRESS}</p>
+                        <p>• USDC: {USDC_TOKEN_ADDRESS}</p>
                         <p>• USDT: {USDT_TOKEN_ADDRESS}</p>
                       </div>
                     </div>

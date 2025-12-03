@@ -165,7 +165,7 @@ export default function HomePage() {
                       <div className="flex-1">
                         <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Create Channel</h3>
                         <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
-                          Create multi-party bridge channel (0.001 ETH bond)
+                          Create a private channel
                         </p>
                       </div>
                     </div>
