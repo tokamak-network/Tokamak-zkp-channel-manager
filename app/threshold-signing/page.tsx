@@ -11,8 +11,7 @@ import {
   getSigningPrerequisites, 
   getAuthPayloadSignR1, 
   getAuthPayloadSignR2, 
-  signMessageECDSA, 
-  hashKeccak256 
+  signMessageECDSA
 } from '@/lib/frost-wasm';
 import { useDKGWebSocket } from '@/hooks/useDKGWebSocket';
 import { getDKGServerUrl, shouldAutoConnect, debugLog } from '@/lib/dkg-config';
@@ -615,10 +614,14 @@ export default function ThresholdSigningPage() {
   const handleDownloadSignature = () => {
     if (!finalSignatureData) return;
 
+    // The actual hash that was signed is stored in signingState.current.msg32_hex
+    // This is the keccak256 of the packed data that was sent to the server
+    const actualSignedHash = signingState.current.msg32_hex;
+
     const signatureJSON = {
       signature_bincode_hex: finalSignatureData.signature,
-      message: finalSignatureData.message,
-      message_hex: messageHash,
+      message: actualSignedHash, // The hash that was actually signed
+      message_hex: actualSignedHash.startsWith('0x') ? actualSignedHash.slice(2) : actualSignedHash,
       rx: finalSignatureData.rx,
       ry: finalSignatureData.ry,
       z: finalSignatureData.s,
@@ -642,20 +645,6 @@ export default function ThresholdSigningPage() {
     setSuccessMessage('✅ Signature downloaded successfully!');
   };
 
-  // Compute message hash
-  const handleComputeHash = () => {
-    if (!messageToSign) {
-      setError('Please enter a message first');
-      return;
-    }
-    try {
-      const hash = hashKeccak256(messageToSign);
-      setMessageHash(hash);
-      setSuccessMessage('✅ Message hash computed');
-    } catch (e: any) {
-      setError(`Failed to compute hash: ${e.message}`);
-    }
-  };
 
   return (
     <>
