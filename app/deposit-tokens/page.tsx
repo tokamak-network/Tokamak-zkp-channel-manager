@@ -8,6 +8,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { MobileMenuButton } from '@/components/MobileMenuButton';
+import { Footer } from '@/components/Footer';
 import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI, ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS, ROLLUP_BRIDGE_DEPOSIT_MANAGER_ABI, ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
 import { getTokenSymbol, getTokenDecimals } from '@/lib/tokenUtils';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
@@ -465,9 +466,9 @@ export default function DepositTokensPage() {
       />
 
       {/* Main Content Area */}
-      <div className="ml-0 lg:ml-72 transition-all duration-300 min-h-screen space-background">
+      <div className="ml-0 lg:ml-72 transition-all duration-300 min-h-screen space-background flex flex-col">
         {/* Main Content */}
-        <main className="px-4 py-8 lg:px-8">
+        <main className="px-4 py-8 lg:px-8 flex-1">
           <div className="max-w-5xl mx-auto">
             {/* Page Header */}
             <div className="mb-8">
@@ -754,6 +755,8 @@ export default function DepositTokensPage() {
             </div>
           </div>
         </main>
+        
+        <Footer className="mt-auto" />
       </div>
 
       {/* Public Key Warning Modal */}

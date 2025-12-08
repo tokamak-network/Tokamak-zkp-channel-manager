@@ -383,8 +383,8 @@ export default function SubmitProofPage() {
         setShowMobileMenu={setShowMobileMenu} 
       />
 
-      <div className="ml-0 lg:ml-72 transition-all duration-300 min-h-screen space-background">
-        <main className="px-4 py-8 lg:px-8">
+      <div className="ml-0 lg:ml-72 transition-all duration-300 min-h-screen space-background flex flex-col">
+        <main className="px-4 py-8 lg:px-8 flex-1">
           <div className="max-w-5xl mx-auto">
           {/* Page Header */}
           <div className="mb-8">
