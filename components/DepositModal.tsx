@@ -89,7 +89,6 @@ export function DepositModal({
   
   const depositArgs = [
     channelId, 
-    tokenAddress as `0x${string}`, 
     parseInputAmount(formData.amount, 18),
     placeholderMptKey
   ] as const;

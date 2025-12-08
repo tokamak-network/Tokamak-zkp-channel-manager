@@ -40,10 +40,10 @@ export default function CloseChannelPage() {
     enabled: Boolean(leaderChannel?.id !== undefined)
   });
 
-  const { data: allowedTokens } = useContractRead({
+  const { data: targetContract } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
-    functionName: 'getChannelAllowedTokens',
+    functionName: 'getChannelTargetContract',
     args: leaderChannel ? [BigInt(leaderChannel.id)] : undefined,
     enabled: Boolean(leaderChannel?.id !== undefined)
   });
@@ -228,9 +228,9 @@ export default function CloseChannelPage() {
                       </div>
                     </div>
                     <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 rounded-lg p-4">
-                      <div className="text-sm text-gray-400">Allowed Tokens</div>
-                      <div className="text-lg font-semibold text-white">
-                        {allowedTokens ? allowedTokens.length : '...'}
+                      <div className="text-sm text-gray-400">Target Contract</div>
+                      <div className="text-lg font-semibold text-white font-mono">
+                        {targetContract ? `${targetContract.substring(0, 8)}...${targetContract.substring(36)}` : '...'}
                       </div>
                     </div>
                   </div>

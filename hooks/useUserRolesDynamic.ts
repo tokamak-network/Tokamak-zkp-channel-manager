@@ -10,7 +10,7 @@ export function useUserRolesDynamic() {
   const [totalChannels, setTotalChannels] = useState(0);
   const [participatingChannels, setParticipatingChannels] = useState<number[]>([]);
   const [leadingChannels, setLeadingChannels] = useState<number[]>([]);
-  const [channelStatsData, setChannelStatsData] = useState<Record<number, readonly [bigint, readonly `0x${string}`[], number, bigint, `0x${string}`] | null>>({});
+  const [channelStatsData, setChannelStatsData] = useState<Record<number, readonly [bigint, `0x${string}`, number, bigint, `0x${string}`] | null>>({});
 
   // Get total number of channels first
   const { data: totalChannelsData, isLoading: totalChannelsLoading } = useContractReads({
@@ -54,11 +54,11 @@ export function useUserRolesDynamic() {
       args: [BigInt(i)],
     });
 
-    // Get channel allowed tokens for deposit page
+    // Get channel target contract (token) for deposit page
     channelContracts.push({
       address: ROLLUP_BRIDGE_CORE_ADDRESS,
       abi: ROLLUP_BRIDGE_CORE_ABI,
-      functionName: 'getChannelAllowedTokens',
+      functionName: 'getChannelTargetContract',
       args: [BigInt(i)],
     });
   }
@@ -79,7 +79,7 @@ export function useUserRolesDynamic() {
     let foundParticipation = false;
     const participantChannels: number[] = [];
     const leaderChannels: number[] = [];
-    const statsData: Record<number, readonly [bigint, readonly `0x${string}`[], number, bigint, `0x${string}`] | null> = {};
+    const statsData: Record<number, readonly [bigint, `0x${string}`, number, bigint, `0x${string}`] | null> = {};
 
     // Process the channel data
     let actualChannelCount = 0;
@@ -93,7 +93,7 @@ export function useUserRolesDynamic() {
       const leader = channelData?.[leaderIndex]?.result as string | undefined;
       const participants = channelData?.[participantsIndex]?.result as readonly string[] | undefined;
       const state = channelData?.[stateIndex]?.result as number | undefined;
-      const allowedTokens = channelData?.[allowedTokensIndex]?.result as readonly `0x${string}`[] | undefined;
+      const targetContract = channelData?.[allowedTokensIndex]?.result as `0x${string}` | undefined;
 
       // Skip if channel doesn't exist (no leader returned or zero address)
       if (!leader || leader === '0x0000000000000000000000000000000000000000') {
@@ -103,15 +103,15 @@ export function useUserRolesDynamic() {
       actualChannelCount++;
 
       // Populate stats data in the format expected by deposit page
-      // Format: [bigint, readonly `0x${string}`[], number, bigint, `0x${string}`]
+      // Format: [bigint, `0x${string}`, number, bigint, `0x${string}`]
       // Index 0: Some bigint value (we'll use 0 as placeholder)
-      // Index 1: allowedTokens array
+      // Index 1: targetContract (single token address)
       // Index 2: state (number)
       // Index 3: participant count as bigint
       // Index 4: leader address
       statsData[i] = [
         BigInt(0), // placeholder
-        allowedTokens || [],
+        targetContract || '0x0000000000000000000000000000000000000000' as `0x${string}`,
         state || 0,
         BigInt(participants?.length || 0),
         leader as `0x${string}`

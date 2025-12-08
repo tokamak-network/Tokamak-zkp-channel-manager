@@ -75,10 +75,10 @@ export default function UnfreezeStatePage() {
     enabled: Boolean(selectedChannelId)
   });
 
-  const { data: allowedTokens } = useContractRead({
+  const { data: targetContract } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
-    functionName: 'getChannelAllowedTokens',
+    functionName: 'getChannelTargetContract',
     args: selectedChannelId ? [BigInt(selectedChannelId)] : undefined,
     enabled: Boolean(selectedChannelId)
   });
@@ -101,15 +101,13 @@ export default function UnfreezeStatePage() {
 
   // Convert final balances to array format for contract
   const finalBalancesArray = useMemo(() => {
-    if (!channelParticipants || !allowedTokens || !finalBalances) return [];
+    if (!channelParticipants || !targetContract || !finalBalances) return [];
     
     return channelParticipants.map((participant: string) => {
-      return allowedTokens.map((token: string) => {
-        const balance = finalBalances[participant]?.[token] || '0';
-        return BigInt(balance);
-      });
+      const balance = finalBalances[participant]?.[targetContract as string] || '0';
+      return [BigInt(balance)]; // Wrap in array since contract expects 2D array
     });
-  }, [channelParticipants, allowedTokens, finalBalances]);
+  }, [channelParticipants, targetContract, finalBalances]);
 
   // Contract write preparation
   const { config, error: prepareError } = usePrepareContractWrite({
@@ -197,14 +195,13 @@ export default function UnfreezeStatePage() {
 
   // Generate Groth16 proof for final balances
   const generateGroth16Proof = async () => {
-    if (!selectedChannelId || !channelParticipants || !allowedTokens || !channelTreeSize || !finalStateRoot) {
+    if (!selectedChannelId || !channelParticipants || !targetContract || !channelTreeSize || !finalStateRoot) {
       throw new Error('Missing channel data');
     }
 
     setProofGenerationStatus('Collecting channel data...');
     
     const participantCount = channelParticipants.length;
-    const tokenCount = allowedTokens.length;
     const treeSize = Number(channelTreeSize);
     
     // Validate tree size is supported
@@ -221,30 +218,26 @@ export default function UnfreezeStatePage() {
     for (let i = 0; i < channelParticipants.length && storageKeysL2MPT.length < treeSize; i++) {
       const participant = channelParticipants[i];
       
-      for (let j = 0; j < allowedTokens.length && storageKeysL2MPT.length < treeSize; j++) {
-        const token = allowedTokens[j];
-        
-        setProofGenerationStatus(`Fetching L2 MPT key for participant ${i + 1}, token ${j + 1}...`);
-        
-        let l2MptKey = '0';
-        try {
-          const keyResponse = await fetch(`/api/get-l2-mpt-key?participant=${participant}&token=${token}&channelId=${selectedChannelId}`, {
-            signal: AbortSignal.timeout(5000)
-          });
-          if (keyResponse.ok) {
-            const keyResult = await keyResponse.json();
-            l2MptKey = keyResult.key || '0';
-          }
-        } catch (error) {
-          console.error(`Failed to fetch L2 MPT key for ${participant}-${token}:`, error);
+      setProofGenerationStatus(`Fetching L2 MPT key for participant ${i + 1}...`);
+      
+      let l2MptKey = '0';
+      try {
+        const keyResponse = await fetch(`/api/get-l2-mpt-key?participant=${participant}&channelId=${selectedChannelId}`, {
+          signal: AbortSignal.timeout(5000)
+        });
+        if (keyResponse.ok) {
+          const keyResult = await keyResponse.json();
+          l2MptKey = keyResult.key || '0';
         }
-        
-        // Get final balance from uploaded data
-        const finalBalance = finalBalances[participant]?.[token] || '0';
-        
-        storageKeysL2MPT.push(l2MptKey);
-        storageValues.push(finalBalance);
+      } catch (error) {
+        console.error(`Failed to fetch L2 MPT key for ${participant}:`, error);
       }
+      
+      // Get final balance from uploaded data
+      const finalBalance = finalBalances[participant]?.[targetContract as string] || '0';
+      
+      storageKeysL2MPT.push(l2MptKey);
+      storageValues.push(finalBalance);
     }
     
     // Pad arrays to exactly treeSize elements

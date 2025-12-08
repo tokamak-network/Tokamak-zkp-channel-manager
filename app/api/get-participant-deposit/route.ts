@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, http } from 'viem';
 import { sepolia } from 'viem/chains';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
 
 const publicClient = createPublicClient({
   chain: sepolia,
@@ -12,29 +12,27 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const participant = searchParams.get('participant');
-    const token = searchParams.get('token');
     const channelId = searchParams.get('channelId');
 
-    if (!participant || !token || !channelId) {
+    if (!participant || !channelId) {
       return NextResponse.json(
-        { error: 'Missing required parameters: participant, token, channelId' },
+        { error: 'Missing required parameters: participant, channelId' },
         { status: 400 }
       );
     }
 
-    // Get participant token deposit from contract
+    // Get participant deposit from contract
     const deposit = await publicClient.readContract({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
-      functionName: 'getParticipantTokenDeposit',
-      args: [BigInt(channelId), participant as `0x${string}`, token as `0x${string}`]
+      address: ROLLUP_BRIDGE_CORE_ADDRESS,
+      abi: ROLLUP_BRIDGE_CORE_ABI,
+      functionName: 'getParticipantDeposit',
+      args: [BigInt(channelId), participant as `0x${string}`]
     });
 
     return NextResponse.json({
       success: true,
       amount: deposit?.toString() || '0',
       participant,
-      token,
       channelId
     });
 

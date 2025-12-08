@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useContractRead, useContractWrite, useWaitForTransaction, useAccount } from 'wagmi';
-import { formatUnits, isAddress } from 'viem';
+import { formatUnits } from 'viem';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
@@ -17,7 +17,6 @@ import {
   ROLLUP_BRIDGE_PROOF_MANAGER_ABI,
   getGroth16VerifierAddress
 } from '@/lib/contracts';
-import { getTokenSymbol, getTokenDecimals } from '@/lib/tokenUtils';
 import { generateClientSideProof, isClientProofGenerationSupported, getMemoryRequirement, requiresExternalDownload, getDownloadSize } from '@/lib/clientProofGeneration';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { Settings, Link, ShieldOff, Users, CheckCircle2, XCircle, Calculator, ChevronRight } from 'lucide-react';
@@ -87,7 +86,18 @@ const animations = `
 
 export default function InitializeStatePage() {
   const { address, isConnected } = useAccount();
-  const { hasChannels, leadingChannels, channelStatsData } = useUserRolesDynamic();
+  const { hasChannels, leadingChannels, channelStatsData, isLoading: isLoadingChannels } = useUserRolesDynamic();
+  
+  // Debug logging
+  useEffect(() => {
+    console.log('Initialize State Page Debug:', {
+      isConnected,
+      hasChannels,
+      leadingChannels,
+      channelStatsData,
+      isLoadingChannels
+    });
+  }, [isConnected, hasChannels, leadingChannels, channelStatsData, isLoadingChannels]);
   const [isMounted, setIsMounted] = useState(false);
   const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
@@ -108,22 +118,26 @@ export default function InitializeStatePage() {
   const initializableChannels = leadingChannels
     .map(channelId => {
       const stats = channelStatsData[channelId];
+      console.log('Processing channel', channelId, 'stats:', stats, 'state:', stats?.[2]);
       if (!stats || stats[2] !== 1) return null; // Only "Initialized" state channels
       return {
         id: channelId,
         stats,
-        allowedTokens: stats[1] as readonly `0x${string}`[],
+        targetContract: stats[1] as `0x${string}`, // Single target contract (token)
         state: stats[2],
         participantCount: stats[3]
       };
     })
     .filter(Boolean) as {
       id: number;
-      stats: readonly [bigint, readonly `0x${string}`[], number, bigint, `0x${string}`];
-      allowedTokens: readonly `0x${string}`[];
+      stats: readonly [bigint, `0x${string}`, number, bigint, `0x${string}`];
+      targetContract: `0x${string}`;
       state: number;
       participantCount: bigint;
     }[];
+  
+  console.log('initializableChannels:', initializableChannels);
+  console.log('hasChannels:', hasChannels, 'isLoadingChannels:', isLoadingChannels);
 
   // Auto-select first channel if only one available
   useEffect(() => {
@@ -132,8 +146,11 @@ export default function InitializeStatePage() {
     }
   }, [initializableChannels, selectedChannelId]);
 
-  // Get selected channel data
-  const selectedChannel = selectedChannelId ? initializableChannels.find(ch => ch.id === selectedChannelId) : null;
+  // Get selected channel data - auto-select first if only one channel and none selected yet
+  const effectiveSelectedId = selectedChannelId ?? (initializableChannels.length === 1 ? initializableChannels[0].id : null);
+  const selectedChannel = effectiveSelectedId !== null ? initializableChannels.find(ch => ch.id === effectiveSelectedId) : null;
+  
+  console.log('selectedChannelId:', selectedChannelId, 'effectiveSelectedId:', effectiveSelectedId, 'selectedChannel:', selectedChannel);
 
 
   // Initialize channel state transaction - now uses ProofManager
@@ -182,20 +199,6 @@ export default function InitializeStatePage() {
     enabled: isMounted && isConnected && !!selectedChannel,
   });
 
-  // Get first non-ETH token from selected channel's allowed tokens for debug info
-  const getFirstToken = () => {
-    const allowedTokens = selectedChannel?.allowedTokens;
-    if (!Array.isArray(allowedTokens)) return null;
-    
-    return allowedTokens.find(token => 
-      token !== '0x0000000000000000000000000000000000000001' && 
-      token !== '0x0000000000000000000000000000000000000000' &&
-      isAddress(token)
-    ) || null;
-  };
-
-  const firstToken = getFirstToken();
-
   // Get tree size for the selected channel to determine circuit size
   const { data: channelTreeSize } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
@@ -205,13 +208,33 @@ export default function InitializeStatePage() {
     enabled: isMounted && isConnected && !!selectedChannel,
   });
 
-  // TODO: debugTokenInfo function removed from new contract architecture
-  // Using centralized token mapping functions
-  const tokenDecimals = firstToken ? getTokenDecimals(firstToken) : 18;
-  const tokenSymbol = firstToken ? getTokenSymbol(firstToken) : 'TOKEN';
+  // Get target contract for the selected channel
+  const { data: channelTargetContract } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelTargetContract',
+    args: selectedChannel ? [BigInt(selectedChannel.id)] : undefined,
+    enabled: isMounted && isConnected && !!selectedChannel,
+  });
 
-  // Note: We'll fetch individual participant deposits during proof generation
-  // since there's no single function to get all channel deposits
+  // Get pre-allocated leaves count for the channel
+  const { data: preAllocatedCount } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelPreAllocatedLeavesCount',
+    args: selectedChannel ? [BigInt(selectedChannel.id)] : undefined,
+    enabled: isMounted && isConnected && !!selectedChannel,
+  });
+
+  // Get pre-allocated keys for the target contract
+  const { data: preAllocatedKeys } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getPreAllocatedKeys',
+    args: channelTargetContract ? [channelTargetContract] : undefined,
+    enabled: isMounted && isConnected && !!channelTargetContract,
+  });
+
 
   // Get channel state name
   const getChannelStateName = (state: number) => {
@@ -226,6 +249,9 @@ export default function InitializeStatePage() {
     }
   };
 
+  // R_MOD constant from BridgeProofManager contract
+  const R_MOD = BigInt('0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001');
+
   // Generate Groth16 proof for channel initialization
   const generateGroth16Proof = async () => {
     if (!selectedChannel || !channelParticipants) {
@@ -234,21 +260,17 @@ export default function InitializeStatePage() {
 
     setProofGenerationStatus('Collecting channel data...');
     
-    // Determine required tree size first from contract or calculate based on channel data
+    // Determine required tree size from contract
     const participantCount = channelParticipants.length;
-    const allowedTokens = selectedChannel.allowedTokens;
-    const tokenCount = allowedTokens.length;
+    const preAllocCount = preAllocatedCount ? Number(preAllocatedCount) : 0;
     
-    // Calculate expected number of entries (participants × tokens)
-    const expectedEntries = participantCount * tokenCount;
-    
-    // Determine tree size from contract or calculate based on expected entries
+    // Determine tree size from contract
     let treeSize: number;
     if (channelTreeSize) {
       treeSize = Number(channelTreeSize);
     } else {
-      // Find the smallest tree size that can accommodate all entries
-      const minTreeSize = Math.max(16, Math.min(128, 2 ** Math.ceil(Math.log2(expectedEntries))));
+      const totalEntries = participantCount + preAllocCount;
+      const minTreeSize = Math.max(16, Math.min(128, 2 ** Math.ceil(Math.log2(totalEntries))));
       treeSize = [16, 32, 64, 128].find(size => size >= minTreeSize) || 128;
     }
     
@@ -257,92 +279,100 @@ export default function InitializeStatePage() {
       throw new Error(`Unsupported tree size: ${treeSize}. Channel tree size from contract: ${channelTreeSize}`);
     }
     
-    setProofGenerationStatus(`Collecting data for ${treeSize}-leaf merkle tree (${participantCount} participants × ${tokenCount} tokens)...`);
+    setProofGenerationStatus(`Collecting data for ${treeSize}-leaf merkle tree (${preAllocCount} pre-allocated + ${participantCount} participants)...`);
     
     // Collect storage keys (L2 MPT keys) and values (deposits)
+    // Following the contract logic: pre-allocated leaves FIRST, then participant data
     const storageKeysL2MPT: string[] = [];
     const storageValues: string[] = [];
     
-    // Build participant-token combinations - collect up to tree size
-    for (let j = 0; j < allowedTokens.length && storageKeysL2MPT.length < treeSize; j++) {
-      const token = allowedTokens[j];
+    // STEP 1: Add pre-allocated leaves data FIRST (matching contract logic lines 116-130)
+    if (preAllocCount > 0 && preAllocatedKeys && channelTargetContract) {
+      setProofGenerationStatus(`Fetching ${preAllocCount} pre-allocated leaves...`);
       
-      setProofGenerationStatus(`Fetching L2 MPT keys for token ${j + 1} of ${allowedTokens.length}...`);
-      
-      let keysResult: any = null;
-      
-      // Try bulk API first
-      try {
-        const keysResponse = await fetch(`/api/get-l2-mpt-keys-list?channelId=${selectedChannel.id}&token=${token}`, {
-          signal: AbortSignal.timeout(10000) // 10 second timeout
-        });
-        
-        if (keysResponse.ok) {
-          keysResult = await keysResponse.json();
-        } else {
-          throw new Error(`HTTP ${keysResponse.status}`);
-        }
-      } catch (error) {
-        console.warn(`Bulk L2 MPT keys failed for token ${token}, falling back to individual calls:`, error);
-      }
-      
-      // Process each participant for this token
-      for (let i = 0; i < channelParticipants.length && storageKeysL2MPT.length < treeSize; i++) {
-        const participant = channelParticipants[i];
-        
-        setProofGenerationStatus(`Processing participant ${i + 1}, token ${j + 1}...`);
-        
-        let l2MptKey = '0';
-        let deposit = '0';
+      for (let i = 0; i < (preAllocatedKeys as `0x${string}`[]).length; i++) {
+        const key = (preAllocatedKeys as `0x${string}`[])[i];
         
         try {
-          // Get L2 MPT key (from bulk result or individual call)
-          if (keysResult?.keyMap) {
-            l2MptKey = keysResult.keyMap[participant] || '0';
-          } else {
-            // Fallback to individual call with timeout
-            try {
-              const keyResponse = await fetch(`/api/get-l2-mpt-key?participant=${participant}&token=${token}&channelId=${selectedChannel.id}`, {
-                signal: AbortSignal.timeout(5000)
-              });
-              if (keyResponse.ok) {
-                const keyResult = await keyResponse.json();
-                l2MptKey = keyResult.key || '0';
-              }
-            } catch (keyError) {
-              console.error(`Individual L2 MPT key fetch failed for ${participant}-${token}:`, keyError);
-              const errorMessage = keyError instanceof Error ? keyError.message : 'Unknown error';
-              throw new Error(`Failed to fetch L2 MPT key for participant ${participant} and token ${token}: ${errorMessage}`);
+          // Fetch pre-allocated leaf value from contract
+          const response = await fetch(`/api/get-pre-allocated-leaf?targetContract=${channelTargetContract}&mptKey=${key}`);
+          if (response.ok) {
+            const result = await response.json();
+            if (result.exists) {
+              // Apply modulo R_MOD as the contract does
+              const modedKey = (BigInt(key) % R_MOD).toString();
+              const modedValue = (BigInt(result.value) % R_MOD).toString();
+              
+              storageKeysL2MPT.push(modedKey);
+              storageValues.push(modedValue);
+              
+              console.log(`Pre-allocated leaf ${i}: key=${key} -> ${modedKey}, value=${result.value} -> ${modedValue}`);
             }
           }
-          
-          // Get deposit amount with timeout
-          try {
-            const depositResponse = await fetch(`/api/get-participant-deposit?participant=${participant}&token=${token}&channelId=${selectedChannel.id}`, {
-              signal: AbortSignal.timeout(5000)
-            });
-            if (depositResponse.ok) {
-              const depositResult = await depositResponse.json();
-              deposit = depositResult.amount || '0';
-            }
-          } catch (depositError) {
-            console.error(`Deposit fetch failed for ${participant}-${token}:`, depositError);
-            const errorMessage = depositError instanceof Error ? depositError.message : 'Unknown error';
-            throw new Error(`Failed to fetch deposit for participant ${participant} and token ${token}: ${errorMessage}`);
-          }
-          
-          storageKeysL2MPT.push(l2MptKey);
-          storageValues.push(deposit);
         } catch (error) {
-          console.error(`Failed to get data for ${participant}-${token}:`, error);
-          throw error; // Propagate the error instead of using mock data
+          console.error(`Failed to fetch pre-allocated leaf for key ${key}:`, error);
+          throw new Error(`Failed to fetch pre-allocated leaf for key ${key}`);
         }
       }
     }
     
-    // Tree size was determined earlier in the function
+    // STEP 2: Add participant data AFTER pre-allocated leaves (matching contract logic lines 133-148)
+    setProofGenerationStatus(`Processing ${participantCount} participants...`);
     
-    // Pad arrays to exactly treeSize elements (circuit requirement)
+    for (let i = 0; i < channelParticipants.length && storageKeysL2MPT.length < treeSize; i++) {
+      const participant = channelParticipants[i];
+      
+      setProofGenerationStatus(`Processing participant ${i + 1} of ${participantCount}...`);
+      
+      let l2MptKey = '0';
+      let deposit = '0';
+      
+      try {
+        // Get L2 MPT key
+        try {
+          const keyResponse = await fetch(`/api/get-l2-mpt-key?participant=${participant}&channelId=${selectedChannel.id}`, {
+            signal: AbortSignal.timeout(5000)
+          });
+          if (keyResponse.ok) {
+            const keyResult = await keyResponse.json();
+            l2MptKey = keyResult.key || '0';
+          }
+        } catch (keyError) {
+          console.error(`L2 MPT key fetch failed for ${participant}:`, keyError);
+          const errorMessage = keyError instanceof Error ? keyError.message : 'Unknown error';
+          throw new Error(`Failed to fetch L2 MPT key for participant ${participant}: ${errorMessage}`);
+        }
+        
+        // Get deposit amount
+        try {
+          const depositResponse = await fetch(`/api/get-participant-deposit?participant=${participant}&channelId=${selectedChannel.id}`, {
+            signal: AbortSignal.timeout(5000)
+          });
+          if (depositResponse.ok) {
+            const depositResult = await depositResponse.json();
+            deposit = depositResult.amount || '0';
+          }
+        } catch (depositError) {
+          console.error(`Deposit fetch failed for ${participant}:`, depositError);
+          const errorMessage = depositError instanceof Error ? depositError.message : 'Unknown error';
+          throw new Error(`Failed to fetch deposit for participant ${participant}: ${errorMessage}`);
+        }
+        
+        // Apply modulo R_MOD as the contract does (lines 143-144)
+        const modedL2MptKey = l2MptKey !== '0' ? (BigInt(l2MptKey) % R_MOD).toString() : '0';
+        const modedBalance = deposit !== '0' ? (BigInt(deposit) % R_MOD).toString() : '0';
+        
+        storageKeysL2MPT.push(modedL2MptKey);
+        storageValues.push(modedBalance);
+        
+        console.log(`Participant ${i}: key=${l2MptKey} -> ${modedL2MptKey}, balance=${deposit} -> ${modedBalance}`);
+      } catch (error) {
+        console.error(`Failed to get data for ${participant}:`, error);
+        throw error;
+      }
+    }
+    
+    // STEP 3: Fill remaining entries with zeros (matching contract logic lines 151-155)
     while (storageKeysL2MPT.length < treeSize) {
       storageKeysL2MPT.push('0');
       storageValues.push('0');
@@ -353,20 +383,12 @@ export default function InitializeStatePage() {
     console.log('🔍 PROOF GENERATION DEBUG:');
     console.log('  Channel ID:', selectedChannel.id);
     console.log('  Channel Tree Size:', channelTreeSize);
+    console.log('  Pre-allocated Count:', preAllocCount);
+    console.log('  Participant Count:', participantCount);
+    console.log('  Total Entries:', storageKeysL2MPT.length);
     console.log('  Requested Tree Size:', treeSize);
-    console.log('  Storage Keys Length:', storageKeysL2MPT.length);
-    console.log('  Storage Values Length:', storageValues.length);
     console.log('  First 5 Storage Keys:', storageKeysL2MPT.slice(0, 5));
     console.log('  First 5 Storage Values:', storageValues.slice(0, 5));
-    
-    // CRITICAL WARNING: Check for tree size mismatch
-    if (treeSize > 16) {
-      console.error('🚨 CRITICAL ISSUE: Tree size mismatch detected!');
-      console.error('  Channel expects:', treeSize, 'leaves');
-      console.error('  We can only generate: 16 leaves');
-      console.error('  This will likely cause "Invalid Groth16 proof" error in contract');
-      console.error('  Contract verifier was compiled for', treeSize, 'leaves, but we\'re providing 16-leaf proof');
-    }
     
     const circuitInput = {
       storage_keys_L2MPT: storageKeysL2MPT,
@@ -455,12 +477,16 @@ export default function InitializeStatePage() {
     }, 300);
   };
 
-  const isETH = !firstToken; // If no non-ETH token found, assume ETH channel
-  const displayDecimals = isETH ? 18 : tokenDecimals;
-  const displaySymbol = isETH ? 'ETH' : (typeof tokenSymbol === 'string' ? tokenSymbol : 'TOKEN');
 
   if (!isMounted) {
-    return <div className="min-h-screen bg-gray-50 dark:bg-gray-900"></div>;
+    return (
+      <div className="min-h-screen bg-[#0a1930] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#4fc3f7] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-white">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -501,6 +527,16 @@ export default function InitializeStatePage() {
               <h3 className="text-xl font-semibold text-white mb-2">Connect Your Wallet</h3>
               <p className="text-gray-300">
                 Please connect your wallet to initialize channel state
+              </p>
+            </div>
+          ) : isLoadingChannels ? (
+            <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 text-center shadow-lg shadow-[#4fc3f7]/20">
+              <div className="h-16 w-16 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 flex items-center justify-center mx-auto mb-4">
+                <Settings className="w-8 h-8 text-[#4fc3f7] animate-spin" />
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">Loading Channels...</h3>
+              <p className="text-gray-300">
+                Fetching your channel data from the blockchain
               </p>
             </div>
           ) : !hasChannels ? (
@@ -562,7 +598,7 @@ export default function InitializeStatePage() {
                             <div>
                               <h4 className="text-lg font-semibold text-white">Channel {channel.id}</h4>
                               <p className="text-sm text-gray-400">
-                                {channel.allowedTokens.length} tokens, {Number(channel.participantCount)} participants
+                                {Number(channel.participantCount)} participants
                               </p>
                             </div>
                           </div>
@@ -766,11 +802,17 @@ export default function InitializeStatePage() {
                     {/* Tree Size and Verifier Info */}
                     <div className="mt-4 p-3 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 text-center">
                       <div className="text-sm text-gray-300 mb-2">Proof Generation Details:</div>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="grid grid-cols-3 gap-2 text-xs">
                         <div>
                           <span className="text-gray-400">Tree Size:</span>
                           <div className="text-[#4fc3f7] font-medium">
                             {channelTreeSize ? Number(channelTreeSize) : 'Auto-detect'} leaves
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Pre-allocated:</span>
+                          <div className="text-[#4fc3f7] font-medium">
+                            {preAllocatedCount ? Number(preAllocatedCount) : 0} leaves
                           </div>
                         </div>
                         <div>
@@ -781,7 +823,7 @@ export default function InitializeStatePage() {
                         </div>
                       </div>
                       <div className="text-xs text-gray-400 mt-2">
-                        Participants × Tokens = {channelParticipants?.length || 0} × {selectedChannel?.allowedTokens?.length || 0} = {(channelParticipants?.length || 0) * (selectedChannel?.allowedTokens?.length || 0)} entries
+                        {preAllocatedCount ? Number(preAllocatedCount) : 0} pre-allocated + {channelParticipants?.length || 0} participants = {(preAllocatedCount ? Number(preAllocatedCount) : 0) + (channelParticipants?.length || 0)} entries
                       </div>
                     </div>
                     

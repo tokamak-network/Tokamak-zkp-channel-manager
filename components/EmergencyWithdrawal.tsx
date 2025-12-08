@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AlertTriangle, Shield, Download } from 'lucide-react';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI, ETH_TOKEN_ADDRESS } from '@/lib/contracts';
+import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI, ETH_TOKEN_ADDRESS } from '@/lib/contracts';
 import { formatBalance } from '@/lib/utils';
 
 interface EmergencyWithdrawalProps {
@@ -37,17 +37,17 @@ export function EmergencyWithdrawal({
 
   // Get user's original deposit
   const { data: userDeposit } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'getParticipantTokenDeposit',
-    args: [channelId, userAddress as `0x${string}`, targetContract as `0x${string}`],
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getParticipantDeposit',
+    args: [channelId, userAddress as `0x${string}`],
     watch: true
   });
 
   // Check if user has already withdrawn
   const { data: hasWithdrawn } = useContractRead({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'hasUserWithdrawn',
     args: [channelId, userAddress as `0x${string}`],
     watch: true
