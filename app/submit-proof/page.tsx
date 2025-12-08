@@ -383,8 +383,9 @@ export default function SubmitProofPage() {
         setShowMobileMenu={setShowMobileMenu} 
       />
 
-      <div className="ml-0 lg:ml-72 transition-all duration-300 min-h-screen">
+      <div className="ml-0 lg:ml-72 transition-all duration-300 min-h-screen space-background">
         <main className="px-4 py-8 lg:px-8">
+          <div className="max-w-5xl mx-auto">
           {/* Page Header */}
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-2">
@@ -753,6 +754,7 @@ export default function SubmitProofPage() {
               </div>
             </div>
           )}
+          </div>
         </main>
         
         <Footer className="mt-auto" />
