@@ -4,9 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { formatFrostId } from '@/lib/utils';
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { CheckCircle, Copy, X, Users, Key, Download, Hash } from 'lucide-react';
-import { decompressPublicKey } from '@/lib/frost-wasm';
 
 interface DKGSession {
   id: string;
@@ -36,115 +35,6 @@ interface DKGSessionDetailsModalProps {
   isNewlyCreated?: boolean; // Special styling/messaging for newly created sessions
 }
 
-// Component to display Group Verifying Key with X and Y coordinates
-function GroupVerifyingKeySection({
-  groupVerifyingKey,
-  copiedItems,
-  copyToClipboard
-}: {
-  groupVerifyingKey: string;
-  copiedItems: Set<string>;
-  copyToClipboard: (text: string, itemId: string) => void;
-}) {
-  // Decompress the public key to get X and Y coordinates
-  const decompressed = useMemo(() => {
-    return decompressPublicKey(groupVerifyingKey);
-  }, [groupVerifyingKey]);
-
-  return (
-    <div className="bg-green-500/5 border border-green-500/30 p-3 sm:p-4 md:p-5">
-      <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center gap-2">
-        <Key className="w-4 h-4 sm:w-5 sm:h-5 text-green-400" />
-        Group Verifying Key
-      </h3>
-      
-      {/* Compressed Key (SEC1 format) */}
-      <div className="mb-4">
-        <label className="text-xs text-gray-400 mb-1 block">Compressed (SEC1)</label>
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          <code className="text-xs sm:text-sm font-mono bg-black/40 border border-green-500/20 px-2 sm:px-3 py-2 text-green-300 select-all flex-1 break-all min-w-0">
-            {groupVerifyingKey}
-          </code>
-          <button
-            onClick={() => copyToClipboard(groupVerifyingKey, 'group-key')}
-            className="flex items-center justify-center h-8 sm:h-9 w-full sm:w-9 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 hover:border-green-500/50 text-green-400 transition-all shrink-0"
-          >
-            {copiedItems.has('group-key') ? (
-              <>
-                <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                <span className="ml-2 sm:hidden text-xs">Copied!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                <span className="ml-2 sm:hidden text-xs">Copy</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Decompressed X and Y Coordinates */}
-      {decompressed && (
-        <div className="space-y-3 border-t border-green-500/20 pt-3">
-          <label className="text-xs text-green-400 font-semibold block">Public Key Coordinates</label>
-          
-          {/* X Coordinate (Px) */}
-          <div>
-            <label className="text-xs text-gray-400 mb-1 block">Public Key X (Px)</label>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <code className="text-xs font-mono bg-black/40 border border-blue-500/20 px-2 sm:px-3 py-2 text-blue-300 select-all flex-1 break-all min-w-0">
-                {decompressed.px}
-              </code>
-              <button
-                onClick={() => copyToClipboard(decompressed.px, 'px')}
-                className="flex items-center justify-center h-8 sm:h-9 w-full sm:w-9 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 hover:border-blue-500/50 text-blue-400 transition-all shrink-0"
-              >
-                {copiedItems.has('px') ? (
-                  <>
-                    <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="ml-2 sm:hidden text-xs">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="ml-2 sm:hidden text-xs">Copy</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Y Coordinate (Py) */}
-          <div>
-            <label className="text-xs text-gray-400 mb-1 block">Public Key Y (Py)</label>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <code className="text-xs font-mono bg-black/40 border border-purple-500/20 px-2 sm:px-3 py-2 text-purple-300 select-all flex-1 break-all min-w-0">
-                {decompressed.py}
-              </code>
-              <button
-                onClick={() => copyToClipboard(decompressed.py, 'py')}
-                className="flex items-center justify-center h-8 sm:h-9 w-full sm:w-9 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 hover:border-purple-500/50 text-purple-400 transition-all shrink-0"
-              >
-                {copiedItems.has('py') ? (
-                  <>
-                    <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="ml-2 sm:hidden text-xs">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="ml-2 sm:hidden text-xs">Copy</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function DKGSessionDetailsModal({
   session,
@@ -362,11 +252,33 @@ export function DKGSessionDetailsModal({
 
           {/* Group Verifying Key (for completed sessions) */}
           {session.status === 'completed' && session.groupVerifyingKey && (
-            <GroupVerifyingKeySection 
-              groupVerifyingKey={session.groupVerifyingKey}
-              copiedItems={copiedItems}
-              copyToClipboard={copyToClipboard}
-            />
+            <div className="bg-green-500/5 border border-green-500/30 p-3 sm:p-4 md:p-5">
+              <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center gap-2">
+                <Key className="w-4 h-4 sm:w-5 sm:h-5 text-green-400" />
+                Group Verifying Key
+              </h3>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <code className="text-xs sm:text-sm font-mono bg-black/40 border border-green-500/20 px-2 sm:px-3 py-2 text-green-300 select-all flex-1 break-all min-w-0">
+                  {session.groupVerifyingKey}
+                </code>
+                <button
+                  onClick={() => copyToClipboard(session.groupVerifyingKey!, 'group-key')}
+                  className="flex items-center justify-center h-8 sm:h-9 w-full sm:w-9 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 hover:border-green-500/50 text-green-400 transition-all shrink-0"
+                >
+                  {copiedItems.has('group-key') ? (
+                    <>
+                      <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      <span className="ml-2 sm:hidden text-xs">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      <span className="ml-2 sm:hidden text-xs">Copy</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           )}
         </div>
 
