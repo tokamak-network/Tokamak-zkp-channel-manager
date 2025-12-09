@@ -917,18 +917,40 @@ export default function ThresholdSigningPage() {
                       <CheckCircle className="w-6 h-6 text-green-400" />
                       Signature Generated Successfully!
                     </h3>
-                    <div className="space-y-2 text-sm font-mono">
+                    <div className="space-y-3 text-sm font-mono">
                       <div>
                         <span className="text-gray-400">Message:</span>
                         <p className="bg-gray-900 p-2 mt-1">{finalSignatureData.message}</p>
                       </div>
-                      <div>
-                        <span className="text-gray-400">Signature (rx):</span>
-                        <p className="bg-gray-900 p-2 mt-1 break-all">{finalSignatureData.rx}</p>
+                      
+                      {/* Group Public Key (Px, Py) */}
+                      <div className="border-t border-green-500/30 pt-3 mt-3">
+                        <span className="text-green-400 font-semibold text-base">Group Public Key</span>
                       </div>
                       <div>
-                        <span className="text-gray-400">Signature (ry):</span>
-                        <p className="bg-gray-900 p-2 mt-1 break-all">{finalSignatureData.ry}</p>
+                        <span className="text-gray-400">Public Key X (Px):</span>
+                        <p className="bg-gray-900 p-2 mt-1 break-all text-blue-300">{finalSignatureData.px}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Public Key Y (Py):</span>
+                        <p className="bg-gray-900 p-2 mt-1 break-all text-blue-300">{finalSignatureData.py}</p>
+                      </div>
+                      
+                      {/* Signature Components (R, s) */}
+                      <div className="border-t border-green-500/30 pt-3 mt-3">
+                        <span className="text-green-400 font-semibold text-base">Signature</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Signature Nonce X (Rx):</span>
+                        <p className="bg-gray-900 p-2 mt-1 break-all text-purple-300">{finalSignatureData.rx}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Signature Nonce Y (Ry):</span>
+                        <p className="bg-gray-900 p-2 mt-1 break-all text-purple-300">{finalSignatureData.ry}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Signature Scalar (s):</span>
+                        <p className="bg-gray-900 p-2 mt-1 break-all text-yellow-300">{finalSignatureData.s}</p>
                       </div>
                     </div>
                     <button
