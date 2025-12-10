@@ -36,6 +36,7 @@ interface DKGSessionDetailsModalProps {
   isNewlyCreated?: boolean; // Special styling/messaging for newly created sessions
 }
 
+
 export function DKGSessionDetailsModal({
   session,
   isOpen,
