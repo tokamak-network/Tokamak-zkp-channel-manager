@@ -179,7 +179,7 @@ export function useDKGRounds(
           session: session.id,
           id_hex: myIdHex,
           pkg_bincode_hex: publicPkg,
-          sig_ecdsa_hex: signature
+          signature_hex: signature  // Changed from sig_ecdsa_hex to signature_hex
         }
       };
 
@@ -247,7 +247,7 @@ export function useDKGRounds(
       if (session.roster) {
         for (const [recipientIdHex, pkgHex] of Object.entries(result.outgoing_packages)) {
           // Find recipient's ECDSA public key from roster
-          const recipient = session.roster.find(([uid, idHex, ecdsaPubHex]) => idHex === recipientIdHex);
+          const recipient = session.roster.find(([uid, idHex, pubKeyObj]) => idHex === recipientIdHex);
           
           if (!recipient) {
             throw new Error(`Could not find recipient ${recipientIdHex} in roster`);
@@ -255,7 +255,10 @@ export function useDKGRounds(
 
           const [uid, idHex, ecdsaPubHex] = recipient;
           
+          // ecdsaPubHex is already a string after normalization in useDKGWebSocket
+          
           console.log(`  Encrypting share for participant ${uid} (${idHex.slice(0, 8)}...)`);
+          console.log(`  Using public key: ${ecdsaPubHex?.slice(0, 20)}...`);
           
           // Encrypt the DKG package using ECIES
           const encryptedData = encryptShare(ecdsaPubHex, pkgHex);
@@ -287,13 +290,32 @@ export function useDKGRounds(
 
       console.log('✅ Encrypted', encryptedPackages.length, 'packages using ECIES');
 
-      // Send to server
+      // Convert to new server format
+      // The new server expects pkgs_cipher with EncryptedPayload objects
+      const pkgs_cipher = encryptedPackages.map((pkg: [string, string, string, string, string]) => {
+        // pkg is [recipientIdHex, ephemeral_public_key_hex, nonce_hex, ciphertext_hex, signature]
+        const [recipientIdHex, ephPubKeyHex, nonceHex, ciphertextHex, signatureHex] = pkg;
+        
+        // Create the EncryptedPayload object with RosterPublicKey format
+        const encryptedPayload = {
+          ephemeral_public_key: {
+            type: "Secp256k1",
+            key: ephPubKeyHex
+          },
+          nonce: nonceHex,
+          ciphertext: ciphertextHex
+        };
+        
+        // Return tuple format expected by server: [recipient_id_hex, EncryptedPayload, signature_hex]
+        return [recipientIdHex, encryptedPayload, signatureHex];
+      });
+      
       const message = {
-        type: 'Round2Submit',
+        type: 'Round2Submit', 
         payload: {
           session: session.id,
           id_hex: sessionState.identifier,
-          pkgs_cipher_hex: encryptedPackages
+          pkgs_cipher: pkgs_cipher
         }
       };
 

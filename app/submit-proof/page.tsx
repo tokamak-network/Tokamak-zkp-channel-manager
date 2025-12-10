@@ -10,7 +10,7 @@ import { MobileNavigation } from '@/components/MobileNavigation';
 import { Footer } from '@/components/Footer';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 import { ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS, ROLLUP_BRIDGE_PROOF_MANAGER_ABI, ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
-import { FileText, Link, ShieldOff, CheckCircle2, Clock, AlertCircle, Download, Hash } from 'lucide-react';
+import { FileText, Link, ShieldOff, CheckCircle2, Clock, AlertCircle, Download, Hash, Timer } from 'lucide-react';
 
 interface ProofData {
   proofPart1: bigint[];
@@ -22,6 +22,14 @@ interface ProofData {
     preprocessedPart1: bigint[];
     preprocessedPart2: bigint[];
   }[];
+}
+
+interface RawProofJson {
+  proof_entries_part1: string[];
+  proof_entries_part2: string[];
+  a_pub_user: string[];
+  a_pub_block: string[];
+  a_pub_function: string[];
 }
 
 interface UploadedProof {
@@ -62,6 +70,8 @@ export default function SubmitProofPage() {
   const [proofError, setProofError] = useState('');
   const [signatureError, setSignatureError] = useState('');
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+  const [currentTime, setCurrentTime] = useState<number>(Math.floor(Date.now() / 1000));
   
   // Channel information from core contract
   const { data: channelInfo } = useContractRead({
@@ -87,15 +97,80 @@ export default function SubmitProofPage() {
     args: selectedChannelId ? [BigInt(selectedChannelId)] : undefined,
     enabled: Boolean(selectedChannelId)
   });
+
+  const { data: channelTimeout } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelTimeout',
+    args: selectedChannelId ? [BigInt(selectedChannelId)] : undefined,
+    enabled: Boolean(selectedChannelId)
+  });
+
+  // Calculate timeout status
+  const timeoutInfo = useMemo(() => {
+    if (!channelTimeout) return null;
+    const [openTimestamp, timeout] = channelTimeout as [bigint, bigint];
+    const openTime = Number(openTimestamp);
+    const timeoutDuration = Number(timeout);
+    const unlockTime = openTime + timeoutDuration;
+    return { openTime, timeoutDuration, unlockTime };
+  }, [channelTimeout]);
+
+  const isTimeoutPassed = useMemo(() => {
+    if (!timeoutInfo) return false;
+    return currentTime >= timeoutInfo.unlockTime;
+  }, [timeoutInfo, currentTime]);
+
+  // Update current time and calculate remaining time
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Math.floor(Date.now() / 1000);
+      setCurrentTime(now);
+      
+      if (timeoutInfo) {
+        const remaining = timeoutInfo.unlockTime - now;
+        setTimeRemaining(remaining > 0 ? remaining : 0);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timeoutInfo]);
+
+  // Format time remaining
+  const formatTimeRemaining = (seconds: number): string => {
+    if (seconds <= 0) return 'Ready!';
+    
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (days > 0) {
+      return `${days}d ${hours}h ${minutes}m ${secs}s`;
+    } else if (hours > 0) {
+      return `${hours}h ${minutes}m ${secs}s`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${secs}s`;
+    } else {
+      return `${secs}s`;
+    }
+  };
   
-  // Compute final state root from the last proof's publicInputs[0]
+  // Compute final state root from the last proof's a_pub_user[10] (lower) and a_pub_user[11] (upper)
   const finalStateRoot = useMemo(() => {
     if (uploadedProofs.length === 0) return null;
     const lastProof = uploadedProofs[uploadedProofs.length - 1];
-    if (lastProof.data.publicInputs.length === 0) return null;
+    if (lastProof.data.publicInputs.length < 12) return null;
     
-    // Extract finalStateRoot from the first slot of the last proof's publicInputs
-    return `0x${lastProof.data.publicInputs[0].toString(16).padStart(64, '0')}` as `0x${string}`;
+    // a_pub_user[10] = lower 16 bytes, a_pub_user[11] = upper 16 bytes of resulting merkle root
+    const lowerBytes = lastProof.data.publicInputs[10];
+    const upperBytes = lastProof.data.publicInputs[11];
+    
+    // Combine: upper (16 bytes) + lower (16 bytes) = 32 bytes
+    const lowerHex = lowerBytes.toString(16).padStart(32, '0');
+    const upperHex = upperBytes.toString(16).padStart(32, '0');
+    
+    return `0x${upperHex}${lowerHex}` as `0x${string}`;
   }, [uploadedProofs]);
   
   // Compute message hash for signature: keccak256(abi.encodePacked(channelId, finalStateRoot))
@@ -189,41 +264,35 @@ export default function SubmitProofPage() {
       }
       
       const text = await file.text();
-      const jsonData = JSON.parse(text);
+      const jsonData = JSON.parse(text) as RawProofJson;
       
-      // Validate required proof fields (removed finalBalances as it's not per-proof)
-      const requiredFields = ['proofPart1', 'proofPart2', 'publicInputs', 'smax', 'functions'];
-      const missingFields = requiredFields.filter(field => !jsonData[field]);
+      // Validate required proof fields for new format
+      const requiredFields = ['proof_entries_part1', 'proof_entries_part2', 'a_pub_user', 'a_pub_block', 'a_pub_function'];
+      const missingFields = requiredFields.filter(field => !jsonData[field as keyof RawProofJson]);
       
       if (missingFields.length > 0) {
         throw new Error(`Missing required proof fields: ${missingFields.join(', ')}`);
       }
       
-      // Validate function structure (each proof should have exactly 1 function)
-      if (!Array.isArray(jsonData.functions) || jsonData.functions.length !== 1) {
-        throw new Error('Each proof must contain exactly one function');
+      // Validate array structures
+      if (!Array.isArray(jsonData.proof_entries_part1) || !Array.isArray(jsonData.proof_entries_part2)) {
+        throw new Error('proof_entries_part1 and proof_entries_part2 must be arrays');
+      }
+      if (!Array.isArray(jsonData.a_pub_user) || !Array.isArray(jsonData.a_pub_block) || !Array.isArray(jsonData.a_pub_function)) {
+        throw new Error('a_pub_user, a_pub_block, and a_pub_function must be arrays');
       }
       
-      // Validate function structure
-      const func = jsonData.functions[0];
-      if (!func.functionSignature || !func.preprocessedPart1 || !func.preprocessedPart2) {
-        throw new Error('Function missing required fields: functionSignature, preprocessedPart1, or preprocessedPart2');
-      }
-      if (!Array.isArray(func.preprocessedPart1) || !Array.isArray(func.preprocessedPart2)) {
-        throw new Error('Function preprocessed parts must be arrays');
-      }
+      // Concatenate public inputs: a_pub_user + a_pub_block + a_pub_function
+      const publicInputsRaw = [...jsonData.a_pub_user, ...jsonData.a_pub_block, ...jsonData.a_pub_function];
       
       // Convert and validate proof data
+      // Note: smax is fixed at 512, function signature and preprocess data are extracted by the contract
       const newProofData: ProofData = {
-        proofPart1: jsonData.proofPart1.map((x: any) => BigInt(x)),
-        proofPart2: jsonData.proofPart2.map((x: any) => BigInt(x)),
-        publicInputs: jsonData.publicInputs.map((x: any) => BigInt(x)),
-        smax: BigInt(jsonData.smax),
-        functions: [{
-          functionSignature: func.functionSignature as `0x${string}`,
-          preprocessedPart1: func.preprocessedPart1.map((x: any) => BigInt(x)),
-          preprocessedPart2: func.preprocessedPart2.map((x: any) => BigInt(x))
-        }]
+        proofPart1: jsonData.proof_entries_part1.map((x: string) => BigInt(x)),
+        proofPart2: jsonData.proof_entries_part2.map((x: string) => BigInt(x)),
+        publicInputs: publicInputsRaw.map((x: string) => BigInt(x)),
+        smax: BigInt(512),
+        functions: []
       };
       
       // Create new uploaded proof with unique ID
@@ -283,30 +352,49 @@ export default function SubmitProofPage() {
   // Template download handlers
   const handleDownloadProofTemplate = () => {
     const template = {
-      proofPart1: ["0x1236d4364cc024d1bb70d584096fae2c", "0x14caedc95bee5309da79cfe59aa67ba3"],
-      proofPart2: ["0xd107861dd8cac07bc427c136bc12f424521b3e3aaab440fdcdd66a902e22c0a4"],
-      publicInputs: ["0x00000000000000000000000000000000d9bb52200d942752f44a41d658ee82de"],
-      smax: "512",
-      functions: [
-        {
-          functionSignature: "0xa5bd20250df117ee1576cde77471907f0792dabd126e96e46ea0b2c71299ea1e",
-          preprocessedPart1: ["0x1236d4364cc024d1bb70d584096fae2c"],
-          preprocessedPart2: ["0xd107861dd8cac07bc427c136bc12f424521b3e3aaab440fdcdd66a902e22c0a4"]
-        }
+      proof_entries_part1: [
+        "0x121663f41d6fa5c8cb9cd49c8fcae320",
+        "0x1333f45f71fbcad419367b462ad0e90f"
+      ],
+      proof_entries_part2: [
+        "0x997ff8d20d3e32eb45cc8e5596b4015580120048c97e03ab4bb3db8986f6ec07",
+        "0xc3ebbf2e66143e6f9adc26a14e1ac50df1556f7c9d5205457bea00772276e12b"
+      ],
+      a_pub_user: [
+        "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00",
+        "0x5c1103c2056371f62b88ecd6b08b7b3b",
+        "0x531702f2c7452fc52ecdbd305c08929f",
+        "0x89a9a9e9ccdff791c018ef5b70111143",
+        "0x0d35f1c31abb040057c5ed5057e7c501",
+        "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00",
+        "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00",
+        "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00",
+        "0x00", "0x00", "0x00", "0x00"
+      ],
+      a_pub_block: [
+        "0x4e7256340cc820415a6022a7d1c93a35", "0x5cc0dde1",
+        "0x69297a5c", "0x00", "0x945f42", "0x00",
+        "0x00", "0x00", "0x00", "0x00", "0x00", "0x00",
+        "0x00", "0x00", "0x00", "0x00", "0x00", "0x00",
+        "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"
+      ],
+      a_pub_function: [
+        "0x01", "0xffffffffffffffffffffffffffffffff", "0xffffffff",
+        "0x00", "0x00", "0x00", "0x00", "0x00"
       ],
       _template_info: {
-        description: "Template for individual proof data submission",
+        description: "Template for individual proof data submission (new format)",
         notes: [
           "Replace all placeholder values with your actual proof data",
           "IMPORTANT: Each file should contain exactly ONE proof",
           "Upload separate files for each proof (max 5 total)",
           "Drag and drop to reorder proofs - order matters!",
-          "proofPart1/proofPart2: ZK proof components for this function (as hex strings)",
-          "publicInputs: Public signals for this specific proof",
-          "smax: Maximum S value from proof generation",
-          "functions: Array with exactly 1 function for this proof",
-          "Each function entry contains its signature and preprocessed proof parts",
-          "All numeric values should be provided as strings to avoid precision loss"
+          "proof_entries_part1/part2: ZK proof components (hex strings, 16 bytes / 32 bytes)",
+          "a_pub_user: User public inputs (40 elements) - index 10,11 contain resulting merkle root",
+          "a_pub_block: Block public inputs (24 elements)",
+          "a_pub_function: Function public inputs (variable length)",
+          "Note: smax (512), function signature and preprocess data are handled by the contract",
+          "All numeric values should be provided as hex strings"
         ]
       }
     };
@@ -366,7 +454,7 @@ export default function SubmitProofPage() {
   // Check if channel is in correct state for proof submission (Open=2 or Active=3)
   const isChannelStateValid = channelInfo && (Number(channelInfo[1]) === 2 || Number(channelInfo[1]) === 3);
   
-  const canSubmit = isConnected && selectedChannelId && isFormValid() && isChannelStateValid && !isLoading && !isTransactionLoading;
+  const canSubmit = isConnected && selectedChannelId && isFormValid() && isChannelStateValid && isTimeoutPassed && !isLoading && !isTransactionLoading;
 
   if (!isMounted) {
     return <div className="min-h-screen bg-gray-50 dark:bg-gray-900"></div>;
@@ -479,6 +567,32 @@ export default function SubmitProofPage() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Timeout Timer */}
+                  {timeoutInfo && (
+                    <div className={`mt-4 p-4 rounded-lg border ${
+                      isTimeoutPassed 
+                        ? 'bg-green-500/10 border-green-500/30' 
+                        : 'bg-yellow-500/10 border-yellow-500/30'
+                    }`}>
+                      <div className="flex items-center gap-3">
+                        <Timer className={`w-6 h-6 ${isTimeoutPassed ? 'text-green-400' : 'text-yellow-400'}`} />
+                        <div className="flex-1">
+                          <div className={`text-sm font-medium ${isTimeoutPassed ? 'text-green-300' : 'text-yellow-300'}`}>
+                            {isTimeoutPassed ? 'Timeout Passed - Ready to Submit' : 'Waiting for Timeout'}
+                          </div>
+                          <div className={`text-2xl font-bold font-mono ${isTimeoutPassed ? 'text-green-400' : 'text-yellow-400'}`}>
+                            {timeRemaining !== null ? formatTimeRemaining(timeRemaining) : '...'}
+                          </div>
+                          {!isTimeoutPassed && (
+                            <div className="text-xs text-gray-400 mt-1">
+                              Proof submission will be available after the timeout period
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               
@@ -560,7 +674,7 @@ export default function SubmitProofPage() {
                                       {proof.file.name}
                                     </div>
                                     <div className="text-green-600 dark:text-green-400 text-xs">
-                                      Function: {proof.data.functions[0].functionSignature.slice(0, 10)}...
+                                      Inputs: {proof.data.publicInputs.length} elements
                                     </div>
                                   </div>
                                 </div>
@@ -718,6 +832,16 @@ export default function SubmitProofPage() {
                       <div className="text-sm text-red-300">
                         <strong className="block mb-1">Invalid Channel State</strong>
                         Channel must be in "Open" or "Active" state. Current: {getChannelStateDisplay(Number(channelInfo[1]))}
+                      </div>
+                    </div>
+                  )}
+
+                  {isFormValid() && isChannelStateValid && !isTimeoutPassed && timeRemaining !== null && (
+                    <div className="mb-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-start gap-3">
+                      <Timer className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm text-yellow-300">
+                        <strong className="block mb-1">Waiting for Timeout</strong>
+                        Proof submission will be available in {formatTimeRemaining(timeRemaining)}
                       </div>
                     </div>
                   )}

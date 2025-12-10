@@ -30,7 +30,7 @@ interface DKGSession {
   myRole?: 'creator' | 'participant';
   description?: string;
   participants: any[];
-  roster: Array<[number, string, string]>;
+  roster: Array<[number, string, string]>; // Normalized to always be string
   groupVerifyingKey?: string;
   automationMode?: 'manual' | 'automatic';
   _serverMissing?: boolean; // Flag when session exists locally but not on server
@@ -45,6 +45,7 @@ interface AuthState {
   dkgPrivateKey: string | null;
   dkgPublicKey?: string;
   userId: string | null;
+  accessToken?: string; // Access token from the new server format
 }
 
 export function useDKGWebSocket(
@@ -323,11 +324,19 @@ export function useDKGWebSocket(
         setAuthState(prev => ({
           ...prev,
           isAuthenticated: true,
-          userId: message.payload.user_id,
+          userId: message.payload.user_id || message.payload.suid, // Support both old and new formats
           publicKeyHex: prev.publicKeyHex,
-          dkgPrivateKey: prev.dkgPrivateKey
+          dkgPrivateKey: prev.dkgPrivateKey,
+          accessToken: message.payload.access_token // Store access token if provided
         }));
         setError('');
+        
+        // Log successful authentication
+        console.log('✅ Authentication successful:', {
+          suid: message.payload.suid,
+          principal: message.payload.principal,
+          hasAccessToken: !!message.payload.access_token
+        });
         
         // Automatically request session list after authentication
         if (wsConnection) {
@@ -561,10 +570,11 @@ export function useDKGWebSocket(
               dkgStateRef.current[sessionId] = {};
             }
             dkgStateRef.current[sessionId].identifier = myIdHex;
-            dkgStateRef.current[sessionId].roster = message.payload.roster.map((r: [number, string, string]) => ({ 
+            dkgStateRef.current[sessionId].roster = message.payload.roster.map((r: [number, string, any]) => ({ 
               uid: r[0], 
               id_hex: r[1], 
-              pubkey: r[2] 
+              // Extract the actual public key hex from RosterPublicKey object or use string directly
+              pubkey: typeof r[2] === 'string' ? r[2] : r[2].key 
             }));
             dkgStateRef.current[sessionId].group_id = message.payload.group_id;
             
@@ -573,7 +583,11 @@ export function useDKGWebSocket(
               session.id === sessionId ? {
                 ...session,
                 status: 'round1' as const,
-                roster: message.payload.roster || session.roster,
+                roster: message.payload.roster ? message.payload.roster.map((r: any[]) => [
+                  r[0], // uid
+                  r[1], // idHex
+                  typeof r[2] === 'string' ? r[2] : r[2].key // normalize pubkey
+                ]) : session.roster,
                 currentParticipants: message.payload.roster ? message.payload.roster.length : session.currentParticipants,
                 myRole: session.myRole // Preserve the existing role
               } : session
@@ -655,7 +669,7 @@ export function useDKGWebSocket(
                         session: sessionId,
                         id_hex: myIdHex,
                         pkg_bincode_hex: public_package_hex,
-                        sig_ecdsa_hex: signature
+                        signature_hex: signature  // Changed from sig_ecdsa_hex to signature_hex
                       }
                     };
                     console.log('📤 Sending Round1Submit message...');
@@ -751,6 +765,22 @@ export function useDKGWebSocket(
                   pkgs_cipher_hex.push([id_hex, ephemeral_public_key_hex, nonce_hex, ciphertext_hex, signature]);
                 }
                 
+                // Convert to new server format with EncryptedPayload objects
+                const pkgs_cipher = pkgs_cipher_hex.map((pkg: [string, string, string, string, string]) => {
+                  const [recipientIdHex, ephPubKeyHex, nonceHex, ciphertextHex, signatureHex] = pkg;
+                  
+                  const encryptedPayload = {
+                    ephemeral_public_key: {
+                      type: "Secp256k1",
+                      key: ephPubKeyHex
+                    },
+                    nonce: nonceHex,
+                    ciphertext: ciphertextHex
+                  };
+                  
+                  return [recipientIdHex, encryptedPayload, signatureHex];
+                });
+                
                 // Submit to server - use ref for current connection
                 const currentWs = wsConnectionRef.current;
                 if (currentWs && currentWs.readyState === WebSocket.OPEN) {
@@ -759,7 +789,7 @@ export function useDKGWebSocket(
                     payload: {
                       session: sessionId,
                       id_hex: state.identifier,
-                      pkgs_cipher_hex: pkgs_cipher_hex
+                      pkgs_cipher: pkgs_cipher
                     }
                   }));
                   console.log('✅ Round 2 encrypted packages submitted automatically!');
@@ -958,12 +988,28 @@ export function useDKGWebSocket(
       case 'Round2All':
         {
           // Server sends encrypted Round 2 packages for this participant
-          // Format: { session, packages: [[from_id_hex, eph_pub_hex, nonce_hex, ct_hex, sig_hex], ...] }
+          // New format: { session, packages: [[from_id_hex, EncryptedPayload, sig_hex], ...] }
           const sessionId = message.payload?.session;
           if (sessionId && message.payload?.packages) {
             console.log('📦 Round2All received:', {
               session: sessionId,
               packageCount: message.payload.packages.length
+            });
+            
+            // Convert new format to the format expected by the client
+            // From: [from_id_hex, EncryptedPayload, sig_hex]
+            // To: [from_id_hex, eph_pub_hex, nonce_hex, ct_hex, sig_hex]
+            const convertedPackages = message.payload.packages.map((pkg: any) => {
+              if (Array.isArray(pkg) && pkg.length === 3) {
+                const [fromIdHex, encryptedPayload, sigHex] = pkg;
+                // Extract values from EncryptedPayload object
+                const ephPubKeyHex = encryptedPayload.ephemeral_public_key?.key || encryptedPayload.ephemeral_public_key;
+                const nonceHex = encryptedPayload.nonce;
+                const ciphertextHex = encryptedPayload.ciphertext;
+                return [fromIdHex, ephPubKeyHex, nonceHex, ciphertextHex, sigHex];
+              }
+              // Fallback for old format
+              return pkg;
             });
             
             setSessions(prev => prev.map(session => 
@@ -995,7 +1041,7 @@ export function useDKGWebSocket(
                 console.log('🔐 Performing DKG Part 3 (Finalization)...');
                 
                 // Decrypt all received packages using current private key
-                const received_packages = message.payload.packages;
+                const received_packages = convertedPackages;
                 const decrypted_packages: any = {};
                 for (const [from_id_hex, eph_pub_hex, nonce_hex, ct_hex, _sig] of received_packages) {
                   const decrypted = ecies_decrypt(privateKeyForSigning, eph_pub_hex, nonce_hex, ct_hex);
@@ -1089,18 +1135,34 @@ export function useDKGWebSocket(
         // Server confirms DKG finalization is complete
         if (message.payload?.session) {
           const sessionId = message.payload.session;
-          const groupVkHex = message.payload.group_vk_sec1_hex;
+          
+          // Handle both old compressed format and new uncompressed format (px, py)
+          let groupVerifyingKey: string;
+          if (message.payload.px && message.payload.py) {
+            // New format: uncompressed key with px and py
+            const px = message.payload.px.replace('0x', '');
+            const py = message.payload.py.replace('0x', '');
+            // Store as uncompressed format with 04 prefix
+            groupVerifyingKey = `04${px}${py}`;
+            console.log(`   Group VK (uncompressed): px=${px.slice(0, 16)}..., py=${py.slice(0, 16)}...`);
+          } else if (message.payload.group_vk_sec1_hex) {
+            // Old format: compressed key
+            groupVerifyingKey = message.payload.group_vk_sec1_hex;
+            console.log(`   Group VK (compressed): ${groupVerifyingKey?.slice(0, 16)}...`);
+          } else {
+            console.warn('⚠️ No group verifying key found in Finalized message');
+            groupVerifyingKey = '';
+          }
           
           setSessions(prev => prev.map(session => 
             session.id === sessionId ? {
               ...session,
               status: 'completed' as const,
-              groupVerifyingKey: groupVkHex
+              groupVerifyingKey: groupVerifyingKey
             } : session
           ));
           
           console.log(`✅ DKG ceremony finalized for session ${sessionId}`);
-          console.log(`   Group VK: ${groupVkHex?.slice(0, 16)}...`);
           
           setSuccessMessage('🎉 DKG ceremony completed! Group verification key generated.');
         }
@@ -1375,7 +1437,10 @@ export function useDKGWebSocket(
         type: 'Login',
         payload: {
           challenge: authState.uuid,
-          pubkey_hex: pubkeyHex,
+          public_key: {
+            type: 'Secp256k1',
+            key: pubkeyHex
+          },
           signature_hex: signatureHex
         }
       };
@@ -1383,8 +1448,11 @@ export function useDKGWebSocket(
       console.log('🔍 Final login message:', {
         type: 'Login',
         challenge: authState.uuid,
-        pubkey_hex: pubkeyHex,
-        pubkey_length: pubkeyHex.length,
+        public_key: {
+          type: 'Secp256k1',
+          key: pubkeyHex,
+          key_length: pubkeyHex.length
+        },
         signature_hex: signatureHex,
         signature_length: signatureHex.length,
         digest: properDigest,

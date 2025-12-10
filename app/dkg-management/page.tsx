@@ -29,7 +29,6 @@ import { DKGSessionJoiner } from '@/components/dkg/DKGSessionJoiner';
 import { DKGSessionsList } from '@/components/dkg/DKGSessionsList';
 import { DKGCommitmentModal } from '@/components/dkg/DKGCommitmentModal';
 import { DKGSessionDetails } from '@/components/dkg/DKGSessionDetails';
-import { DKGSessionDetailsModal } from '@/components/dkg/DKGSessionDetailsModal';
 import { DKGAutomationStatus } from '@/components/dkg/DKGAutomationStatus';
 import { DKGErrorDisplay } from '@/components/dkg/DKGErrorDisplay';
 import { DKGConsoleSettings } from '@/components/dkg/DKGConsoleSettings';
@@ -40,6 +39,9 @@ import { DKGSessionInfo } from '@/components/dkg/DKGSessionInfo';
 import { useDKGWebSocket } from '@/hooks/useDKGWebSocket';
 import { useDKGRounds } from '@/hooks/useDKGRounds';
 import { useAutomatedDKG } from '@/hooks/useAutomatedDKG';
+
+// Import key utilities
+import { decompressPublicKey, isCompressedKey } from '@/lib/key-utils';
 
 // Types
 interface DKGSession {
@@ -77,8 +79,6 @@ export default function DKGManagementPage() {
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [newlyCreatedSession, setNewlyCreatedSession] = useState<DKGSession | null>(null);
   const [showConsoleSettings, setShowConsoleSettings] = useState(false);
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const [selectedSessionForModal, setSelectedSessionForModal] = useState<DKGSession | null>(null);
 
   // Signing state
   const [keyPackage, setKeyPackage] = useState('');
@@ -104,6 +104,7 @@ export default function DKGManagementPage() {
   const [channelId, setChannelId] = useState('');
   const [finalStateRoot, setFinalStateRoot] = useState('');
   const [computedHash, setComputedHash] = useState('');
+  const [packedData, setPackedData] = useState('');
 
   // Use our custom hooks
   const {
@@ -248,15 +249,17 @@ export default function DKGManagementPage() {
         // For uint256: take last 32 bytes, for bytes32: take as-is
         const channelIdHex = BigInt(channelIdNum).toString(16).padStart(64, '0');
         const stateRootHex = cleanStateRoot.slice(2);
-        const packedData = `0x${channelIdHex}${stateRootHex}` as `0x${string}`;
+        const packed = `0x${channelIdHex}${stateRootHex}` as `0x${string}`;
         
-        const hash = ethersKeccak256(packedData);
+        const hash = ethersKeccak256(packed);
         setComputedHash(hash);
+        setPackedData(packed);
       } else {
         setComputedHash('');
       }
     } catch (e) {
       setComputedHash('');
+      setPackedData('');
     }
   }, [channelId, finalStateRoot]);
 
@@ -472,7 +475,13 @@ export default function DKGManagementPage() {
             max_signers: params.maxSigners,
             group_id: `group_${Date.now()}`,
             participants: params.participants.map(p => p.uid),
-            participants_pubs: params.participants.map(p => [p.uid, p.publicKey])
+            participants_pubs: params.participants.map(p => [
+              p.uid, 
+              {
+                type: 'Secp256k1',
+                key: p.publicKey
+              }
+            ])
           }
         };
         
@@ -524,16 +533,42 @@ export default function DKGManagementPage() {
   };
 
   const handleViewMore = (session: DKGSession) => {
-    setSelectedSessionForModal(session);
-    setShowDetailsModal(true);
+    // Use the same component as Download Key Share button
+    setSelectedSession(session);
+    setShowSessionDetails(true);
   };
 
   const handleDownloadKeyShare = () => {
     if (selectedSession) {
-      // Create a downloadable key share
+      // Extract uncompressed coordinates if the key is compressed
+      let uncompressedKey = null;
+      if (selectedSession.groupVerifyingKey) {
+        if (isCompressedKey(selectedSession.groupVerifyingKey)) {
+          const decompressed = decompressPublicKey(selectedSession.groupVerifyingKey);
+          if (decompressed) {
+            uncompressedKey = {
+              px: '0x' + decompressed.px,
+              py: '0x' + decompressed.py
+            };
+          }
+        } else if (selectedSession.groupVerifyingKey.startsWith('04')) {
+          // Already uncompressed, extract px and py
+          uncompressedKey = {
+            px: '0x' + selectedSession.groupVerifyingKey.slice(2, 66),
+            py: '0x' + selectedSession.groupVerifyingKey.slice(66)
+          };
+        }
+      }
+      
+      // Create a downloadable key share with uncompressed coordinates
       const keyShare = {
         session_id: selectedSession.id,
-        group_verifying_key: selectedSession.groupVerifyingKey,
+        group_verifying_key_compressed: selectedSession.groupVerifyingKey,
+        group_verifying_key: uncompressedKey || {
+          px: null,
+          py: null,
+          error: 'Could not decompress key'
+        },
         my_role: selectedSession.myRole,
         participants: selectedSession.roster?.length || 0,
         threshold: `${selectedSession.minSigners}-of-${selectedSession.maxSigners}`,
@@ -544,41 +579,16 @@ export default function DKGManagementPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `share_${selectedSession.id.slice(0, 8)}.json`;
+      a.download = `dkg_key_${selectedSession.id.slice(0, 8)}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       
-      setSuccessMessage('Key share downloaded successfully!');
+      setSuccessMessage('Key share downloaded successfully with uncompressed coordinates!');
     }
   };
 
-  const handleDownloadKeyShareFromModal = () => {
-    if (selectedSessionForModal) {
-      // Create a downloadable key share
-      const keyShare = {
-        session_id: selectedSessionForModal.id,
-        group_verifying_key: selectedSessionForModal.groupVerifyingKey,
-        my_role: selectedSessionForModal.myRole,
-        participants: selectedSessionForModal.roster?.length || 0,
-        threshold: `${selectedSessionForModal.minSigners}-of-${selectedSessionForModal.maxSigners}`,
-        created_at: selectedSessionForModal.createdAt.toISOString()
-      };
-
-      const blob = new Blob([JSON.stringify(keyShare, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `share_${selectedSessionForModal.id.slice(0, 8)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      setSuccessMessage('Key share downloaded successfully!');
-    }
-  };
 
   // Signing ceremony handlers
   const handleSigningRound1 = async (message: any) => {
@@ -795,7 +805,7 @@ export default function DKGManagementPage() {
     const signatureJSON = {
       signature_bincode_hex: finalSignatureData.signature,
       message: finalSignatureData.message,
-      message_hex: messageHash,
+      message_hex: "",
       rx: finalSignatureData.rx,
       ry: finalSignatureData.ry,
       z: finalSignatureData.s,
@@ -1292,11 +1302,11 @@ export default function DKGManagementPage() {
                 </div>
 
                 {/* Quick Set Button */}
-                {computedHash && (
+                {computedHash && packedData && (
                   <Button
                     onClick={() => {
-                      setMessageToSign(computedHash);
-                      setSuccessMessage('Hash set as message to sign!');
+                      setMessageToSign(packedData);
+                      setSuccessMessage('Packed data set as message to sign!');
                     }}
                     className="w-full bg-purple-600 hover:bg-purple-700"
                   >
@@ -1480,27 +1490,6 @@ export default function DKGManagementPage() {
           />
         )}
 
-        {/* Session Creation Success Modal */}
-        <DKGSessionDetailsModal
-          session={newlyCreatedSession}
-          isOpen={!!newlyCreatedSession}
-          onClose={() => setNewlyCreatedSession(null)}
-          frostIdMap={frostIdMap}
-          isNewlyCreated={true}
-        />
-
-        {/* Session Details Modal */}
-        <DKGSessionDetailsModal
-          session={selectedSessionForModal}
-          isOpen={showDetailsModal}
-          onClose={() => {
-            setShowDetailsModal(false);
-            setSelectedSessionForModal(null);
-          }}
-          onDownloadKeyShare={handleDownloadKeyShareFromModal}
-          frostIdMap={frostIdMap}
-          isNewlyCreated={false}
-        />
 
         {/* Signature Success Modal */}
         {showSignatureSuccessModal && finalSignature && (

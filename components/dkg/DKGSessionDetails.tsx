@@ -1,8 +1,12 @@
 'use client';
 
-import { Clipboard, Users, CheckCircle2, Key, ChevronDown, ChevronUp } from 'lucide-react';
+import { Clipboard, Users, CheckCircle2, Key, ChevronDown, ChevronUp, Upload, Loader2 } from 'lucide-react';
 import { formatFrostId } from '@/lib/utils';
-import { useState } from 'react';
+import { decompressPublicKey, isCompressedKey } from '@/lib/key-utils';
+import { useState, useEffect } from 'react';
+import { useAccount, useContractRead, useContractWrite, usePrepareContractWrite, useWaitForTransaction } from 'wagmi';
+import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
+import { parseEther } from 'viem';
 
 interface DKGSession {
   id: string;
@@ -26,17 +30,119 @@ interface DKGSessionDetailsProps {
   session: DKGSession | null;
   onClose: () => void;
   onDownloadKeyShare: () => void;
+  channelId?: string; // Optional channel ID to associate with this DKG session
 }
 
 export function DKGSessionDetails({
   session,
   onClose,
-  onDownloadKeyShare
+  onDownloadKeyShare,
+  channelId
 }: DKGSessionDetailsProps) {
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
+  const [selectedChannelId, setSelectedChannelId] = useState(channelId || '');
+  const [isPostingKey, setIsPostingKey] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  const { address } = useAccount();
+  
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+  
+  // Check if user is the channel leader
+  const { data: channelLeader } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelLeader',
+    args: selectedChannelId ? [BigInt(selectedChannelId)] : undefined,
+    enabled: !!selectedChannelId && !!address,
+  });
+  
+  // Check if channel already has a public key set
+  const { data: channelPublicKey } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelPublicKey',
+    args: selectedChannelId ? [BigInt(selectedChannelId)] : undefined,
+    enabled: !!selectedChannelId,
+  });
+  
+  // Check channel state
+  const { data: channelState } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelState',
+    args: selectedChannelId ? [BigInt(selectedChannelId)] : undefined,
+    enabled: !!selectedChannelId,
+  });
+  
+  const isChannelLeader = channelLeader && address && channelLeader.toLowerCase() === address.toLowerCase();
+  const hasPublicKeySet = channelPublicKey && (channelPublicKey[0] !== BigInt(0) || channelPublicKey[1] !== BigInt(0));
+  const isChannelInitialized = channelState === 1; // ChannelState.Initialized
   
   if (!session) return null;
+  
+  // Extract px and py from the group verifying key
+  const extractedKeys = (() => {
+    if (!session.groupVerifyingKey) return null;
+    
+    if (isCompressedKey(session.groupVerifyingKey)) {
+      const decompressed = decompressPublicKey(session.groupVerifyingKey);
+      if (decompressed) {
+        return {
+          px: BigInt('0x' + decompressed.px),
+          py: BigInt('0x' + decompressed.py)
+        };
+      }
+    } else if (session.groupVerifyingKey.startsWith('04')) {
+      // Already uncompressed
+      return {
+        px: BigInt('0x' + session.groupVerifyingKey.slice(2, 66)),
+        py: BigInt('0x' + session.groupVerifyingKey.slice(66))
+      };
+    }
+    return null;
+  })();
+  
+  // Prepare contract write for setChannelPublicKey
+  const { config: setKeyConfig } = usePrepareContractWrite({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'setChannelPublicKey',
+    args: selectedChannelId && extractedKeys ? [
+      BigInt(selectedChannelId),
+      extractedKeys.px,
+      extractedKeys.py
+    ] : undefined,
+    enabled: !!selectedChannelId && !!extractedKeys && isChannelLeader && !hasPublicKeySet && isChannelInitialized,
+  });
+  
+  const { data: setKeyData, write: setChannelPublicKey } = useContractWrite(setKeyConfig);
+  
+  const { isLoading: isSettingKey } = useWaitForTransaction({
+    hash: setKeyData?.hash,
+    onSuccess() {
+      setIsPostingKey(false);
+      // You might want to add a success message here
+    },
+    onError(error) {
+      setIsPostingKey(false);
+      console.error('Error setting channel public key:', error);
+    }
+  });
+  
+  const handlePostKeyOnChain = async () => {
+    if (setChannelPublicKey) {
+      setIsPostingKey(true);
+      try {
+        await setChannelPublicKey();
+      } catch (error) {
+        setIsPostingKey(false);
+        console.error('Error posting key on-chain:', error);
+      }
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -117,7 +223,7 @@ export function DKGSessionDetails({
                 <div>
                   <div className="text-xs text-gray-400 mb-1">Created</div>
                   <div className="text-sm font-semibold text-white">
-                    {session.createdAt.toLocaleDateString()}
+                    {isMounted ? new Date(session.createdAt).toISOString().split('T')[0] : '-'}
                   </div>
                 </div>
               </div>
@@ -192,28 +298,35 @@ export function DKGSessionDetails({
                 
                 {showParticipants && (
                   <div className="mt-4 space-y-2 max-h-48 sm:max-h-60 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-[#4fc3f7]/20 scrollbar-track-transparent">
-                    {session.roster.map(([uid, idHex, ecdsaPubHex]) => (
-                      <div key={uid} className="p-3 border border-[#4fc3f7]/10 rounded-lg bg-black/20 hover:border-[#4fc3f7]/30 transition-colors">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="inline-flex items-center justify-center h-6 w-6 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 text-[#4fc3f7] text-xs font-bold rounded">
-                            #{uid}
-                          </span>
-                          <span className="text-sm font-medium text-white">
-                            Participant {uid}
-                          </span>
-                        </div>
-                        <div className="space-y-1 text-xs">
-                          <div className="flex flex-col">
-                            <span className="text-gray-400 mb-0.5">FROST ID:</span>
-                            <span className="font-mono text-gray-300 break-all">{formatFrostId(idHex)}</span>
+                    {session.roster.map(([uid, idHex, ecdsaPubHex]) => {
+                      // Normalize ecdsaPubHex in case it's an object
+                      const normalizedPubKey = typeof ecdsaPubHex === 'string' 
+                        ? ecdsaPubHex 
+                        : (ecdsaPubHex as any)?.key || String(ecdsaPubHex);
+                      
+                      return (
+                        <div key={uid} className="p-3 border border-[#4fc3f7]/10 rounded-lg bg-black/20 hover:border-[#4fc3f7]/30 transition-colors">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="inline-flex items-center justify-center h-6 w-6 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 text-[#4fc3f7] text-xs font-bold rounded">
+                              #{uid}
+                            </span>
+                            <span className="text-sm font-medium text-white">
+                              Participant {uid}
+                            </span>
                           </div>
-                          <div className="flex flex-col">
-                            <span className="text-gray-400 mb-0.5">Public Key:</span>
-                            <span className="font-mono text-gray-300 break-all">{ecdsaPubHex}</span>
+                          <div className="space-y-1 text-xs">
+                            <div className="flex flex-col">
+                              <span className="text-gray-400 mb-0.5">FROST ID:</span>
+                              <span className="font-mono text-gray-300 break-all">{formatFrostId(idHex)}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-gray-400 mb-0.5">Public Key:</span>
+                              <span className="font-mono text-gray-300 break-all">{normalizedPubKey}</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -231,18 +344,161 @@ export function DKGSessionDetails({
                 <p className="text-sm text-green-200/90 mb-4">
                   The threshold signature scheme is active with {session.minSigners}-of-{session.maxSigners} signing capability.
                 </p>
-
-                {session.groupVerifyingKey && (
-                  <div className="p-3 bg-black/40 rounded border border-green-500/20">
-                    <div className="text-xs text-gray-400 mb-1 font-medium flex items-center gap-2">
-                      <Key className="w-3 h-3 text-green-400" />
-                      Group Verification Key
+                
+                {/* Post Key On-Chain Section */}
+                {session.groupVerifyingKey && extractedKeys && (
+                  <div className="mt-4 p-3 bg-black/30 border border-[#4fc3f7]/20 rounded">
+                    <div className="text-sm font-medium text-[#4fc3f7] mb-3 flex items-center gap-2">
+                      <Upload className="w-4 h-4" />
+                      Post Key On-Chain
                     </div>
-                    <span className="font-mono text-xs text-green-300 break-all select-all block">
-                      {session.groupVerifyingKey}
-                    </span>
+                    
+                    {!selectedChannelId ? (
+                      <div className="space-y-3">
+                        <p className="text-xs text-gray-400">
+                          Enter the channel ID to post this DKG public key on-chain:
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="Enter channel ID"
+                            value={selectedChannelId}
+                            onChange={(e) => setSelectedChannelId(e.target.value)}
+                            className="flex-1 px-3 py-2 bg-black/40 border border-[#4fc3f7]/30 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#4fc3f7]/50"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="text-xs space-y-1">
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Channel ID:</span>
+                            <span className="text-[#4fc3f7] font-mono">{selectedChannelId}</span>
+                          </div>
+                          {channelLeader && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Channel Leader:</span>
+                              <span className="text-gray-300 font-mono text-xs">
+                                {channelLeader.slice(0, 6)}...{channelLeader.slice(-4)}
+                              </span>
+                            </div>
+                          )}
+                          {channelState !== undefined && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Channel State:</span>
+                              <span className={`text-xs ${
+                                channelState === 1 ? 'text-yellow-400' : 
+                                channelState === 2 ? 'text-green-400' : 'text-gray-400'
+                              }`}>
+                                {channelState === 0 ? 'None' :
+                                 channelState === 1 ? 'Initialized' :
+                                 channelState === 2 ? 'Open' :
+                                 channelState === 3 ? 'Closing' :
+                                 channelState === 4 ? 'Closed' : 'Unknown'}
+                              </span>
+                            </div>
+                          )}
+                          {hasPublicKeySet !== undefined && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Key Status:</span>
+                              <span className={hasPublicKeySet ? 'text-green-400' : 'text-yellow-400'}>
+                                {hasPublicKeySet ? 'Already Set ✓' : 'Not Set'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {isChannelLeader && !hasPublicKeySet && isChannelInitialized ? (
+                          <button
+                            onClick={handlePostKeyOnChain}
+                            disabled={isPostingKey || isSettingKey || !setChannelPublicKey}
+                            className="w-full h-9 flex items-center justify-center gap-2 bg-[#4fc3f7] hover:bg-[#4fc3f7]/90 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium transition-all text-sm rounded"
+                          >
+                            {(isPostingKey || isSettingKey) ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Posting Key...
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="w-4 h-4" />
+                                Post Public Key On-Chain
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <div className="text-xs text-yellow-400/80 bg-yellow-500/10 border border-yellow-500/20 p-2 rounded">
+                            {!isChannelLeader && address ? 
+                              '⚠️ Only the channel leader can post the public key' :
+                             hasPublicKeySet ? 
+                              '✓ Public key has already been posted on-chain' :
+                             !isChannelInitialized ?
+                              '⚠️ Channel must be in Initialized state' :
+                              '⚠️ Connect wallet to check if you are the channel leader'}
+                          </div>
+                        )}
+                        
+                        <button
+                          onClick={() => setSelectedChannelId('')}
+                          className="w-full h-8 text-xs text-gray-400 hover:text-white transition-colors"
+                        >
+                          Change Channel ID
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
+                
+
+                {session.groupVerifyingKey && (() => {
+                  const decompressed = isCompressedKey(session.groupVerifyingKey) 
+                    ? decompressPublicKey(session.groupVerifyingKey) 
+                    : null;
+                    
+                  return (
+                    <div className="p-3 bg-black/40 rounded border border-green-500/20">
+                      <div className="text-xs text-gray-400 mb-2 font-medium flex items-center gap-2">
+                        <Key className="w-3 h-3 text-green-400" />
+                        Group Verification Key (Uncompressed Coordinates)
+                      </div>
+                      {decompressed ? (
+                        <div className="space-y-2">
+                          <div>
+                            <div className="text-xs text-gray-500 mb-1">px:</div>
+                            <span className="font-mono text-xs text-green-300 break-all select-all block">
+                              0x{decompressed.px}
+                            </span>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500 mb-1">py:</div>
+                            <span className="font-mono text-xs text-green-300 break-all select-all block">
+                              0x{decompressed.py}
+                            </span>
+                          </div>
+                        </div>
+                      ) : session.groupVerifyingKey.startsWith('04') ? (
+                        <div className="space-y-2">
+                          <div>
+                            <div className="text-xs text-gray-500 mb-1">px:</div>
+                            <span className="font-mono text-xs text-green-300 break-all select-all block">
+                              0x{session.groupVerifyingKey.slice(2, 66)}
+                            </span>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500 mb-1">py:</div>
+                            <span className="font-mono text-xs text-green-300 break-all select-all block">
+                              0x{session.groupVerifyingKey.slice(66)}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="font-mono text-xs text-green-300 break-all select-all block">
+                          {session.groupVerifyingKey}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
