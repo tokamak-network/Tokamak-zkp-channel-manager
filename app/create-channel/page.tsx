@@ -60,8 +60,8 @@ export default function CreateChannelPage() {
     (channelStats1 && channelStats1[4] && String(channelStats1[4]).toLowerCase() === address.toLowerCase() && Number(channelStats1[2]) !== 5)
   );
 
-  // Form state
-  const [targetContract, setTargetContract] = useState<string>('');
+  // Form state - default to TON token since it's the only option
+  const [targetContract, setTargetContract] = useState<string>(TON_TOKEN_ADDRESS);
   const [participants, setParticipants] = useState<Participant[]>([
     { address: '' }
   ]);
@@ -128,10 +128,7 @@ export default function CreateChannelPage() {
       isAuthorized && // User must be authorized to create channels
       !isAlreadyLeader && // Prevent creation if already leading a channel
       targetContract !== '' && // Target contract must be selected
-      (targetContract === TON_TOKEN_ADDRESS || // TON contract
-       targetContract === USDC_TOKEN_ADDRESS || // USDC contract
-       targetContract === USDT_TOKEN_ADDRESS || // USDT contract
-       isValidEthereumAddress(targetContract)) &&
+      targetContract === TON_TOKEN_ADDRESS && // Only TON contract allowed
       participants.length >= 1 && 
       participants.length <= maxParticipants &&
       participants.every(p => isValidEthereumAddress(p.address)) &&
@@ -229,7 +226,7 @@ export default function CreateChannelPage() {
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-white mb-2">Create Private Channel</h2>
               <p className="text-gray-300">
-                Set up a channel targeting a specific smart contract for zero-knowledge proof operations with multiple participants.
+                Set up a channel targeting the TON token contract for zero-knowledge proof operations with multiple participants.
               </p>
             </div>
 
@@ -256,15 +253,28 @@ export default function CreateChannelPage() {
               {/* Target Contract */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-4">
-                  Target Contract
+                  Target Contract (TON Token Only)
                 </label>
+                
+                {/* Warning if non-TON contract is entered */}
+                {targetContract && targetContract !== TON_TOKEN_ADDRESS && (
+                  <div className="mb-4 p-3 bg-red-900/20 border border-red-500/50">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-400" />
+                      <p className="text-red-300 text-sm font-semibold">Only TON Token Contract Allowed</p>
+                    </div>
+                    <p className="text-red-200/80 text-xs mt-1">
+                      Please use the TON token contract address: {TON_TOKEN_ADDRESS}
+                    </p>
+                  </div>
+                )}
                 
                 <div className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <h4 className="font-medium text-white">Contract</h4>
-                    {targetContract && (getContractName(targetContract) !== 'Contract') && (
+                    {targetContract === TON_TOKEN_ADDRESS && (
                       <span className="px-2 py-1 text-xs bg-green-600/20 border border-green-500/50 text-green-300 rounded">
-                        {getContractName(targetContract)}
+                        ✓ TON Contract
                       </span>
                     )}
                   </div>
@@ -274,59 +284,45 @@ export default function CreateChannelPage() {
                       type="text"
                       value={targetContract}
                       onChange={(e) => updateTargetContract(e.target.value)}
-                      placeholder="Enter target contract address or use quick select buttons below"
-                      className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
+                      placeholder="Enter TON token contract address"
+                      className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] font-mono"
                     />
-                    {targetContract && targetContract !== TON_TOKEN_ADDRESS && targetContract !== USDC_TOKEN_ADDRESS && targetContract !== USDT_TOKEN_ADDRESS && !isValidEthereumAddress(targetContract) && (
-                      <p className="text-red-400 text-xs mt-1">Invalid contract address</p>
+                    {targetContract && targetContract !== TON_TOKEN_ADDRESS && (
+                      <p className="text-red-400 text-xs mt-1 font-semibold">⚠️ Invalid: Only TON token contract is allowed</p>
                     )}
                     
-                    {/* Quick select buttons */}
+                    {/* Quick select button for TON only */}
                     <div className="flex gap-2 flex-wrap">
                       <button
                         type="button"
                         onClick={() => updateTargetContract(TON_TOKEN_ADDRESS)}
-                        className="px-2 py-1 text-xs bg-green-600/20 border border-green-500/50 text-green-300 hover:bg-green-600/40 transition-colors"
+                        className="px-3 py-1.5 text-sm bg-green-600/20 border border-green-500/50 text-green-300 hover:bg-green-600/40 transition-colors font-medium"
                       >
-                        TON
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateTargetContract(USDC_TOKEN_ADDRESS)}
-                        className="px-2 py-1 text-xs bg-blue-600/20 border border-blue-500/50 text-blue-300 hover:bg-blue-600/40 transition-colors"
-                      >
-                        USDC
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateTargetContract(USDT_TOKEN_ADDRESS)}
-                        className="px-2 py-1 text-xs bg-purple-600/20 border border-purple-500/50 text-purple-300 hover:bg-purple-600/40 transition-colors"
-                      >
-                        USDT
+                        Use TON Token Contract
                       </button>
                     </div>
                   </div>
                 </div>
                 
                 <p className="text-sm text-gray-400 mt-2">
-                  Select one target contract for your channel. This defines what contract state will be proven.
+                  Currently, only the TON token contract is supported for channel creation.
                 </p>
                 
-                {/* Information for supported contracts */}
+                {/* Information for TON contract */}
                 <div className="mt-3 p-4 bg-blue-900/20 border border-blue-500/50">
                   <div className="flex items-start gap-3">
                     <Lightbulb className="w-5 h-5 text-blue-400" />
                     <div className="flex-1">
                       <h4 className="text-sm font-semibold text-blue-300 mb-2">
-                        Target Contracts
+                        TON Token Contract
                       </h4>
                       <p className="text-blue-200/90 text-sm mb-3">
-                        Select a target contract that has been allowlisted by the system. For testing purposes, you can use token contract addresses.
+                        Channels must target the TON token contract. This ensures consistent state verification across all channels.
                       </p>
                       <div className="space-y-1 text-xs text-blue-200/80">
-                        <p>• TON Contract: {TON_TOKEN_ADDRESS}</p>
-                        <p>• USDC Contract: {USDC_TOKEN_ADDRESS}</p>
-                        <p>• USDT Contract: {USDT_TOKEN_ADDRESS}</p>
+                        <p>• TON Contract Address: {TON_TOKEN_ADDRESS}</p>
+                        <p>• You must manually enter or use the quick select button</p>
+                        <p>• Other token contracts are not supported at this time</p>
                       </div>
                     </div>
                   </div>
@@ -434,11 +430,26 @@ export default function CreateChannelPage() {
           <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-8">
             <h3 className="font-semibold text-[#4fc3f7] mb-4">Channel Requirements & Workflow</h3>
             <ul className="space-y-2 text-sm text-gray-300">
-              <li>• Target contract must be allowlisted by the system</li>
-              <li>• Maximum 128 participants (reduced by pre-allocated leaves)</li>
-              <li>• Minimum 1 whitelisted participant required</li>
-              <li>• Timeout must be between 1 hour and 365 days</li>
-              <li>• For testing: TON, USDC, and USDT contract addresses can be used</li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-400">✓</span>
+                <span>Target contract must be the TON token contract</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-400">✓</span>
+                <span>Maximum 128 participants per channel</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-400">✓</span>
+                <span>Minimum 1 whitelisted participant required</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-400">✓</span>
+                <span>Timeout must be between 1 and 365 days</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-yellow-400">⚠</span>
+                <span>Only TON token channels are currently supported</span>
+              </li>
             </ul>
           </div>
         </div>

@@ -212,10 +212,44 @@ export default function DKGManagementPage() {
   useEffect(() => {
     try {
       if (messageToSign) {
-        const hash = keccak256(messageToSign);
+        let hash: string;
+        
+        console.log('[Hash Calculation] Input message:', messageToSign);
+        console.log('[Hash Calculation] Input length:', messageToSign.length);
+        
+        // Check if the message is a HEX string (starts with 0x)
+        if (messageToSign.startsWith('0x') || messageToSign.startsWith('0X')) {
+          // For HEX input, the keccak256 function from viem will:
+          // 1. Take the hex string (with 0x prefix)
+          // 2. Decode it to bytes
+          // 3. Hash those bytes
+          // 4. Return the hash with 0x prefix
+          hash = keccak256(messageToSign as `0x${string}`);
+          console.log('[Hash Calculation] Detected HEX input');
+        } else {
+          // For regular string input, convert to UTF-8 bytes first
+          const encoder = new TextEncoder();
+          const messageBytes = encoder.encode(messageToSign);
+          const hexMessage = '0x' + Array.from(messageBytes)
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+          hash = keccak256(hexMessage as `0x${string}`);
+          console.log('[Hash Calculation] Detected string input, converted to hex:', hexMessage);
+        }
+        
+        // Ensure the hash always has the 0x prefix
+        if (!hash.startsWith('0x')) {
+          hash = '0x' + hash;
+        }
+        
         setMessageHash(hash);
+        console.log('[Hash Calculation] Final computed hash:', hash);
+      } else {
+        setMessageHash('');
+        console.log('[Hash Calculation] No message to hash');
       }
     } catch (e) {
+      console.error('[Hash Calculation] Error:', e);
       setMessageHash('');
     }
   }, [messageToSign]);
@@ -754,20 +788,64 @@ export default function DKGManagementPage() {
 
     const thresholdNum = parseInt(signingThreshold);
     const participants = signingRoster.map((_, i) => i + 1);
-    const participants_pubs = signingRoster.map((pubkey, i) => [i + 1, pubkey]);
+    const participants_pubs = signingRoster.map((pubkey, i) => [
+      i + 1, 
+      {
+        type: 'Secp256k1',
+        key: pubkey
+      }
+    ]);
+
+    // Server always expects message to be hex-encoded bytes
+    let messageForServer: string;
+    
+    if (messageToSign.startsWith('0x') || messageToSign.startsWith('0X')) {
+      // Already hex, use as-is
+      messageForServer = messageToSign;
+    } else {
+      // Convert string to hex-encoded UTF-8 bytes
+      const encoder = new TextEncoder();
+      const messageBytes = encoder.encode(messageToSign);
+      messageForServer = '0x' + Array.from(messageBytes)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+    }
+    
+    // The server expects message_hex with 0x prefix (it strips it internally)
+    // Ensure messageHash has 0x prefix
+    const hashForServer = messageHash.startsWith('0x') ? messageHash : '0x' + messageHash;
+    
+    console.log('📤 Announcing signing session with:');
+    console.log('  - Original input:', messageToSign);
+    console.log('  - Original input length:', messageToSign.length);
+    console.log('  - Message format:', messageToSign.startsWith('0x') ? 'HEX' : 'String');
+    console.log('  - Message for server (hex):', messageForServer);
+    console.log('  - Message for server length:', messageForServer.length);
+    console.log('  - Keccak256 hash from state:', messageHash);
+    console.log('  - Keccak256 hash for server:', hashForServer);
+    console.log('  - Verifying: keccak256(' + messageForServer + ') should equal', hashForServer);
+    
+    // Double-check the hash calculation
+    const verifyHash = keccak256(messageForServer as `0x${string}`);
+    console.log('  - Verification hash:', verifyHash);
+    console.log('  - Hash match?', verifyHash === hashForServer);
 
     if (wsConnection) {
+      const payload = {
+        group_id: signingGroupId,
+        threshold: thresholdNum,
+        participants,
+        participants_pubs,
+        group_vk_sec1_hex: signingGroupVk,
+        message: messageForServer,  // Always hex-encoded bytes
+        message_hex: hashForServer, // Always the keccak256 hash with 0x prefix
+      };
+      
+      console.log('📤 Full payload being sent:', JSON.stringify(payload, null, 2));
+      
       wsConnection.send(JSON.stringify({
         type: 'AnnounceSignSession',
-        payload: {
-          group_id: signingGroupId,
-          threshold: thresholdNum,
-          participants,
-          participants_pubs,
-          group_vk_sec1_hex: signingGroupVk,
-          message: messageToSign,
-          message_hex: messageHash,
-        }
+        payload
       }));
       console.log('📤 Signing session announced');
     }
@@ -1419,9 +1497,40 @@ export default function DKGManagementPage() {
                       type="text"
                       value={messageToSign}
                       onChange={(e) => setMessageToSign(e.target.value)}
-                      placeholder="Enter message to sign..."
+                      placeholder="Enter message (text or 0x... hex format)..."
                         className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-white placeholder-gray-500 font-mono text-sm"
                     />
+                    
+                    {/* Format Indicator and Hash Display */}
+                    {messageToSign && (
+                      <div className="mt-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-400">Format Detected:</span>
+                          <Badge className={
+                            messageToSign.startsWith('0x') || messageToSign.startsWith('0X')
+                              ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                              : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                          }>
+                            {messageToSign.startsWith('0x') || messageToSign.startsWith('0X') ? 'HEX' : 'UTF-8 String'}
+                          </Badge>
+                        </div>
+                        
+                        {messageHash && (
+                          <div className="p-3 bg-[#0a1930]/50 rounded border border-[#4fc3f7]/20">
+                            <p className="text-xs text-gray-400 mb-1">Computed Keccak256 Hash:</p>
+                            <p className="text-xs text-[#4fc3f7] font-mono break-all">{messageHash}</p>
+                            <p className="text-xs text-yellow-400 mt-2 flex items-start gap-1">
+                              <span>ℹ️</span>
+                              <span>
+                                {messageToSign.startsWith('0x') || messageToSign.startsWith('0X') 
+                                  ? 'HEX bytes will be decoded and hashed directly' 
+                                  : 'String will be UTF-8 encoded to bytes, then hashed'}
+                              </span>
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
