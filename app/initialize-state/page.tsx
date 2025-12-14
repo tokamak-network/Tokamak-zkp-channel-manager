@@ -235,6 +235,15 @@ export default function InitializeStatePage() {
     enabled: isMounted && isConnected && !!channelTargetContract,
   });
 
+  // Check if channel public key is set (required for initialization)
+  const { data: isPublicKeySet } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'isChannelPublicKeySet',
+    args: selectedChannel ? [BigInt(selectedChannel.id)] : undefined,
+    enabled: isMounted && isConnected && !!selectedChannel,
+  });
+
 
   // Get channel state name
   const getChannelStateName = (state: number) => {
@@ -726,6 +735,20 @@ export default function InitializeStatePage() {
                       </div>
                     )}
 
+                    {/* Public Key Warning */}
+                    {selectedChannel && isPublicKeySet === false && (
+                      <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-400/50 rounded-lg">
+                        <div className="flex items-center gap-2 text-yellow-400 text-sm">
+                          <XCircle className="w-4 h-4" />
+                          <span className="font-medium">Public Key Required</span>
+                        </div>
+                        <p className="text-yellow-300 text-xs mt-1">
+                          The channel leader must set the public key before initialization. 
+                          Please complete the DKG ceremony and set the channel public key first.
+                        </p>
+                      </div>
+                    )}
+
                     {/* Browser Compatibility Warning */}
                     {browserCompatible === false && (
                       <div className="mb-4 p-3 bg-red-500/20 border border-red-400/50 rounded-lg">
@@ -756,11 +779,11 @@ export default function InitializeStatePage() {
                     
                     <button
                       onClick={handleInitializeState}
-                      disabled={!selectedChannel || isInitializingTransaction || isGeneratingProof || selectedChannel.stats[2] !== 1 || browserCompatible === false}
+                      disabled={!selectedChannel || isInitializingTransaction || isGeneratingProof || selectedChannel.stats[2] !== 1 || browserCompatible === false || isPublicKeySet === false}
                       className={`px-6 sm:px-8 py-3 sm:py-4 font-semibold text-white text-base sm:text-lg transition-all duration-300 transform ${
                         buttonClicked ? 'scale-95' : 'hover:scale-105'
                       } ${
-                        !selectedChannel || isInitializingTransaction || isGeneratingProof || selectedChannel.stats[2] !== 1 || browserCompatible === false
+                        !selectedChannel || isInitializingTransaction || isGeneratingProof || selectedChannel.stats[2] !== 1 || browserCompatible === false || isPublicKeySet === false
                           ? 'bg-gray-600 cursor-not-allowed'
                           : 'bg-[#4fc3f7] hover:bg-[#029bee] shadow-lg shadow-[#4fc3f7]/30 hover:shadow-xl hover:shadow-[#4fc3f7]/40'
                       } ${(isInitializingTransaction || isGeneratingProof) ? 'animate-pulse' : ''}`}
@@ -791,6 +814,11 @@ export default function InitializeStatePage() {
                             ? `Channel Already Initialized (State: ${getChannelStateName(selectedChannel.stats[2])})`
                             : `Channel Not Ready (State: ${getChannelStateName(selectedChannel.stats[2])})`
                           }
+                        </div>
+                      ) : isPublicKeySet === false ? (
+                        <div className="flex items-center gap-3 justify-center">
+                          <XCircle className="w-5 h-5" />
+                          Public Key Required - Complete DKG First
                         </div>
                       ) : (
                         <div className="flex items-center gap-3 justify-center">
