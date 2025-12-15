@@ -1069,7 +1069,7 @@ export default function DKGManagementPage() {
           messageLength: messageStr.length,
           payloadKeys: Object.keys(message.payload),
           participantsPubsValid: participants_pubs.every(([id, pubkey]) => 
-            typeof id === 'number' && pubkey.type === 'Secp256k1' && pubkey.key.match(/^[0-9a-fA-F]+$/)
+            typeof id === 'number' && typeof pubkey === 'object' && pubkey.type === 'Secp256k1' && pubkey.key.match(/^[0-9a-fA-F]+$/)
           )
         });
         

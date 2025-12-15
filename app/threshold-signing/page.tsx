@@ -145,7 +145,6 @@ export default function ThresholdSigningPage() {
           };
           console.log('🔍 [DEBUG] Parsed key package:', {
             id: pkg.id,
-            sessionId: pkg.sessionId,
             groupId: pkg.groupId,  // Show full groupId for debugging
             groupIdLength: pkg.groupId?.length,
             groupIdIsHex: pkg.groupId ? /^[0-9a-fA-F]+$/.test(pkg.groupId) : false,
@@ -533,8 +532,8 @@ export default function ThresholdSigningPage() {
     console.log('✅ Setting signing sessions:', sessions.length, 'sessions');
     console.log('📋 Sessions I have joined:', Array.from(newJoinedSessions));
     console.log('📦 Available key packages for matching:', availableKeyPackages.map(pkg => ({
-      groupId: pkg.groupId?.substring(0, 20) + '...',
-      sessionId: pkg.sessionId
+      id: pkg.id,
+      groupId: pkg.groupId?.substring(0, 20) + '...'
     })));
     
     setSigningSessions(sessions);
@@ -614,8 +613,8 @@ export default function ThresholdSigningPage() {
         sessionId: sessionId,
         signerId: prereqs.signer_id_bincode_hex,
         verifyingShare: prereqs.verifying_share_bincode_hex?.substring(0, 20) + '...',
-        packageGroupId: pkg.groupId,
-        packageSessionId: pkg.sessionId
+        packageId: pkg.id,
+        packageGroupId: pkg.groupId
       });
       
       if (wsConnection) {
