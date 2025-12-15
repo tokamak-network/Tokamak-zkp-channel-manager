@@ -65,7 +65,7 @@ export default function CreateChannelPage() {
   const [participants, setParticipants] = useState<Participant[]>([
     { address: '' }
   ]);
-  const [timeout, setTimeout] = useState(1); // in days
+  const [timeout, setTimeout] = useState(1); // in hours
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [createdChannelId, setCreatedChannelId] = useState<string>('');
   const [txHash, setTxHash] = useState<string>('');
@@ -132,7 +132,7 @@ export default function CreateChannelPage() {
       participants.length >= 1 && 
       participants.length <= maxParticipants &&
       participants.every(p => isValidEthereumAddress(p.address)) &&
-      timeout >= 1 && timeout <= 365 // 1 day to 365 days
+      timeout >= 1 && timeout <= 8760 // 1 hour to 365 days (8760 hours)
     );
   };
 
@@ -140,7 +140,7 @@ export default function CreateChannelPage() {
   const channelParams = isFormValid() ? {
     targetContract: targetContract as `0x${string}`,
     participants: participants.map(p => p.address as `0x${string}`),
-    timeout: BigInt(timeout * 86400) // Convert days to seconds
+    timeout: BigInt(timeout * 3600) // Convert hours to seconds
   } : undefined;
 
   const contractConfig = channelParams ? {
@@ -391,18 +391,18 @@ export default function CreateChannelPage() {
               {/* Timeout */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Channel Timeout (days)
+                  Channel Timeout (hours)
                 </label>
                 <input
                   type="number"
                   min="1"
-                  max="365"
+                  max="8760"
                   value={timeout}
                   onChange={(e) => setTimeout(parseInt(e.target.value) || 1)}
                   className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
                 />
                 <p className="text-sm text-gray-400 mt-1">
-                  Channel timeout period (1 day to 365 days)
+                  Channel timeout period (1 hour to 365 days = 8760 hours)
                 </p>
               </div>
 
@@ -444,7 +444,7 @@ export default function CreateChannelPage() {
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-green-400">✓</span>
-                <span>Timeout must be between 1 and 365 days</span>
+                <span>Timeout must be between 1 hour and 365 days (8760 hours)</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-yellow-400">⚠</span>
