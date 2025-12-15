@@ -306,7 +306,8 @@ export function useDKGWebSocket(
     
     // Log any error messages immediately
     if (message.type === 'Error') {
-      console.error('❌ SERVER ERROR:', message.payload?.message || 'Unknown error');
+      console.error(`❌ SERVER ERROR [${new Date().toISOString()}]:`, message.payload?.message || 'Unknown error');
+      console.error('Full error message:', message);
     }
     
     switch (message.type) {
@@ -341,7 +342,7 @@ export function useDKGWebSocket(
         // Automatically request session list after authentication
         if (wsConnection) {
           console.log('📋 Authenticated - requesting pending sessions list');
-          const listMessage = { type: 'ListPendingDKGSessions' };
+          const listMessage = { type: 'ListPendingDKGSessions', payload: null };
           wsConnection.send(JSON.stringify(listMessage));
         }
         break;
@@ -393,7 +394,7 @@ export function useDKGWebSocket(
         
         // Immediately request updated session list so others can see it
         if (wsConnection) {
-          const listMessage = { type: 'ListPendingDKGSessions' };
+          const listMessage = { type: 'ListPendingDKGSessions', payload: null };
           wsConnection.send(JSON.stringify(listMessage));
         }
         break;
@@ -1101,7 +1102,7 @@ export function useDKGWebSocket(
                       session: sessionId,
                       id_hex: state.identifier,
                       group_vk_sec1_hex: group_public_key_hex,
-                      sig_ecdsa_hex: signature
+                      signature_hex: signature
                     }
                   }));
                   console.log('✅ Finalization submitted to server!');
@@ -1181,6 +1182,122 @@ export function useDKGWebSocket(
 
     try {
       setConnectionStatus('connecting');
+      
+      // Add global WebSocket message interception for debugging and filtering
+      const connectionId = Math.random().toString(36).substr(2, 9);
+      console.log(`🔌 Setting up WebSocket interception for connection: ${connectionId}`);
+      
+      const originalSend = WebSocket.prototype.send;
+      WebSocket.prototype.send = function(data: string | ArrayBufferLike | Blob | ArrayBufferView) {
+        console.log(`🔍 [${connectionId}] Raw WebSocket.send called with:`, typeof data, data);
+        if (typeof data === 'string') {
+          try {
+            const parsed = JSON.parse(data);
+            
+            // Filter out Next.js development messages
+            if (parsed.event === 'ping' || parsed.appDirRoute !== undefined || parsed.tree) {
+              console.log('🚫 Filtered Next.js development message:', parsed);
+              return; // Don't send this message
+            }
+            
+            console.log(`🔍 [${connectionId}] [OUTGOING MESSAGE]:`, parsed);
+            if (!parsed.hasOwnProperty('payload') && parsed.type !== 'Ping') {
+              console.warn(`⚠️ [${connectionId}] Message missing payload field:`, parsed);
+            }
+            
+            // Validate signing session messages to prevent parse errors
+            if (parsed.type === 'AnnounceSignSession') {
+              const validationErrors: string[] = [];
+              const payload = parsed.payload;
+              
+              if (!payload) {
+                validationErrors.push('Missing payload');
+              } else {
+                // Validate required fields
+                if (!payload.group_id || typeof payload.group_id !== 'string') {
+                  validationErrors.push('Invalid or missing group_id');
+                }
+                if (!payload.message || typeof payload.message !== 'string') {
+                  validationErrors.push('Invalid or missing message');
+                }
+                if (!payload.message_hex || typeof payload.message_hex !== 'string') {
+                  validationErrors.push('Invalid or missing message_hex');
+                }
+                if (!payload.group_vk_sec1_hex || typeof payload.group_vk_sec1_hex !== 'string') {
+                  validationErrors.push('Invalid or missing group_vk_sec1_hex');
+                }
+                if (!Array.isArray(payload.participants)) {
+                  validationErrors.push('Invalid or missing participants array');
+                }
+                if (!Array.isArray(payload.participants_pubs)) {
+                  validationErrors.push('Invalid or missing participants_pubs array');
+                }
+                if (typeof payload.threshold !== 'number' || payload.threshold < 1) {
+                  validationErrors.push('Invalid threshold value');
+                }
+                
+                // Validate hex strings
+                if (payload.group_id && !payload.group_id.match(/^[0-9a-fA-F]+$/)) {
+                  validationErrors.push('group_id is not valid hex');
+                }
+                if (payload.message && !payload.message.match(/^[0-9a-fA-F]+$/)) {
+                  validationErrors.push('message is not valid hex');
+                }
+                if (payload.message_hex && !payload.message_hex.match(/^[0-9a-fA-F]+$/)) {
+                  validationErrors.push('message_hex is not valid hex');
+                }
+                if (payload.group_vk_sec1_hex && !payload.group_vk_sec1_hex.match(/^[0-9a-fA-F]+$/)) {
+                  validationErrors.push('group_vk_sec1_hex is not valid hex');
+                }
+                
+                // Validate participants_pubs structure
+                if (payload.participants_pubs) {
+                  payload.participants_pubs.forEach((pub: any, index: number) => {
+                    if (!Array.isArray(pub) || pub.length !== 2) {
+                      validationErrors.push(`participants_pubs[${index}] should be an array of length 2`);
+                    } else {
+                      const [id, pubkey] = pub;
+                      if (typeof id !== 'number') {
+                        validationErrors.push(`participants_pubs[${index}][0] should be a number`);
+                      }
+                      if (!pubkey || typeof pubkey !== 'object') {
+                        validationErrors.push(`participants_pubs[${index}][1] should be an object`);
+                      } else {
+                        if (pubkey.type !== 'Secp256k1') {
+                          validationErrors.push(`participants_pubs[${index}][1].type should be 'Secp256k1'`);
+                        }
+                        if (!pubkey.key || typeof pubkey.key !== 'string') {
+                          validationErrors.push(`participants_pubs[${index}][1].key should be a string`);
+                        } else if (!pubkey.key.match(/^[0-9a-fA-F]+$/)) {
+                          validationErrors.push(`participants_pubs[${index}][1].key is not valid hex`);
+                        }
+                      }
+                    }
+                  });
+                }
+              }
+              
+              if (validationErrors.length > 0) {
+                console.error(`❌ [${connectionId}] BLOCKED malformed AnnounceSignSession message:`, {
+                  errors: validationErrors,
+                  message: parsed
+                });
+                console.error('🚫 This message would have caused a "parse client msg" error on the server');
+                return; // Block sending this malformed message
+              } else {
+                console.log(`✅ [${connectionId}] AnnounceSignSession message validation passed`);
+              }
+            }
+            
+            // Add timestamp to help correlate with server errors
+            console.log(`📤 [${connectionId}] [${new Date().toISOString()}] Sent message type: ${parsed.type}`);
+          } catch (e) {
+            console.log('🔍 [OUTGOING RAW]:', data);
+          }
+        }
+        return originalSend.call(this, data);
+      };
+      
       const ws = new WebSocket(serverUrl);
       
       ws.onopen = () => {
@@ -1248,7 +1365,7 @@ export function useDKGWebSocket(
     if (!wsConnection) return;
     
     console.log('📩 Requesting challenge...');
-    const message = { type: 'RequestChallenge' };
+    const message = { type: 'RequestChallenge', payload: null };
     wsConnection.send(JSON.stringify(message));
   }, [wsConnection]);
 
@@ -1492,10 +1609,57 @@ export function useDKGWebSocket(
     }
   }, [authState.uuid, authState.publicKeyHex, authState.isAuthenticated, wsConnection, authenticate]);
 
+  // Validate authentication state and localStorage consistency
+  const validateAuthenticationState = useCallback(() => {
+    console.log('🔍 Validating authentication state and localStorage consistency...');
+    
+    // Check for authentication state inconsistency
+    if (authState.isAuthenticated && authState.publicKeyHex && address) {
+      const storedPublicKey = localStorage.getItem('dkg_last_public_key');
+      const storedAddress = localStorage.getItem('dkg_last_wallet_address');
+      
+      // Validate stored keys match current auth state
+      if (storedPublicKey && storedPublicKey !== authState.publicKeyHex) {
+        console.warn('⚠️ Stored public key mismatch with auth state');
+        console.log('Stored:', storedPublicKey.substring(0, 20) + '...');
+        console.log('Auth State:', authState.publicKeyHex.substring(0, 20) + '...');
+        
+        // Clear inconsistent state
+        localStorage.removeItem('dkg_last_public_key');
+        localStorage.removeItem('dkg_last_private_key');
+      }
+      
+      // Validate stored address matches current wallet
+      if (storedAddress && storedAddress !== address) {
+        console.warn('⚠️ Stored address mismatch with current wallet');
+        // This will be handled by the wallet change logic below
+      }
+      
+      // Validate hex format of keys
+      if (authState.publicKeyHex && !authState.publicKeyHex.match(/^[0-9a-fA-F]+$/)) {
+        console.error('❌ Invalid public key hex format in auth state');
+        setAuthState({
+          isAuthenticated: false,
+          challenge: '',
+          uuid: '',
+          publicKeyHex: '',
+          dkgPrivateKey: '',
+          userId: null
+        });
+        return;
+      }
+    }
+    
+    console.log('✅ Authentication state validation complete');
+  }, [authState, address]);
+
   // Handle wallet changes - clear auth when address changes
   useEffect(() => {
     // Only clear if we had an authenticated wallet and it changed
     if (authState.publicKeyHex && address) {
+      // First validate current state
+      validateAuthenticationState();
+      
       const previousAddress = localStorage.getItem('dkg_last_wallet_address');
       
       if (previousAddress && previousAddress !== address) {
@@ -1529,6 +1693,9 @@ export function useDKGWebSocket(
             console.log('🔄 Reloaded sessions for new wallet');
           } catch (error) {
             console.error('Failed to reload sessions:', error);
+            // Clear corrupted session data
+            localStorage.removeItem('dkg-sessions');
+            setSessions([]);
           }
         }
         
@@ -1538,7 +1705,7 @@ export function useDKGWebSocket(
       // Store current address
       localStorage.setItem('dkg_last_wallet_address', address);
     }
-  }, [address, authState.publicKeyHex]);
+  }, [address, authState.publicKeyHex, validateAuthenticationState]);
 
   // Join session
   const joinSession = useCallback((sessionId: string) => {
@@ -1675,14 +1842,41 @@ export function useDKGWebSocket(
 
   // Clear all sessions
   const clearAllSessions = useCallback(() => {
+    // Clear session data
     localStorage.removeItem('dkg-sessions');
     localStorage.removeItem('dkg-joined-sessions');
+    
+    // Clear all key packages (these were persisting and causing stale groups to appear)
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('dkg_key_package_')) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+    console.log(`🧹 Cleared ${keysToRemove.length} key packages from localStorage`);
+    
+    // Clear other DKG-related data
+    localStorage.removeItem('dkg_last_wallet_address');
+    localStorage.removeItem('dkg_last_public_key');
+    localStorage.removeItem('dkg_last_private_key');
+    localStorage.removeItem('dkg-pubkey-uid-mapping');
+    localStorage.removeItem('dkg-next-uid');
+    
     setSessions([]);
     setJoinedSessions(new Set());
     setError('');
     
+    // Trigger a page reload to refresh any UI components that depend on localStorage
+    // This ensures that signing pages also refresh their available key packages
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+    
     if (wsConnection) {
       const message = { type: 'ClearAllSessions', payload: null };
+      console.log('📤 Sending message:', message.type);
       wsConnection.send(JSON.stringify(message));
     }
   }, [wsConnection]);

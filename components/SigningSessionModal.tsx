@@ -126,8 +126,30 @@ export function SigningSessionModal({
       return;
     }
 
+    // Ensure groupId is a valid hex string
+    let validGroupId = keyPackageData!.groupId;
+    
+    // Remove any 0x prefix if present
+    if (validGroupId.startsWith('0x')) {
+      validGroupId = validGroupId.slice(2);
+    }
+    
+    // If it's not a valid hex string (e.g., "group_123456"), convert it to hex
+    if (!/^[0-9a-fA-F]+$/.test(validGroupId)) {
+      // Convert the string to hex representation
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(validGroupId);
+      validGroupId = Array.from(bytes)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      console.log('📝 Converted non-hex groupId to hex:', {
+        original: keyPackageData!.groupId,
+        converted: validGroupId
+      });
+    }
+    
     onCreateSession({
-      groupId: keyPackageData!.groupId,
+      groupId: validGroupId,
       threshold: keyPackageData!.threshold,
       message: packedData, // Send the packed data, not the hash
       messageHash: previewHash, // Show what the server will compute

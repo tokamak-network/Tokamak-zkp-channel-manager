@@ -122,13 +122,18 @@ export default function ThresholdSigningPage() {
 
   // Load available key packages from localStorage
   const loadAvailableKeyPackages = () => {
+    console.log('🔍 [DEBUG] Loading available key packages from localStorage...');
     const packages: any[] = [];
+    const totalKeys = localStorage.length;
+    console.log('🔍 [DEBUG] Total localStorage keys:', totalKeys);
+    
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key?.startsWith('dkg_key_package_')) {
+        console.log('🔍 [DEBUG] Found key package:', key);
         try {
           const data = JSON.parse(localStorage.getItem(key) || '{}');
-          packages.push({
+          const pkg = {
             id: key,
             sessionId: data.session_id,
             groupId: data.group_id,
@@ -137,15 +142,32 @@ export default function ThresholdSigningPage() {
             timestamp: data.timestamp,
             keyPackageHex: data.key_package_hex,
             groupPublicKeyHex: data.group_public_key_hex
+          };
+          console.log('🔍 [DEBUG] Parsed key package:', {
+            id: pkg.id,
+            sessionId: pkg.sessionId,
+            groupId: pkg.groupId,  // Show full groupId for debugging
+            groupIdLength: pkg.groupId?.length,
+            groupIdIsHex: pkg.groupId ? /^[0-9a-fA-F]+$/.test(pkg.groupId) : false,
+            threshold: pkg.threshold,
+            total: pkg.total,
+            timestamp: pkg.timestamp
           });
+          packages.push(pkg);
         } catch (e) {
-          console.error('Failed to parse key package:', key);
+          console.error('Failed to parse key package:', key, e);
         }
       }
     }
-    setAvailableKeyPackages(packages.sort((a, b) => 
+    
+    const sortedPackages = packages.sort((a, b) => 
       new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    ));
+    );
+    
+    console.log('✅ [DEBUG] Loaded key packages:', sortedPackages.length, 'packages');
+    console.log('🔍 [DEBUG] Key package group IDs:', sortedPackages.map(pkg => pkg.groupId?.substring(0, 20) + '...'));
+    
+    setAvailableKeyPackages(sortedPackages);
   };
 
   // Auto-connect to DKG server on mount (if enabled in config)
@@ -164,7 +186,10 @@ export default function ThresholdSigningPage() {
   useEffect(() => {
     if (connectionStatus === 'connected' && authState.isAuthenticated && wsConnection) {
       console.log('🔄 Requesting pending signing sessions');
-      requestPendingSigningSessions();
+      // Add a small delay to ensure the connection is fully ready
+      setTimeout(() => {
+        requestPendingSigningSessions();
+      }, 500);
     }
   }, [connectionStatus, authState.isAuthenticated, wsConnection]);
 
@@ -172,7 +197,19 @@ export default function ThresholdSigningPage() {
   const requestPendingSigningSessions = () => {
     if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
       console.log('📋 Requesting list of pending signing sessions');
-      wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+      console.log('🔍 Current auth state:', {
+        isAuthenticated: authState.isAuthenticated,
+        publicKeyHex: authState.publicKeyHex?.substring(0, 20) + '...',
+        userId: authState.userId
+      });
+      console.log('🔍 Current signing sessions count:', signingSessions.length);
+      console.log('🔍 WebSocket ready state:', wsConnection.readyState);
+      wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions', payload: null }));
+    } else {
+      console.warn('❌ Cannot request pending sessions - WebSocket not ready:', {
+        wsConnection: !!wsConnection,
+        readyState: wsConnection?.readyState
+      });
     }
   };
 
@@ -199,11 +236,28 @@ export default function ThresholdSigningPage() {
   // Handle signing session announced
   const handleSignSessionAnnounced = (payload: any) => {
     console.log('🎯 SignSessionAnnounced received:', payload);
+    console.log('🔍 Current connection status:', connectionStatus);
+    console.log('🔍 Current auth status:', authState.isAuthenticated);
+    console.log('🔍 Current signing sessions count before refresh:', signingSessions.length);
     
     // Request updated session list from server for accurate data
     if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
       console.log('🔄 Requesting updated signing sessions list after announcement');
-      wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+      console.log('📤 Sending ListPendingSigningSessions request...');
+      wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions', payload: null }));
+      
+      // Add timeout to check if we receive a response
+      setTimeout(() => {
+        console.log('🔍 Sessions count after announcement request:', signingSessions.length);
+        if (signingSessions.length === 0) {
+          console.warn('❌ No sessions received after announcement - there might be a communication issue');
+        }
+      }, 2000);
+    } else {
+      console.error('❌ Cannot request updated sessions - WebSocket not ready:', {
+        wsConnection: !!wsConnection,
+        readyState: wsConnection?.readyState
+      });
     }
     
     setSuccessMessage('✅ New signing session announced');
@@ -215,8 +269,24 @@ export default function ThresholdSigningPage() {
       const { nonces_hex, commitments_hex } = signRound1Commit(keyPackage);
       signingState.current.nonces = nonces_hex;
 
-      const myRosterEntry = message.payload.roster.find((p: [number, string, string]) => p[2] === authState.publicKeyHex);
+      const myRosterEntry = message.payload.roster.find((p: [number, string, any]) => {
+        // Handle both old string format and new RosterPublicKey object format
+        const pubkey = typeof p[2] === 'string' ? p[2] : p[2].key;
+        
+        // Enhanced matching: case-insensitive and prefix-agnostic
+        const normalizeKey = (key: string) => key.replace(/^0x/i, '').toLowerCase();
+        return normalizeKey(pubkey) === normalizeKey(authState.publicKeyHex || '');
+      });
+      
       if (!myRosterEntry) {
+        console.error('🔍 Roster matching failed:', {
+          myPublicKey: authState.publicKeyHex,
+          rosterEntries: message.payload.roster.map((p: any) => ({
+            suid: p[0],
+            idHex: p[1],
+            pubkey: typeof p[2] === 'string' ? p[2] : p[2]
+          }))
+        });
         throw new Error("Could not find myself in session roster");
       }
       const myIdHex = myRosterEntry[1];
@@ -239,7 +309,7 @@ export default function ThresholdSigningPage() {
             session: signingSessionIdRef.current,
             id_hex: myIdHex,
             commitments_bincode_hex: commitments_hex,
-            sig_ecdsa_hex: signature,
+            signature_hex: signature,
           }
         }));
       }
@@ -274,7 +344,7 @@ export default function ThresholdSigningPage() {
             session: signingSessionIdRef.current,
             id_hex: signingState.current.identifier,
             signature_share_bincode_hex: signature_share_hex,
-            sig_ecdsa_hex: signature,
+            signature_hex: signature,
           }
         }));
       }
@@ -303,14 +373,26 @@ export default function ThresholdSigningPage() {
   // Handle server messages (signing-specific messages)
   const handleServerMessage = (message: any) => {
     console.log('📨 [Signing Page] Received message:', message.type, message);
+    console.log('🔍 [DEBUG] Message timestamp:', new Date().toISOString());
+    console.log('🔍 [DEBUG] Current auth state:', {
+      isAuthenticated: authState.isAuthenticated,
+      publicKeyHex: authState.publicKeyHex?.substring(0, 20) + '...',
+      userId: authState.userId
+    });
 
     switch (message.type) {
       case 'PendingSigningSessions':
         console.log('📋 Received pending signing sessions from server:', message.payload);
+        console.log('🔍 [DEBUG] Payload structure:', {
+          hasSessions: !!message.payload?.sessions,
+          sessionsLength: message.payload?.sessions?.length,
+          isArray: Array.isArray(message.payload?.sessions)
+        });
         handlePendingSigningSessions(message.payload);
         break;
       case 'SignSessionAnnounced':
         console.log('🎯 Handling SignSessionAnnounced');
+        console.log('🔍 [DEBUG] Announcement payload:', message.payload);
         handleSignSessionAnnounced(message.payload);
         break;
       case 'SignSessionJoined':
@@ -321,19 +403,19 @@ export default function ThresholdSigningPage() {
         // Request updated session list from server to get accurate participant count
         if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
           console.log('🔄 Requesting updated signing sessions list after join');
-          wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+          wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions', payload: null }));
         }
         break;
       case 'SignRound1':
-        console.log('🔄 Starting Signing Round 1');
+      case 'SignReadyRound1':
         handleSigningRound1(message);
         break;
       case 'SignRound2':
-        console.log('🔄 Starting Signing Round 2');
+      case 'SignReadyRound2':
+      case 'SignSigningPackage':
         handleSigningRound2(message);
         break;
       case 'SignatureReady':
-        console.log('🎉 Signature is ready!');
         handleSignatureReady(message.payload);
         break;
       case 'Error':
@@ -356,49 +438,106 @@ export default function ThresholdSigningPage() {
 
   // Handle pending signing sessions from server
   const handlePendingSigningSessions = (payload: any) => {
-    if (payload?.sessions && Array.isArray(payload.sessions)) {
-      console.log('📋 Processing pending signing sessions:', payload.sessions);
-      
-      // Check which sessions I've already joined based on server data
-      const newJoinedSessions = new Set<string>();
-      
-      const sessions = payload.sessions.map((s: any) => {
-        // Check if my public key is in the joined list
-        const myPubKey = authState.publicKeyHex;
-        const iAmInSession = s.joined?.some((j: any) => 
-          j.pub_key === myPubKey || j === myPubKey
-        );
-        
-        if (iAmInSession) {
-          newJoinedSessions.add(s.session);
-        }
-        
-        return {
-          id: s.session,
-          group_id: s.group_id,
-          threshold: s.threshold,
-          participants: s.participants,
-          participants_pubs: s.participants_pubs || [],
-          group_vk_sec1_hex: s.group_vk_sec1_hex || '',
-          message: s.message,
-          message_hex: s.message_hex,
-          status: iAmInSession ? 'joined' : (s.status || 'waiting'),
-          current_participants: s.joined?.length || 0,
-          round: s.round || 0,
-          created_at: new Date(),
-          joined: s.joined || []
-        };
+    console.log('🔍 [DETAILED] handlePendingSigningSessions called with payload:', payload);
+    console.log('🔍 [DEBUG] Current available key packages:', availableKeyPackages.map(pkg => ({
+      groupId: pkg.groupId,
+      isHex: /^[0-9a-fA-F]+$/.test(pkg.groupId)
+    })));
+    
+    if (!payload) {
+      console.warn('❌ No payload provided to handlePendingSigningSessions');
+      return;
+    }
+    
+    if (!payload.sessions) {
+      console.warn('❌ No sessions array in payload:', payload);
+      return;
+    }
+    
+    if (!Array.isArray(payload.sessions)) {
+      console.warn('❌ Sessions is not an array:', typeof payload.sessions, payload.sessions);
+      return;
+    }
+    
+    console.log('📋 Processing pending signing sessions:', payload.sessions);
+    console.log('🔍 My public key for comparison:', authState.publicKeyHex?.substring(0, 20) + '...');
+    
+    // Check which sessions I've already joined based on server data
+    const newJoinedSessions = new Set<string>();
+    
+    const sessions = payload.sessions.map((s: any, index: number) => {
+      console.log(`🔍 Processing session ${index + 1}/${payload.sessions.length}:`, {
+        sessionId: s.session,
+        groupId: s.group_id?.substring(0, 20) + '...',
+        threshold: s.threshold,
+        participantsCount: s.participants?.length,
+        joinedCount: s.joined?.length,
+        joinedList: s.joined?.map((j: any) => {
+          if (typeof j === 'string') return j.substring(0, 20) + '...';
+          if (j.pub_key) return j.pub_key.substring(0, 20) + '...';
+          return j;
+        })
       });
       
-      // Update joined sessions set
-      if (newJoinedSessions.size > 0) {
-        setJoinedSigningSessions(prev => new Set(Array.from(prev).concat(Array.from(newJoinedSessions))));
+      // Check if my public key is in the joined list
+      const myPubKey = authState.publicKeyHex;
+      const iAmInSession = s.joined?.some((j: any) => {
+        const joinedKey = j.pub_key || j;
+        const match = joinedKey === myPubKey;
+        if (match) {
+          console.log(`✅ Found myself in session ${s.session}:`, {
+            myKey: myPubKey?.substring(0, 20) + '...',
+            joinedKey: joinedKey?.substring(0, 20) + '...'
+          });
+        }
+        return match;
+      });
+      
+      if (iAmInSession) {
+        newJoinedSessions.add(s.session);
       }
       
-      console.log('✅ Setting signing sessions:', sessions);
-      console.log('📋 Sessions I have joined:', Array.from(newJoinedSessions));
-      setSigningSessions(sessions);
+      const processedSession = {
+        id: s.session,
+        group_id: s.group_id,
+        threshold: s.threshold,
+        participants: s.participants,
+        participants_pubs: s.participants_pubs || [],
+        group_vk_sec1_hex: s.group_vk_sec1_hex || '',
+        message: s.message,
+        message_hex: s.message_hex,
+        status: iAmInSession ? 'joined' : (s.status || 'waiting'),
+        current_participants: s.joined?.length || 0,
+        round: s.round || 0,
+        created_at: new Date(),
+        joined: s.joined || []
+      };
+      
+      console.log(`📝 Processed session ${s.session}:`, {
+        id: processedSession.id,
+        status: processedSession.status,
+        currentParticipants: processedSession.current_participants,
+        threshold: processedSession.threshold,
+        hasMatchingGroupId: availableKeyPackages.some(pkg => pkg.groupId === s.group_id)
+      });
+      
+      return processedSession;
+    });
+    
+    // Update joined sessions set
+    if (newJoinedSessions.size > 0) {
+      console.log('🔄 Updating joined sessions set:', Array.from(newJoinedSessions));
+      setJoinedSigningSessions(prev => new Set(Array.from(prev).concat(Array.from(newJoinedSessions))));
     }
+    
+    console.log('✅ Setting signing sessions:', sessions.length, 'sessions');
+    console.log('📋 Sessions I have joined:', Array.from(newJoinedSessions));
+    console.log('📦 Available key packages for matching:', availableKeyPackages.map(pkg => ({
+      groupId: pkg.groupId?.substring(0, 20) + '...',
+      sessionId: pkg.sessionId
+    })));
+    
+    setSigningSessions(sessions);
   };
 
   // File upload handler
@@ -471,6 +610,14 @@ export default function ThresholdSigningPage() {
       signingSessionIdRef.current = sessionId;
       const prereqs = getSigningPrerequisites(pkg.keyPackageHex);
       
+      console.log('🔍 Signing prerequisites:', {
+        sessionId: sessionId,
+        signerId: prereqs.signer_id_bincode_hex,
+        verifyingShare: prereqs.verifying_share_bincode_hex?.substring(0, 20) + '...',
+        packageGroupId: pkg.groupId,
+        packageSessionId: pkg.sessionId
+      });
+      
       if (wsConnection) {
         wsConnection.send(JSON.stringify({
           type: 'JoinSignSession',
@@ -518,7 +665,10 @@ export default function ThresholdSigningPage() {
     // Announce the signing session (same as DKG management)
     const thresholdNum = data.threshold;
     const participants = data.roster.map((_, i) => i + 1);
-    const participants_pubs = data.roster.map((pubkey, i) => [i + 1, pubkey]);
+    const participants_pubs = data.roster.map((pubkey, i) => [i + 1, {
+      type: "Secp256k1",
+      key: pubkey
+    }]);
 
     console.log('📤 Announcing session:', {
       group_id: data.groupId,
@@ -563,7 +713,10 @@ export default function ThresholdSigningPage() {
     const thresholdNum = parseInt(signingThreshold);
     const validRoster = signingRoster.filter(pk => pk.trim() !== '');
     const participants = validRoster.map((_, i) => i + 1);
-    const participants_pubs = validRoster.map((pubkey, i) => [i + 1, pubkey]);
+    const participants_pubs = validRoster.map((pubkey, i) => [i + 1, {
+      type: "Secp256k1",
+      key: pubkey
+    }]);
 
     if (wsConnection) {
       wsConnection.send(JSON.stringify({
@@ -783,7 +936,33 @@ export default function ThresholdSigningPage() {
                 ) : (
                   <div className="grid gap-4">
                     {signingSessions.map((session) => {
-                      const matchingPkg = availableKeyPackages.find(pkg => pkg.groupId === session.group_id);
+                      // Try to match key packages - handle both hex and non-hex group IDs
+                      const matchingPkg = availableKeyPackages.find(pkg => {
+                        // Direct match
+                        if (pkg.groupId === session.group_id) return true;
+                        
+                        // If session.group_id is hex, try converting pkg.groupId to hex
+                        if (/^[0-9a-fA-F]+$/.test(session.group_id)) {
+                          const encoder = new TextEncoder();
+                          const bytes = encoder.encode(pkg.groupId);
+                          const pkgGroupIdHex = Array.from(bytes)
+                            .map(b => b.toString(16).padStart(2, '0'))
+                            .join('');
+                          return pkgGroupIdHex === session.group_id;
+                        }
+                        
+                        // If pkg.groupId is hex, try converting session.group_id to hex
+                        if (/^[0-9a-fA-F]+$/.test(pkg.groupId)) {
+                          const encoder = new TextEncoder();
+                          const bytes = encoder.encode(session.group_id);
+                          const sessionGroupIdHex = Array.from(bytes)
+                            .map(b => b.toString(16).padStart(2, '0'))
+                            .join('');
+                          return pkg.groupId === sessionGroupIdHex;
+                        }
+                        
+                        return false;
+                      });
                       const isJoining = joiningSigningSession === session.id;
                       const hasMatchingKey = keyPackage || matchingPkg;
                       const isJoined = joinedSigningSessions.has(session.id) || session.status === 'joined';
@@ -875,7 +1054,7 @@ export default function ThresholdSigningPage() {
                             disabled
                             className="w-full px-4 py-2 bg-gray-600 cursor-not-allowed font-semibold text-gray-400 text-sm"
                           >
-                            No Key Package for {session.group_id}
+                            No Key Package Available
                           </button>
                         ) : (
                           <button

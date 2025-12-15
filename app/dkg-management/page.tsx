@@ -160,26 +160,88 @@ export default function DKGManagementPage() {
       });
   }, []);
 
+  // Validate and clean localStorage data to prevent sync issues
+  const validateAndCleanLocalStorage = () => {
+    console.log('🧹 Validating and cleaning localStorage data...');
+    const keysToRemove: string[] = [];
+    
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('dkg_')) {
+        try {
+          const data = JSON.parse(localStorage.getItem(key) || '{}');
+          
+          // Validate key package structure
+          if (key.startsWith('dkg_key_package_')) {
+            if (!data.session_id || !data.group_id || !data.key_package_hex || !data.group_public_key_hex) {
+              console.warn(`🗑️ Removing corrupted key package: ${key}`, data);
+              keysToRemove.push(key);
+              continue;
+            }
+            
+            // Validate hex strings are properly formatted
+            if (!data.key_package_hex.match(/^[0-9a-fA-F]+$/) || 
+                !data.group_public_key_hex.match(/^[0-9a-fA-F]+$/)) {
+              console.warn(`🗑️ Removing key package with invalid hex: ${key}`, data);
+              keysToRemove.push(key);
+              continue;
+            }
+          }
+          
+          // Check for stale data (older than 24 hours)
+          if (data.timestamp) {
+            const age = Date.now() - new Date(data.timestamp).getTime();
+            if (age > 24 * 60 * 60 * 1000) {
+              console.warn(`🗑️ Removing stale data: ${key} (age: ${Math.round(age / (60 * 60 * 1000))}h)`);
+              keysToRemove.push(key);
+              continue;
+            }
+          }
+        } catch (e) {
+          console.error(`🗑️ Removing unparseable localStorage entry: ${key}`, e);
+          keysToRemove.push(key);
+        }
+      }
+    }
+    
+    // Remove corrupted/stale entries
+    keysToRemove.forEach(key => {
+      localStorage.removeItem(key);
+      console.log(`✅ Removed: ${key}`);
+    });
+    
+    console.log(`🧹 Cleanup complete. Removed ${keysToRemove.length} entries.`);
+  };
+
   // Load available key packages from localStorage
   const loadAvailableKeyPackages = () => {
+    // First validate and clean localStorage
+    validateAndCleanLocalStorage();
+    
     const packages: any[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key?.startsWith('dkg_key_package_')) {
         try {
           const data = JSON.parse(localStorage.getItem(key) || '{}');
-          packages.push({
-            id: key,
-            sessionId: data.session_id,
-            groupId: data.group_id,
-            threshold: data.threshold ?? 0,
-            total: data.total ?? 0,
-            timestamp: data.timestamp,
-            keyPackageHex: data.key_package_hex,
-            groupPublicKeyHex: data.group_public_key_hex
-          });
+          
+          // Double-check data integrity after cleanup
+          if (data.session_id && data.group_id && data.key_package_hex && data.group_public_key_hex) {
+            packages.push({
+              id: key,
+              sessionId: data.session_id,
+              groupId: data.group_id,
+              threshold: data.threshold ?? 0,
+              total: data.total ?? 0,
+              timestamp: data.timestamp,
+              keyPackageHex: data.key_package_hex,
+              groupPublicKeyHex: data.group_public_key_hex
+            });
+          }
         } catch (e) {
-          console.error('Failed to parse key package:', key);
+          console.error('Failed to parse key package after cleanup:', key);
+          // Remove the corrupted entry immediately
+          localStorage.removeItem(key);
         }
       }
     }
@@ -193,7 +255,20 @@ export default function DKGManagementPage() {
     if (keyPackage.trim() !== '' && authState.publicKeyHex) {
       try {
         const metadata = JSON.parse(get_key_package_metadata(keyPackage));
-        setSigningGroupId(metadata.group_id);
+        // Convert group_id to hex if it's not already
+        let validGroupId = metadata.group_id;
+        if (validGroupId && !/^[0-9a-fA-F]+$/.test(validGroupId.replace(/^0x/i, ''))) {
+          const encoder = new TextEncoder();
+          const bytes = encoder.encode(validGroupId);
+          validGroupId = Array.from(bytes)
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+          console.log('📝 Converted non-hex groupId to hex:', {
+            original: metadata.group_id,
+            converted: validGroupId
+          });
+        }
+        setSigningGroupId(validGroupId);
         setSigningThreshold(metadata.threshold.toString());
         setSigningGroupVk(metadata.group_public_key);
         const pubkeys = Object.values(metadata.roster) as string[];
@@ -208,51 +283,62 @@ export default function DKGManagementPage() {
     }
   }, [keyPackage, authState.publicKeyHex]);
 
-  // Calculate message hash
+  // Helper function to convert ASCII to hex
+  const asciiToHex = (str: string) => {
+    const arr = new TextEncoder().encode(str);
+    return Array.from(arr, byte => byte.toString(16).padStart(2, '0')).join('');
+  };
+
+  // Calculate message hash properly for server
+  const [messageHex, setMessageHex] = useState('');
+  
   useEffect(() => {
-    try {
-      if (messageToSign) {
-        let hash: string;
-        
-        console.log('[Hash Calculation] Input message:', messageToSign);
-        console.log('[Hash Calculation] Input length:', messageToSign.length);
-        
-        // Check if the message is a HEX string (starts with 0x)
-        if (messageToSign.startsWith('0x') || messageToSign.startsWith('0X')) {
-          // For HEX input, the keccak256 function from viem will:
-          // 1. Take the hex string (with 0x prefix)
-          // 2. Decode it to bytes
-          // 3. Hash those bytes
-          // 4. Return the hash with 0x prefix
-          hash = keccak256(messageToSign as `0x${string}`);
-          console.log('[Hash Calculation] Detected HEX input');
-        } else {
-          // For regular string input, convert to UTF-8 bytes first
-          const encoder = new TextEncoder();
-          const messageBytes = encoder.encode(messageToSign);
-          const hexMessage = '0x' + Array.from(messageBytes)
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join('');
-          hash = keccak256(hexMessage as `0x${string}`);
-          console.log('[Hash Calculation] Detected string input, converted to hex:', hexMessage);
-        }
-        
-        // Ensure the hash always has the 0x prefix
-        if (!hash.startsWith('0x')) {
-          hash = '0x' + hash;
-        }
-        
-        setMessageHash(hash);
-        console.log('[Hash Calculation] Final computed hash:', hash);
-      } else {
-        setMessageHash('');
-        console.log('[Hash Calculation] No message to hash');
-      }
-    } catch (e) {
-      console.error('[Hash Calculation] Error:', e);
-      setMessageHash('');
+    if (messageToSign) {
+      const hex = asciiToHex(messageToSign);
+      setMessageHex(hex);
+    } else {
+      setMessageHex('');
     }
   }, [messageToSign]);
+
+  useEffect(() => {
+    try {
+      if (messageHex) {
+        const hash = keccak256(messageHex); // Using WASM keccak256
+        // Remove any "0x" prefix if present
+        const cleanHash = hash.startsWith('0x') ? hash.slice(2) : hash;
+        setMessageHash(cleanHash);
+        console.log('🔍 Hash calculation debug:', {
+          messageToSign,
+          messageHex,
+          rawHash: hash,
+          cleanHash: cleanHash,
+          messageHexLength: messageHex.length,
+          hashLength: cleanHash.length,
+          expected: 'hash should be 64 hex chars (32 bytes)'
+        });
+        
+        // Test with known working example from WASM signing page
+        if (messageToSign === 'hello frost') {
+          const expectedHex = '68656c6c6f2066726f7374';
+          const testHash = keccak256(expectedHex);
+          const cleanTestHash = testHash.startsWith('0x') ? testHash.slice(2) : testHash;
+          console.log('🧪 Test with known values:', {
+            input: 'hello frost',
+            expectedHex,
+            actualHex: messageHex,
+            hexMatch: messageHex === expectedHex,
+            testHash: cleanTestHash
+          });
+        }
+      } else {
+        setMessageHash('');
+      }
+    } catch (e) {
+      console.error('Hash calculation error:', e);
+      setMessageHash('');
+    }
+  }, [messageHex]);
 
   // Calculate keccak256(abi.encodePacked(channelId, finalStateRoot)) hash
   useEffect(() => {
@@ -317,7 +403,7 @@ export default function DKGManagementPage() {
       const refreshSessions = () => {
         if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
           debugLog('Auto-refreshing session list');
-          const message = { type: 'ListPendingDKGSessions' };
+          const message = { type: 'ListPendingDKGSessions', payload: null };
           wsConnection.send(JSON.stringify(message));
         }
       };
@@ -367,7 +453,7 @@ export default function DKGManagementPage() {
           setSuccessMessage('✅ Signing session created!');
           console.log('🎉 Signing session created:', newSessionId);
           if (wsConnection) {
-            wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+            wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions', payload: null }));
           }
         }
 
@@ -377,7 +463,7 @@ export default function DKGManagementPage() {
           // Request updated session list from server for accurate data
           if (wsConnection) {
             console.log('🔄 Requesting updated signing sessions list after announcement');
-            wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+            wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions', payload: null }));
           }
         }
 
@@ -388,7 +474,7 @@ export default function DKGManagementPage() {
           // Request updated session list from server to get accurate participant count
           if (wsConnection) {
             console.log('🔄 Requesting updated signing sessions list after join');
-            wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+            wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions', payload: null }));
           }
         }
 
@@ -630,8 +716,24 @@ export default function DKGManagementPage() {
       const { nonces_hex, commitments_hex } = JSON.parse(sign_part1_commit(keyPackage));
       signingState[0].current.nonces = nonces_hex;
 
-      const myRosterEntry = message.payload.roster.find((p: [number, string, string]) => p[2] === authState.publicKeyHex);
+      const myRosterEntry = message.payload.roster.find((p: [number, string, any]) => {
+        // Handle both old string format and new RosterPublicKey object format
+        const pubkey = typeof p[2] === 'string' ? p[2] : p[2].key;
+        
+        // Enhanced matching: case-insensitive and prefix-agnostic
+        const normalizeKey = (key: string) => key.replace(/^0x/i, '').toLowerCase();
+        return normalizeKey(pubkey) === normalizeKey(authState.publicKeyHex || '');
+      });
+      
       if (!myRosterEntry) {
+        console.error('🔍 Roster matching failed:', {
+          myPublicKey: authState.publicKeyHex,
+          rosterEntries: message.payload.roster.map((p: any) => ({
+            suid: p[0],
+            idHex: p[1],
+            pubkey: typeof p[2] === 'string' ? p[2] : p[2]
+          }))
+        });
         throw new Error("Could not find myself in session roster");
       }
       const myIdHex = myRosterEntry[1];
@@ -654,7 +756,7 @@ export default function DKGManagementPage() {
             session: signingSessionIdRef[0].current,
             id_hex: myIdHex,
             commitments_bincode_hex: commitments_hex,
-            sig_ecdsa_hex: signature,
+            signature_hex: signature,
           }
         }));
       }
@@ -688,7 +790,7 @@ export default function DKGManagementPage() {
             session: signingSessionIdRef[0].current,
             id_hex: signingState[0].current.identifier,
             signature_share_bincode_hex: signature_share_hex,
-            sig_ecdsa_hex: signature,
+            signature_hex: signature,
           }
         }));
       }
@@ -722,7 +824,20 @@ export default function DKGManagementPage() {
     // Load metadata from key package
     try {
       const metadata = JSON.parse(get_key_package_metadata(pkg.keyPackageHex));
-      setSigningGroupId(metadata.group_id);
+      // Convert group_id to hex if it's not already
+      let validGroupId = metadata.group_id;
+      if (validGroupId && !/^[0-9a-fA-F]+$/.test(validGroupId.replace(/^0x/i, ''))) {
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(validGroupId);
+        validGroupId = Array.from(bytes)
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+        console.log('📝 Converted non-hex groupId to hex:', {
+          original: metadata.group_id,
+          converted: validGroupId
+        });
+      }
+      setSigningGroupId(validGroupId);
       setSigningThreshold(metadata.threshold.toString());
       setSigningGroupVk(metadata.group_public_key);
     } catch (e) {
@@ -781,12 +896,101 @@ export default function DKGManagementPage() {
       setError('Please load a key package first');
       return;
     }
-    if (!messageToSign || !messageHash) {
-      setError('Please enter a message to sign');
+    
+    // Validate authentication state before proceeding
+    if (!authState.isAuthenticated || !authState.publicKeyHex) {
+      setError('Please authenticate first');
+      return;
+    }
+    
+    // Determine which message source to use
+    let finalMessage, finalMessageHex;
+    
+    if (packedData && computedHash) {
+      // Use channel state message (channelId + finalStateRoot)
+      finalMessage = packedData.slice(2); // Remove 0x prefix for server
+      finalMessageHex = computedHash.slice(2); // Remove 0x prefix for server
+      console.log('📦 Using channel state message:', {
+        channelId,
+        finalStateRoot,
+        packedData,
+        computedHash,
+        finalMessage,
+        finalMessageHex
+      });
+    } else if (messageToSign && messageHash) {
+      // Use general text message
+      finalMessage = messageHex;
+      finalMessageHex = messageHash;
+      console.log('📝 Using general text message:', {
+        messageToSign,
+        messageHex,
+        messageHash,
+        finalMessage,
+        finalMessageHex
+      });
+    } else {
+      setError('Please enter a message to sign or provide channel ID and final state root');
       return;
     }
 
+    // Validate message format (allow 0x prefix)
+    if (!finalMessage || !finalMessageHex) {
+      setError('Missing message or message hash');
+      return;
+    }
+    
+    // Remove 0x prefix for validation if present
+    const cleanMessage = finalMessage.replace(/^0x/i, '');
+    const cleanMessageHex = finalMessageHex.replace(/^0x/i, '');
+    
+    if (!cleanMessage.match(/^[0-9a-fA-F]+$/) || cleanMessage.length === 0) {
+      console.error('Invalid message format:', finalMessage);
+      setError('Invalid message format. Must be a valid hex string.');
+      return;
+    }
+    
+    if (!cleanMessageHex.match(/^[0-9a-fA-F]+$/) || cleanMessageHex.length === 0) {
+      console.error('Invalid message hex format:', finalMessageHex);
+      setError('Invalid message hex format. Must be a valid hex string.');
+      return;
+    }
+    
+    console.log('✅ Message format validation passed:', {
+      messageLength: cleanMessage.length,
+      messageHexLength: cleanMessageHex.length
+    });
+
     const thresholdNum = parseInt(signingThreshold);
+    if (isNaN(thresholdNum) || thresholdNum < 1) {
+      setError('Invalid threshold value');
+      return;
+    }
+
+    // Validate roster data
+    if (!signingRoster || signingRoster.length === 0) {
+      setError('No participants in signing roster');
+      return;
+    }
+
+    // Validate all public keys in roster
+    const invalidKeys = signingRoster.filter(pubkey => {
+      if (!pubkey) return true;
+      const cleanKey = pubkey.replace(/^0x/i, '');
+      return !cleanKey.match(/^[0-9a-fA-F]+$/) || cleanKey.length === 0;
+    });
+    
+    if (invalidKeys.length > 0) {
+      setError(`Invalid public keys in roster: ${invalidKeys.length} keys`);
+      console.error('Invalid roster keys:', invalidKeys);
+      return;
+    }
+    
+    console.log('✅ Roster validation passed:', {
+      totalKeys: signingRoster.length,
+      validKeys: signingRoster.length - invalidKeys.length
+    });
+
     const participants = signingRoster.map((_, i) => i + 1);
     const participants_pubs = signingRoster.map((pubkey, i) => [
       i + 1, 
@@ -796,58 +1000,86 @@ export default function DKGManagementPage() {
       }
     ]);
 
-    // Server always expects message to be hex-encoded bytes
-    let messageForServer: string;
-    
-    if (messageToSign.startsWith('0x') || messageToSign.startsWith('0X')) {
-      // Already hex, use as-is
-      messageForServer = messageToSign;
-    } else {
-      // Convert string to hex-encoded UTF-8 bytes
-      const encoder = new TextEncoder();
-      const messageBytes = encoder.encode(messageToSign);
-      messageForServer = '0x' + Array.from(messageBytes)
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
+    // Validate group ID and VK (allow 0x prefix)
+    if (!signingGroupId || !signingGroupVk) {
+      setError('Missing group ID or verification key');
+      return;
     }
     
-    // The server expects message_hex with 0x prefix (it strips it internally)
-    // Ensure messageHash has 0x prefix
-    const hashForServer = messageHash.startsWith('0x') ? messageHash : '0x' + messageHash;
+    // Remove 0x prefix for validation if present
+    const cleanGroupId = signingGroupId.replace(/^0x/i, '');
+    const cleanGroupVk = signingGroupVk.replace(/^0x/i, '');
     
-    console.log('📤 Announcing signing session with:');
-    console.log('  - Original input:', messageToSign);
-    console.log('  - Original input length:', messageToSign.length);
-    console.log('  - Message format:', messageToSign.startsWith('0x') ? 'HEX' : 'String');
-    console.log('  - Message for server (hex):', messageForServer);
-    console.log('  - Message for server length:', messageForServer.length);
-    console.log('  - Keccak256 hash from state:', messageHash);
-    console.log('  - Keccak256 hash for server:', hashForServer);
-    console.log('  - Verifying: keccak256(' + messageForServer + ') should equal', hashForServer);
+    if (!cleanGroupId.match(/^[0-9a-fA-F]+$/) || cleanGroupId.length === 0) {
+      console.error('Invalid group ID format:', signingGroupId);
+      setError('Invalid group ID format. Must be a valid hex string.');
+      return;
+    }
     
-    // Double-check the hash calculation
-    const verifyHash = keccak256(messageForServer as `0x${string}`);
-    console.log('  - Verification hash:', verifyHash);
-    console.log('  - Hash match?', verifyHash === hashForServer);
+    if (!cleanGroupVk.match(/^[0-9a-fA-F]+$/) || cleanGroupVk.length === 0) {
+      console.error('Invalid verification key format:', signingGroupVk);
+      setError('Invalid verification key format. Must be a valid hex string.');
+      return;
+    }
+    
+    console.log('✅ Group ID and VK validation passed:', {
+      groupIdLength: cleanGroupId.length,
+      vkLength: cleanGroupVk.length
+    });
+
+    // Log comprehensive validation info before sending
+    console.log('✅ Message validation complete:', {
+      authState: {
+        isAuthenticated: authState.isAuthenticated,
+        publicKeyHex: authState.publicKeyHex?.substring(0, 20) + '...'
+      },
+      messageValidation: {
+        finalMessage: finalMessage.substring(0, 40) + '...',
+        finalMessageHex: finalMessageHex.substring(0, 40) + '...',
+        finalMessageLength: finalMessage.length,
+        finalMessageHexLength: finalMessageHex.length,
+        isValidHex: finalMessage.match(/^[0-9a-fA-F]+$/) && finalMessageHex.match(/^[0-9a-fA-F]+$/)
+      },
+      sessionData: {
+        groupId: signingGroupId.substring(0, 20) + '...',
+        threshold: thresholdNum,
+        participantsCount: participants.length,
+        groupVkLength: signingGroupVk.length
+      },
+      roster: signingRoster.map(key => key.substring(0, 20) + '...')
+    });
 
     if (wsConnection) {
-      const payload = {
-        group_id: signingGroupId,
-        threshold: thresholdNum,
-        participants,
-        participants_pubs,
-        group_vk_sec1_hex: signingGroupVk,
-        message: messageForServer,  // Always hex-encoded bytes
-        message_hex: hashForServer, // Always the keccak256 hash with 0x prefix
+      const message = {
+        type: 'AnnounceSignSession',
+        payload: {
+          group_id: signingGroupId,
+          threshold: thresholdNum,
+          participants,
+          participants_pubs,
+          group_vk_sec1_hex: signingGroupVk,
+          message: finalMessage,
+          message_hex: finalMessageHex,
+        }
       };
       
-      console.log('📤 Full payload being sent:', JSON.stringify(payload, null, 2));
-      
-      wsConnection.send(JSON.stringify({
-        type: 'AnnounceSignSession',
-        payload
-      }));
-      console.log('📤 Signing session announced');
+      try {
+        const messageStr = JSON.stringify(message);
+        console.log('📤 Sending signing session message:', {
+          messageLength: messageStr.length,
+          payloadKeys: Object.keys(message.payload),
+          participantsPubsValid: participants_pubs.every(([id, pubkey]) => 
+            typeof id === 'number' && pubkey.type === 'Secp256k1' && pubkey.key.match(/^[0-9a-fA-F]+$/)
+          )
+        });
+        
+        wsConnection.send(messageStr);
+        console.log('✅ Signing session message sent successfully');
+      } catch (e) {
+        console.error('❌ Failed to send signing session message:', e);
+        setError('Failed to send message. Please try again.');
+        return;
+      }
     }
   };
 
@@ -1101,7 +1333,7 @@ export default function DKGManagementPage() {
                   if (tab.id === 'signing') {
                     loadAvailableKeyPackages();
                     if (wsConnection && authState.isAuthenticated) {
-                      wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+                      wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions', payload: null }));
                     }
                   }
                 }}
@@ -1194,7 +1426,7 @@ export default function DKGManagementPage() {
                 <Button
                   onClick={() => {
                     if (wsConnection) {
-                      wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions' }));
+                      wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions', payload: null }));
                     }
                   }}
                   variant="outline"
@@ -1218,7 +1450,33 @@ export default function DKGManagementPage() {
               ) : (
                 <div className="space-y-3">
                   {pendingSigningSessions.map((session: any) => {
-                    const matchingPkg = availableKeyPackages.find(pkg => pkg.groupId === session.group_id);
+                    // Try to match key packages - handle both hex and non-hex group IDs
+                    const matchingPkg = availableKeyPackages.find(pkg => {
+                      // Direct match
+                      if (pkg.groupId === session.group_id) return true;
+                      
+                      // If session.group_id is hex, try converting pkg.groupId to hex
+                      if (/^[0-9a-fA-F]+$/.test(session.group_id)) {
+                        const encoder = new TextEncoder();
+                        const bytes = encoder.encode(pkg.groupId);
+                        const pkgGroupIdHex = Array.from(bytes)
+                          .map(b => b.toString(16).padStart(2, '0'))
+                          .join('');
+                        return pkgGroupIdHex === session.group_id;
+                      }
+                      
+                      // If pkg.groupId is hex, try converting session.group_id to hex
+                      if (/^[0-9a-fA-F]+$/.test(pkg.groupId)) {
+                        const encoder = new TextEncoder();
+                        const bytes = encoder.encode(session.group_id);
+                        const sessionGroupIdHex = Array.from(bytes)
+                          .map(b => b.toString(16).padStart(2, '0'))
+                          .join('');
+                        return pkg.groupId === sessionGroupIdHex;
+                      }
+                      
+                      return false;
+                    });
                     const hasKey = keyPackage || matchingPkg;
                     const progress = (session.joined.length / session.participants.length) * 100;
                     
@@ -1276,7 +1534,7 @@ export default function DKGManagementPage() {
                               className="w-full bg-gray-600 cursor-not-allowed"
                               size="sm"
                             >
-                              No Key Package for {session.group_id}
+                              No Key Package Available
                             </Button>
                           ) : (
                             <Button
@@ -1497,40 +1755,9 @@ export default function DKGManagementPage() {
                       type="text"
                       value={messageToSign}
                       onChange={(e) => setMessageToSign(e.target.value)}
-                      placeholder="Enter message (text or 0x... hex format)..."
+                      placeholder="Enter message to sign..."
                         className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-white placeholder-gray-500 font-mono text-sm"
                     />
-                    
-                    {/* Format Indicator and Hash Display */}
-                    {messageToSign && (
-                      <div className="mt-3 space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-400">Format Detected:</span>
-                          <Badge className={
-                            messageToSign.startsWith('0x') || messageToSign.startsWith('0X')
-                              ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-                              : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-                          }>
-                            {messageToSign.startsWith('0x') || messageToSign.startsWith('0X') ? 'HEX' : 'UTF-8 String'}
-                          </Badge>
-                        </div>
-                        
-                        {messageHash && (
-                          <div className="p-3 bg-[#0a1930]/50 rounded border border-[#4fc3f7]/20">
-                            <p className="text-xs text-gray-400 mb-1">Computed Keccak256 Hash:</p>
-                            <p className="text-xs text-[#4fc3f7] font-mono break-all">{messageHash}</p>
-                            <p className="text-xs text-yellow-400 mt-2 flex items-start gap-1">
-                              <span>ℹ️</span>
-                              <span>
-                                {messageToSign.startsWith('0x') || messageToSign.startsWith('0X') 
-                                  ? 'HEX bytes will be decoded and hashed directly' 
-                                  : 'String will be UTF-8 encoded to bytes, then hashed'}
-                              </span>
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
