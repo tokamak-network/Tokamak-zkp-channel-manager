@@ -1,6 +1,10 @@
-import { useState, useEffect } from 'react';
-import { useAccount, useContractReads } from 'wagmi';
-import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { useState, useEffect } from "react";
+import { useAccount, useContractReads } from "wagmi";
+import {
+  ROLLUP_BRIDGE_CORE_ADDRESS,
+  ROLLUP_BRIDGE_CORE_ABI,
+  ROLLUP_BRIDGE_ABI,
+} from "@/lib/contracts";
 
 export function useUserRolesDynamic() {
   const { address, isConnected } = useAccount();
@@ -8,24 +12,41 @@ export function useUserRolesDynamic() {
   const [isParticipant, setIsParticipant] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [totalChannels, setTotalChannels] = useState(0);
-  const [participatingChannels, setParticipatingChannels] = useState<number[]>([]);
+  const [participatingChannels, setParticipatingChannels] = useState<number[]>(
+    []
+  );
   const [leadingChannels, setLeadingChannels] = useState<number[]>([]);
-  const [channelStatsData, setChannelStatsData] = useState<Record<number, readonly [bigint, readonly `0x${string}`[], number, bigint, `0x${string}`] | null>>({});
+  const [channelStatsData, setChannelStatsData] = useState<
+    Record<
+      number,
+      | readonly [
+          bigint,
+          readonly `0x${string}`[],
+          number,
+          bigint,
+          `0x${string}`
+        ]
+      | null
+    >
+  >({});
 
   // Get total number of channels first
-  const { data: totalChannelsData, isLoading: totalChannelsLoading } = useContractReads({
-    contracts: [
-      {
-        address: ROLLUP_BRIDGE_CORE_ADDRESS,
-        abi: ROLLUP_BRIDGE_CORE_ABI,
-        functionName: 'nextChannelId',
-      }
-    ],
-    enabled: isConnected,
-  });
+  const { data: totalChannelsData, isLoading: totalChannelsLoading } =
+    useContractReads({
+      contracts: [
+        {
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: "nextChannelId",
+        },
+      ],
+      enabled: isConnected,
+    });
 
   // Get the actual channel count, fallback to checking first 10 if no data
-  const channelCount = totalChannelsData?.[0]?.result ? Number(totalChannelsData[0].result) : 10;
+  const channelCount = totalChannelsData?.[0]?.result
+    ? Number(totalChannelsData[0].result)
+    : 10;
   const maxChannelsToCheck = Math.min(channelCount, 20); // Reasonable limit
   const channelContracts = [];
 
@@ -34,15 +55,15 @@ export function useUserRolesDynamic() {
     channelContracts.push({
       address: ROLLUP_BRIDGE_CORE_ADDRESS,
       abi: ROLLUP_BRIDGE_CORE_ABI,
-      functionName: 'getChannelLeader',
+      functionName: "getChannelLeader",
       args: [BigInt(i)],
     });
-    
+
     // Get channel participants to check participation
     channelContracts.push({
       address: ROLLUP_BRIDGE_CORE_ADDRESS,
       abi: ROLLUP_BRIDGE_CORE_ABI,
-      functionName: 'getChannelParticipants',
+      functionName: "getChannelParticipants",
       args: [BigInt(i)],
     });
 
@@ -50,7 +71,7 @@ export function useUserRolesDynamic() {
     channelContracts.push({
       address: ROLLUP_BRIDGE_CORE_ADDRESS,
       abi: ROLLUP_BRIDGE_CORE_ABI,
-      functionName: 'getChannelState',
+      functionName: "getChannelState",
       args: [BigInt(i)],
     });
 
@@ -58,28 +79,44 @@ export function useUserRolesDynamic() {
     channelContracts.push({
       address: ROLLUP_BRIDGE_CORE_ADDRESS,
       abi: ROLLUP_BRIDGE_CORE_ABI,
-      functionName: 'getChannelAllowedTokens',
+      functionName: "getChannelAllowedTokens",
       args: [BigInt(i)],
     });
   }
 
-  const { data: channelData, isLoading: channelDataLoading } = useContractReads({
-    contracts: channelContracts,
-    enabled: isConnected,
-  });
+  const { data: channelData, isLoading: channelDataLoading } = useContractReads(
+    {
+      contracts: channelContracts,
+      enabled: isConnected,
+    }
+  );
 
   useEffect(() => {
-    if (!isConnected || !address || channelDataLoading || totalChannelsLoading) {
+    if (
+      !isConnected ||
+      !address ||
+      channelDataLoading ||
+      totalChannelsLoading
+    ) {
       setIsLoading(true);
       return;
     }
-
 
     let foundLeadership = false;
     let foundParticipation = false;
     const participantChannels: number[] = [];
     const leaderChannels: number[] = [];
-    const statsData: Record<number, readonly [bigint, readonly `0x${string}`[], number, bigint, `0x${string}`] | null> = {};
+    const statsData: Record<
+      number,
+      | readonly [
+          bigint,
+          readonly `0x${string}`[],
+          number,
+          bigint,
+          `0x${string}`
+        ]
+      | null
+    > = {};
 
     // Process the channel data
     let actualChannelCount = 0;
@@ -89,14 +126,18 @@ export function useUserRolesDynamic() {
       const participantsIndex = i * 4 + 1;
       const stateIndex = i * 4 + 2;
       const allowedTokensIndex = i * 4 + 3;
-      
+
       const leader = channelData?.[leaderIndex]?.result as string | undefined;
-      const participants = channelData?.[participantsIndex]?.result as readonly string[] | undefined;
+      const participants = channelData?.[participantsIndex]?.result as
+        | readonly string[]
+        | undefined;
       const state = channelData?.[stateIndex]?.result as number | undefined;
-      const allowedTokens = channelData?.[allowedTokensIndex]?.result as readonly `0x${string}`[] | undefined;
+      const allowedTokens = channelData?.[allowedTokensIndex]?.result as
+        | readonly `0x${string}`[]
+        | undefined;
 
       // Skip if channel doesn't exist (no leader returned or zero address)
-      if (!leader || leader === '0x0000000000000000000000000000000000000000') {
+      if (!leader || leader === "0x0000000000000000000000000000000000000000") {
         continue;
       }
 
@@ -114,7 +155,7 @@ export function useUserRolesDynamic() {
         allowedTokens || [],
         state || 0,
         BigInt(participants?.length || 0),
-        leader as `0x${string}`
+        leader as `0x${string}`,
       ];
 
       // Check leadership
@@ -132,14 +173,13 @@ export function useUserRolesDynamic() {
       }
     }
 
-
-    console.log('useUserRolesDynamic FINAL RESULTS:');
-    console.log('  foundLeadership:', foundLeadership);
-    console.log('  foundParticipation:', foundParticipation);
-    console.log('  leaderChannels:', leaderChannels);
-    console.log('  participantChannels:', participantChannels);
-    console.log('  actualChannelCount:', actualChannelCount);
-    console.log('  channelStatsData:', statsData);
+    console.log("useUserRolesDynamic FINAL RESULTS:");
+    console.log("  foundLeadership:", foundLeadership);
+    console.log("  foundParticipation:", foundParticipation);
+    console.log("  leaderChannels:", leaderChannels);
+    console.log("  participantChannels:", participantChannels);
+    console.log("  actualChannelCount:", actualChannelCount);
+    console.log("  channelStatsData:", statsData);
 
     setHasChannels(foundLeadership);
     setIsParticipant(foundParticipation && !foundLeadership);
@@ -148,7 +188,14 @@ export function useUserRolesDynamic() {
     setLeadingChannels(leaderChannels);
     setChannelStatsData(statsData);
     setIsLoading(false);
-  }, [isConnected, address, channelData, channelDataLoading, totalChannelsLoading, maxChannelsToCheck]);
+  }, [
+    isConnected,
+    address,
+    channelData,
+    channelDataLoading,
+    totalChannelsLoading,
+    maxChannelsToCheck,
+  ]);
 
   return {
     hasChannels,

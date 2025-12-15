@@ -1,6 +1,7 @@
 // Firebase initialization and configuration
 import { initializeApp, getApps } from "firebase/app";
 import { getDatabase } from "firebase/database";
+import { getStorage } from "firebase/storage";
 import { getAnalytics } from "firebase/analytics";
 
 const firebaseConfig = {
@@ -20,12 +21,15 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 // Realtime Database instance
 const realtimeDb = getDatabase(app);
 
+// Storage instance
+const storage = typeof window !== "undefined" ? getStorage(app) : null;
+
 // Analytics is only initialized on the client side
 let analytics;
 if (typeof window !== "undefined") {
   analytics = getAnalytics(app);
 }
 
-export { app, realtimeDb, analytics };
+export { app, realtimeDb, storage, analytics };
 
 

@@ -5,6 +5,7 @@ import { useAccount, usePublicClient } from 'wagmi';
 import { Layout } from '@/components/Layout';
 import { ProofCard, ProofData } from '@/components/ProofCard';
 import { TransactionBundleModal } from '@/components/TransactionBundleModal';
+import { SubmitProofModal } from '@/components/SubmitProofModal';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
@@ -30,7 +31,8 @@ import {
   Shield,
   Hash,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Upload
 } from 'lucide-react';
 import { formatEther } from 'viem';
 
@@ -68,25 +70,25 @@ const ChannelState = {
 // Mock proofs data - In production, fetch from Firebase
 const getMockProofsForChannel = (channelId: number): ProofData[] => {
   return [
-    {
-      id: 1,
-      status: 'verified',
-      timestamp: Date.now() - 3600000,
-      submitter: '0x1234567890123456789012345678901234567890',
+  {
+    id: 1,
+    status: 'verified',
+    timestamp: Date.now() - 3600000,
+    submitter: '0x1234567890123456789012345678901234567890',
       channelId
-    },
-    {
-      id: 2,
-      status: 'verified',
-      timestamp: Date.now() - 7200000,
-      submitter: '0x9876543210987654321098765432109876543210',
+  },
+  {
+    id: 2,
+    status: 'verified',
+    timestamp: Date.now() - 7200000,
+    submitter: '0x9876543210987654321098765432109876543210',
       channelId
-    },
-    {
-      id: 3,
-      status: 'pending',
-      timestamp: Date.now() - 1800000,
-      submitter: '0x1234567890123456789012345678901234567890',
+  },
+  {
+    id: 3,
+    status: 'pending',
+    timestamp: Date.now() - 1800000,
+    submitter: '0x1234567890123456789012345678901234567890',
       channelId
     }
   ];
@@ -323,6 +325,7 @@ function StateExplorerDetailView({
   const [filter, setFilter] = useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
   const [isBalancesExpanded, setIsBalancesExpanded] = useState(false);
   const [isBundleModalOpen, setIsBundleModalOpen] = useState(false);
+  const [isSubmitProofModalOpen, setIsSubmitProofModalOpen] = useState(false);
   const VISIBLE_PARTICIPANTS_COLLAPSED = 3;
 
   const mockProofs = getMockProofsForChannel(channel.id);
@@ -387,14 +390,23 @@ function StateExplorerDetailView({
                   </div>
                 </div>
               </div>
-              {/* Create Transaction Button */}
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setIsSubmitProofModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#4fc3f7] hover:bg-[#029bee] text-white rounded transition-all hover:shadow-lg hover:shadow-[#4fc3f7]/30 font-medium"
+                >
+                  <Upload className="w-4 h-4" />
+                  Submit Proof
+                </button>
               <button
-                onClick={() => setIsBundleModalOpen(true)}
+                  onClick={() => setIsBundleModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded transition-all hover:shadow-lg hover:shadow-green-500/30 font-medium"
               >
                 <Plus className="w-4 h-4" />
                 Create Transaction
-              </button>
+                </button>
+              </div>
             </div>
             <div className="flex items-center gap-4 text-sm text-gray-400">
               <span className="flex items-center gap-1">
@@ -448,7 +460,7 @@ function StateExplorerDetailView({
                   )}
                 </div>
               </div>
-            </button>
+              </button>
 
             {/* Expandable Content */}
             <div
@@ -627,6 +639,13 @@ function StateExplorerDetailView({
         isOpen={isBundleModalOpen}
         onClose={() => setIsBundleModalOpen(false)}
         defaultChannelId={channel.id.toString()}
+      />
+
+      {/* Submit Proof Modal */}
+      <SubmitProofModal
+        isOpen={isSubmitProofModalOpen}
+        onClose={() => setIsSubmitProofModalOpen(false)}
+        channelId={channel.id}
       />
     </>
   );
