@@ -10,7 +10,7 @@ import { MobileNavigation } from '@/components/MobileNavigation';
 import { Footer } from '@/components/Footer';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 import { ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS, ROLLUP_BRIDGE_PROOF_MANAGER_ABI, ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
-import { FileText, Link, ShieldOff, CheckCircle2, Clock, AlertCircle, Download, Hash, Timer } from 'lucide-react';
+import { FileText, Link, ShieldOff, CheckCircle2, AlertCircle, Download, Hash } from 'lucide-react';
 
 interface ProofData {
   proofPart1: bigint[];
@@ -70,8 +70,6 @@ export default function SubmitProofPage() {
   const [proofError, setProofError] = useState('');
   const [signatureError, setSignatureError] = useState('');
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
-  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
-  const [currentTime, setCurrentTime] = useState<number>(Math.floor(Date.now() / 1000));
   
   // Channel information from core contract
   const { data: channelInfo } = useContractRead({
@@ -98,63 +96,7 @@ export default function SubmitProofPage() {
     enabled: Boolean(selectedChannelId)
   });
 
-  const { data: channelTimeout } = useContractRead({
-    address: ROLLUP_BRIDGE_CORE_ADDRESS,
-    abi: ROLLUP_BRIDGE_CORE_ABI,
-    functionName: 'getChannelTimeout',
-    args: selectedChannelId ? [BigInt(selectedChannelId)] : undefined,
-    enabled: Boolean(selectedChannelId)
-  });
 
-  // Calculate timeout status
-  const timeoutInfo = useMemo(() => {
-    if (!channelTimeout) return null;
-    const [openTimestamp, timeout] = channelTimeout as [bigint, bigint];
-    const openTime = Number(openTimestamp);
-    const timeoutDuration = Number(timeout);
-    const unlockTime = openTime + timeoutDuration;
-    return { openTime, timeoutDuration, unlockTime };
-  }, [channelTimeout]);
-
-  const isTimeoutPassed = useMemo(() => {
-    if (!timeoutInfo) return false;
-    return currentTime >= timeoutInfo.unlockTime;
-  }, [timeoutInfo, currentTime]);
-
-  // Update current time and calculate remaining time
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Math.floor(Date.now() / 1000);
-      setCurrentTime(now);
-      
-      if (timeoutInfo) {
-        const remaining = timeoutInfo.unlockTime - now;
-        setTimeRemaining(remaining > 0 ? remaining : 0);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [timeoutInfo]);
-
-  // Format time remaining
-  const formatTimeRemaining = (seconds: number): string => {
-    if (seconds <= 0) return 'Ready!';
-    
-    const days = Math.floor(seconds / 86400);
-    const hours = Math.floor((seconds % 86400) / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    
-    if (days > 0) {
-      return `${days}d ${hours}h ${minutes}m ${secs}s`;
-    } else if (hours > 0) {
-      return `${hours}h ${minutes}m ${secs}s`;
-    } else if (minutes > 0) {
-      return `${minutes}m ${secs}s`;
-    } else {
-      return `${secs}s`;
-    }
-  };
   
   // Compute final state root from the last proof's a_pub_user[10] (lower) and a_pub_user[11] (upper)
   const finalStateRoot = useMemo(() => {
@@ -473,7 +415,7 @@ export default function SubmitProofPage() {
   // Check if channel is in correct state for proof submission (Open=2)
   const isChannelStateValid = channelInfo && Number(channelInfo[1]) === 2;
   
-  const canSubmit = isConnected && selectedChannelId && isFormValid() && isChannelStateValid && isTimeoutPassed && !isLoading && !isTransactionLoading;
+  const canSubmit = isConnected && selectedChannelId && isFormValid() && isChannelStateValid && !isLoading && !isTransactionLoading;
 
   if (!isMounted) {
     return <div className="min-h-screen bg-gray-50 dark:bg-gray-900"></div>;
@@ -587,31 +529,6 @@ export default function SubmitProofPage() {
                     </div>
                   </div>
 
-                  {/* Timeout Timer */}
-                  {timeoutInfo && (
-                    <div className={`mt-4 p-4 rounded-lg border ${
-                      isTimeoutPassed 
-                        ? 'bg-green-500/10 border-green-500/30' 
-                        : 'bg-yellow-500/10 border-yellow-500/30'
-                    }`}>
-                      <div className="flex items-center gap-3">
-                        <Timer className={`w-6 h-6 ${isTimeoutPassed ? 'text-green-400' : 'text-yellow-400'}`} />
-                        <div className="flex-1">
-                          <div className={`text-sm font-medium ${isTimeoutPassed ? 'text-green-300' : 'text-yellow-300'}`}>
-                            {isTimeoutPassed ? 'Timeout Passed - Ready to Submit' : 'Waiting for Timeout'}
-                          </div>
-                          <div className={`text-2xl font-bold font-mono ${isTimeoutPassed ? 'text-green-400' : 'text-yellow-400'}`}>
-                            {timeRemaining !== null ? formatTimeRemaining(timeRemaining) : '...'}
-                          </div>
-                          {!isTimeoutPassed && (
-                            <div className="text-xs text-gray-400 mt-1">
-                              Proof submission will be available after the timeout period
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
               
@@ -855,15 +772,6 @@ export default function SubmitProofPage() {
                     </div>
                   )}
 
-                  {isFormValid() && isChannelStateValid && !isTimeoutPassed && timeRemaining !== null && (
-                    <div className="mb-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-start gap-3">
-                      <Timer className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
-                      <div className="text-sm text-yellow-300">
-                        <strong className="block mb-1">Waiting for Timeout</strong>
-                        Proof submission will be available in {formatTimeRemaining(timeRemaining)}
-                      </div>
-                    </div>
-                  )}
                   
                   {isSuccess && (
                     <div className="mb-4 p-4 bg-green-500/10 border border-green-500/30 rounded-lg flex items-start gap-3">
