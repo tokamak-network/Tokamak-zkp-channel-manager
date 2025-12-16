@@ -62,9 +62,8 @@ export default function CloseChannelPage() {
       0: 'None',
       1: 'Initialized', 
       2: 'Open',
-      3: 'Active',
-      4: 'Closing',
-      5: 'Closed'
+      3: 'Closing',
+      4: 'Closed'
     };
     return states[stateNumber as keyof typeof states] || 'Unknown';
   };

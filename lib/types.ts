@@ -5,9 +5,8 @@ export enum ChannelState {
   None = 0,
   Initialized = 1,
   Open = 2,
-  Active = 3,
-  Closing = 4,
-  Closed = 5
+  Closing = 3,
+  Closed = 4
 }
 
 // Channel State Labels
@@ -15,7 +14,6 @@ export const ChannelStateLabels = {
   [ChannelState.None]: 'None',
   [ChannelState.Initialized]: 'Initialized',
   [ChannelState.Open]: 'Open',
-  [ChannelState.Active]: 'Active',
   [ChannelState.Closing]: 'Closing',
   [ChannelState.Closed]: 'Closed'
 } as const;

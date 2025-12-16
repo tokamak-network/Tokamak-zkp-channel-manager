@@ -94,7 +94,6 @@ export function shortenAddress(address: string): string {
 export function getChannelStateColor(state: ChannelState): string {
   switch (state) {
     case ChannelState.Open:
-    case ChannelState.Active:
       return 'status-active';
     case ChannelState.Initialized:
     case ChannelState.Closing:
@@ -184,7 +183,7 @@ export function canInitialize(state: ChannelState): boolean {
 
 // Check if channel is in a state where proof can be submitted
 export function canSubmitProof(state: ChannelState): boolean {
-  return state === ChannelState.Open || state === ChannelState.Active;
+  return state === ChannelState.Open;
 }
 
 // Check if channel is in a state where it can be closed

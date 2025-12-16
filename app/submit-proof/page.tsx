@@ -178,10 +178,20 @@ export default function SubmitProofPage() {
     if (!selectedChannelId || !finalStateRoot) return null;
     
     try {
-      return keccak256(encodePacked(
+      const channelIdBigInt = BigInt(selectedChannelId);
+      const messageHash = keccak256(encodePacked(
         ['uint256', 'bytes32'],
-        [BigInt(selectedChannelId), finalStateRoot]
+        [channelIdBigInt, finalStateRoot]
       ));
+      
+      console.log('=== SIGNATURE MESSAGE COMPUTATION ===');
+      console.log('Channel ID:', selectedChannelId);
+      console.log('Channel ID (BigInt):', channelIdBigInt.toString());
+      console.log('Final State Root:', finalStateRoot);
+      console.log('Computed Message Hash:', messageHash);
+      console.log('====================================');
+      
+      return messageHash;
     } catch (error) {
       console.error('Error computing message hash:', error);
       return null;
@@ -213,9 +223,8 @@ export default function SubmitProofPage() {
       0: 'None',
       1: 'Initialized', 
       2: 'Open',
-      3: 'Active',
-      4: 'Closing',
-      5: 'Closed'
+      3: 'Closing',
+      4: 'Closed'
     };
     return states[stateNumber as keyof typeof states] || 'Unknown';
   };
@@ -285,13 +294,23 @@ export default function SubmitProofPage() {
       // Concatenate public inputs: a_pub_user + a_pub_block + a_pub_function
       const publicInputsRaw = [...jsonData.a_pub_user, ...jsonData.a_pub_block, ...jsonData.a_pub_function];
       
+      console.log('=== PUBLIC INPUTS DEBUG ===');
+      console.log('a_pub_user length:', jsonData.a_pub_user.length);
+      console.log('a_pub_block length:', jsonData.a_pub_block.length);
+      console.log('a_pub_function length:', jsonData.a_pub_function.length);
+      console.log('Total publicInputsRaw length:', publicInputsRaw.length);
+      console.log('First 5 a_pub_function elements:', jsonData.a_pub_function.slice(0, 5));
+      console.log('Function data at indices 66-71 in final array:', publicInputsRaw.slice(66, 72));
+      console.log('Function data starting at index 64 (first 10):', publicInputsRaw.slice(64, 74));
+      console.log('============================');
+      
       // Convert and validate proof data
-      // Note: smax is fixed at 512, function signature and preprocess data are extracted by the contract
+      // Note: smax is fixed at 256, function signature and preprocess data are extracted by the contract
       const newProofData: ProofData = {
         proofPart1: jsonData.proof_entries_part1.map((x: string) => BigInt(x)),
         proofPart2: jsonData.proof_entries_part2.map((x: string) => BigInt(x)),
         publicInputs: publicInputsRaw.map((x: string) => BigInt(x)),
-        smax: BigInt(512),
+        smax: BigInt(256),
         functions: []
       };
       
@@ -393,7 +412,7 @@ export default function SubmitProofPage() {
           "a_pub_user: User public inputs (40 elements) - index 10,11 contain resulting merkle root",
           "a_pub_block: Block public inputs (24 elements)",
           "a_pub_function: Function public inputs (variable length)",
-          "Note: smax (512), function signature and preprocess data are handled by the contract",
+          "Note: smax (256), function signature and preprocess data are handled by the contract",
           "All numeric values should be provided as hex strings"
         ]
       }
@@ -451,8 +470,8 @@ export default function SubmitProofPage() {
     }
   };
   
-  // Check if channel is in correct state for proof submission (Open=2 or Active=3)
-  const isChannelStateValid = channelInfo && (Number(channelInfo[1]) === 2 || Number(channelInfo[1]) === 3);
+  // Check if channel is in correct state for proof submission (Open=2)
+  const isChannelStateValid = channelInfo && Number(channelInfo[1]) === 2;
   
   const canSubmit = isConnected && selectedChannelId && isFormValid() && isChannelStateValid && isTimeoutPassed && !isLoading && !isTransactionLoading;
 
@@ -831,7 +850,7 @@ export default function SubmitProofPage() {
                       <ShieldOff className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
                       <div className="text-sm text-red-300">
                         <strong className="block mb-1">Invalid Channel State</strong>
-                        Channel must be in "Open" or "Active" state. Current: {getChannelStateDisplay(Number(channelInfo[1]))}
+                        Channel must be in "Open" state. Current: {getChannelStateDisplay(Number(channelInfo[1]))}
                       </div>
                     </div>
                   )}

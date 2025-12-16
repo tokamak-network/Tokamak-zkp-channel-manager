@@ -97,7 +97,7 @@ export default function ChannelsPage() {
     {
       id: BigInt(3),
       targetContract: '0x0000000000000000000000000000000000000001',
-      state: 5, // Closed
+      state: 4, // Closed
       stateLabel: 'Closed',
       participants: ['0x1234...', '0x5678...', '0x9abc...'],
       participantCount: BigInt(3),

@@ -137,14 +137,14 @@ export function ChannelCard({ channel, userAddress }: ChannelCardProps) {
                   </Button>
                 </Link>
               )}
-              {channel.state === 5 && ( // Closed
+              {channel.state === 4 && ( // Closed
                 <Link href={`/channels/${channel.id}/withdraw`}>
                   <Button size="sm" variant="success" className="flex-1">
                     Withdraw
                   </Button>
                 </Link>
               )}
-              {channel.isExpired && (channel.state === 2 || channel.state === 3) && channel.isUserLeader && (
+              {channel.isExpired && channel.state === 2 && channel.isUserLeader && (
                 <Button size="sm" variant="gradient" className="flex-1">
                   Submit Proof
                 </Button>

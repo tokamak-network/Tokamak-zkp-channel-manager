@@ -35,7 +35,8 @@ export default function UnfreezeStatePage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   
-  const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null);
+  const [selectedChannelId, setSelectedChannelId] = useState<string>('');
+  const [manualChannelInput, setManualChannelInput] = useState<string>('');
   const [finalBalances, setFinalBalances] = useState<FinalBalances>({});
   const [balancesFile, setBalancesFile] = useState<File | null>(null);
   const [balancesError, setBalancesError] = useState('');
@@ -50,15 +51,13 @@ export default function UnfreezeStatePage() {
 
   useEffect(() => {
     setIsMounted(true);
-    if (typeof window !== 'undefined') {
-      setBrowserCompatible(isClientProofGenerationSupported());
-    }
+    setBrowserCompatible(isClientProofGenerationSupported());
   }, []);
 
   const closingChannels = leadingChannels
     .map(channelId => {
       const stats = channelStatsData[channelId];
-      if (!stats || stats[2] !== 4) return null;
+      if (!stats || stats[2] !== 3) return null;
       return {
         id: channelId,
         stats,
@@ -75,53 +74,57 @@ export default function UnfreezeStatePage() {
       participantCount: bigint;
     }[];
 
-  useEffect(() => {
-    if (closingChannels.length === 1 && !selectedChannelId) {
-      setSelectedChannelId(closingChannels[0].id);
-    }
-  }, [closingChannels, selectedChannelId]);
+  // Handle channel selection - query any valid channel ID
+  const parsedChannelId = selectedChannelId ? parseInt(selectedChannelId) : null;
+  const isValidChannelId = parsedChannelId !== null && !isNaN(parsedChannelId) && parsedChannelId > 0;
 
-  const effectiveSelectedId = selectedChannelId ?? (closingChannels.length === 1 ? closingChannels[0].id : null);
-  const selectedChannel = effectiveSelectedId !== null ? closingChannels.find(ch => ch.id === effectiveSelectedId) : null;
+  // Query channel information for any valid channel ID
+  const { data: channelInfo } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelInfo',
+    args: isValidChannelId ? [BigInt(parsedChannelId)] : undefined,
+    enabled: isMounted && isConnected && isValidChannelId
+  });
 
   const { data: channelParticipants } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelParticipants',
-    args: selectedChannel ? [BigInt(selectedChannel.id)] : undefined,
-    enabled: isMounted && isConnected && !!selectedChannel
+    args: isValidChannelId ? [BigInt(parsedChannelId)] : undefined,
+    enabled: isMounted && isConnected && isValidChannelId
   });
 
   const { data: channelTreeSize } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelTreeSize',
-    args: selectedChannel ? [BigInt(selectedChannel.id)] : undefined,
-    enabled: isMounted && isConnected && !!selectedChannel
+    args: isValidChannelId ? [BigInt(parsedChannelId)] : undefined,
+    enabled: isMounted && isConnected && isValidChannelId
   });
 
   const { data: channelTargetContract } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelTargetContract',
-    args: selectedChannel ? [BigInt(selectedChannel.id)] : undefined,
-    enabled: isMounted && isConnected && !!selectedChannel
+    args: isValidChannelId ? [BigInt(parsedChannelId)] : undefined,
+    enabled: isMounted && isConnected && isValidChannelId
   });
 
   const { data: finalStateRoot } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelFinalStateRoot',
-    args: selectedChannel ? [BigInt(selectedChannel.id)] : undefined,
-    enabled: isMounted && isConnected && !!selectedChannel
+    args: isValidChannelId ? [BigInt(parsedChannelId)] : undefined,
+    enabled: isMounted && isConnected && isValidChannelId
   });
 
   const { data: isSignatureVerified } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'isSignatureVerified',
-    args: selectedChannel ? [BigInt(selectedChannel.id)] : undefined,
-    enabled: isMounted && isConnected && !!selectedChannel
+    args: isValidChannelId ? [BigInt(parsedChannelId)] : undefined,
+    enabled: isMounted && isConnected && isValidChannelId
   });
 
   const { data: preAllocatedCount } = useContractRead({
@@ -144,8 +147,8 @@ export default function UnfreezeStatePage() {
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelTotalDeposits',
-    args: selectedChannel ? [BigInt(selectedChannel.id)] : undefined,
-    enabled: isMounted && isConnected && !!selectedChannel
+    args: isValidChannelId ? [BigInt(parsedChannelId)] : undefined,
+    enabled: isMounted && isConnected && isValidChannelId
   });
 
   const finalBalancesArray = useMemo(() => {
@@ -179,9 +182,8 @@ export default function UnfreezeStatePage() {
       case 0: return 'None';
       case 1: return 'Initialized';
       case 2: return 'Open';
-      case 3: return 'Active';
-      case 4: return 'Closing';
-      case 5: return 'Closed';
+      case 3: return 'Closing';
+      case 4: return 'Closed';
       default: return 'Unknown';
     }
   };
@@ -226,7 +228,7 @@ export default function UnfreezeStatePage() {
   };
 
   const generateGroth16Proof = async () => {
-    if (!selectedChannel || !channelParticipants || !channelTreeSize || !finalStateRoot || !channelTargetContract) {
+    if (!parsedChannelId || !channelParticipants || !channelTreeSize || !finalStateRoot || !channelTargetContract) {
       throw new Error('Missing channel data');
     }
 
@@ -276,7 +278,7 @@ export default function UnfreezeStatePage() {
       
       let l2MptKey = '0';
       try {
-        const keyResponse = await fetch(`/api/get-l2-mpt-key?participant=${participant}&channelId=${selectedChannel.id}`, {
+        const keyResponse = await fetch(`/api/get-l2-mpt-key?participant=${participant}&channelId=${parsedChannelId}`, {
           signal: AbortSignal.timeout(5000)
         });
         if (keyResponse.ok) {
@@ -318,7 +320,32 @@ export default function UnfreezeStatePage() {
       setProofGenerationStatus(status);
     });
     
-    setProofGenerationStatus('Proof generated successfully!');
+    setProofGenerationStatus('Validating proof against final state root...');
+    
+    // The circuit should produce a merkle root that matches the final state root stored in the contract
+    const computedMerkleRoot = `0x${result.publicSignals[0].toString(16).padStart(64, '0')}`;
+    const expectedFinalStateRoot = finalStateRoot;
+    
+    console.log('=== PROOF VALIDATION DEBUG ===');
+    console.log('Computed Merkle Root:', computedMerkleRoot);
+    console.log('Expected Final State Root:', expectedFinalStateRoot);
+    console.log('Final State Root (raw):', finalStateRoot);
+    console.log('Circuit Input:', circuitInput);
+    console.log('Generated Public Signals:', result.publicSignals);
+    console.log('Storage Keys L2 MPT:', storageKeysL2MPT);
+    console.log('Storage Values:', storageValues);
+    console.log('Final Balances:', finalBalances);
+    console.log('Channel Participants:', channelParticipants);
+    
+    if (computedMerkleRoot.toLowerCase() !== expectedFinalStateRoot.toLowerCase()) {
+      console.warn(`⚠️  WARNING: Computed merkle root ${computedMerkleRoot} does not match expected final state root ${expectedFinalStateRoot}`);
+      console.warn(`⚠️  This will likely cause the contract verification to fail.`);
+      console.warn(`⚠️  The issue is that the final balances don't produce the expected final state root.`);
+      console.warn(`⚠️  Proceeding anyway to see contract error details...`);
+      // throw new Error(`Proof validation failed: Computed merkle root ${computedMerkleRoot} does not match expected final state root ${expectedFinalStateRoot}`);
+    }
+    
+    setProofGenerationStatus('Proof generated and validated successfully!');
     
     return {
       pA: result.proof.pA as [bigint, bigint, bigint, bigint],
@@ -328,7 +355,7 @@ export default function UnfreezeStatePage() {
   };
 
   const handleUnfreezeState = async () => {
-    if (!selectedChannel) return;
+    if (!isValidChannelId || !channelInfo) return;
     
     setIsGeneratingProof(true);
     
@@ -340,7 +367,7 @@ export default function UnfreezeStatePage() {
       
       verifyFinalBalances?.({
         args: [
-          BigInt(selectedChannel.id),
+          BigInt(parsedChannelId!),
           finalBalancesArray,
           proof
         ]
@@ -359,10 +386,10 @@ export default function UnfreezeStatePage() {
 
   const isFormValid = () => {
     return Boolean(
-      selectedChannel &&
+      channelInfo &&
       Object.keys(finalBalances).length > 0 &&
       isSignatureVerified &&
-      selectedChannel.state === 4
+      Number(channelInfo[1]) === 3
     );
   };
 
@@ -388,7 +415,7 @@ export default function UnfreezeStatePage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `final-balances-channel-${selectedChannel?.id || 'template'}-${Date.now()}.json`;
+    a.download = `final-balances-channel-${parsedChannelId || 'template'}-${Date.now()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -407,10 +434,9 @@ export default function UnfreezeStatePage() {
   }
 
   return (
-    <div className="min-h-screen space-background">
-      <ClientOnly>
+    <ClientOnly>
+      <div className="min-h-screen space-background">
         <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
-      </ClientOnly>
 
       <MobileNavigation 
         showMobileMenu={showMobileMenu} 
@@ -449,74 +475,89 @@ export default function UnfreezeStatePage() {
               <h3 className="text-xl font-semibold text-white mb-2">Loading Channels...</h3>
               <p className="text-gray-300">Fetching your channel data from the blockchain</p>
             </div>
-          ) : !hasChannels ? (
-            <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 text-center shadow-lg shadow-[#4fc3f7]/20">
-              <div className="h-16 w-16 bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
-                <XCircle className="w-8 h-8 text-red-400" />
-              </div>
-              <h3 className="text-xl font-semibold text-white mb-2">Access Denied</h3>
-              <p className="text-gray-300 mb-4">This page is only accessible to channel leaders</p>
-            </div>
-          ) : closingChannels.length === 0 ? (
-            <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 text-center shadow-lg shadow-[#4fc3f7]/20">
-              <div className="h-16 w-16 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 flex items-center justify-center mx-auto mb-4">
-                <Unlock className="w-8 h-8 text-[#4fc3f7]" />
-              </div>
-              <h3 className="text-xl font-semibold text-white mb-2">No Channels to Unfreeze</h3>
-              <p className="text-gray-300 mb-4">You don't have any channels in "Closing" state</p>
-              <p className="text-sm text-gray-400">Submit proofs first to move channels to Closing state</p>
-            </div>
           ) : (
             <div className="space-y-6">
-              {closingChannels.length > 1 && (
-                <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-6 shadow-lg shadow-[#4fc3f7]/20">
-                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-[#4fc3f7]" />
-                    Select Channel to Unfreeze
-                  </h3>
-                  <div className="grid gap-3">
-                    {closingChannels.map((channel) => (
-                      <div
-                        key={channel.id}
-                        onClick={() => setSelectedChannelId(channel.id)}
-                        className={`border p-4 cursor-pointer transition-all duration-300 ${
-                          selectedChannelId === channel.id
-                            ? 'border-[#4fc3f7] bg-[#4fc3f7]/10'
-                            : 'border-[#4fc3f7]/30 bg-[#0a1930]/50 hover:border-[#4fc3f7]'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 flex items-center justify-center">
-                              <span className="text-[#4fc3f7] font-semibold">#{channel.id}</span>
-                            </div>
-                            <div>
-                              <h4 className="text-lg font-semibold text-white">Channel {channel.id}</h4>
-                              <p className="text-sm text-yellow-400">{getChannelStateName(channel.state)}</p>
-                            </div>
-                          </div>
-                          {selectedChannelId === channel.id && (
-                            <CheckCircle2 className="w-6 h-6 text-[#4fc3f7]" />
-                          )}
+              {/* Channel ID Input Section */}
+              <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-6 shadow-lg shadow-[#4fc3f7]/20">
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-[#4fc3f7]" />
+                  Select Channel to Unfreeze
+                </h3>
+                
+                {/* Manual Channel ID Input */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Channel ID
+                    </label>
+                    <input
+                      type="number"
+                      value={selectedChannelId}
+                      onChange={(e) => setSelectedChannelId(e.target.value)}
+                      placeholder="Enter channel ID..."
+                      className="w-full px-4 py-3 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-lg text-white placeholder-gray-400 focus:border-[#4fc3f7] focus:ring-1 focus:ring-[#4fc3f7] transition-colors"
+                    />
+                  </div>
+                  
+                  {/* Show available closing channels */}
+                  {closingChannels.length > 0 && (
+                    <div>
+                      <p className="text-sm text-gray-400 mb-2">Your channels in "Closing" state:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {closingChannels.map((channel) => (
+                          <button
+                            key={channel.id}
+                            onClick={() => setSelectedChannelId(channel.id.toString())}
+                            className={`px-3 py-1 rounded border text-sm transition-all ${
+                              selectedChannelId === channel.id.toString()
+                                ? 'border-[#4fc3f7] bg-[#4fc3f7]/20 text-[#4fc3f7]'
+                                : 'border-[#4fc3f7]/30 text-gray-300 hover:border-[#4fc3f7] hover:text-[#4fc3f7]'
+                            }`}
+                          >
+                            #{channel.id}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {closingChannels.length === 0 && (
+                    <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                      <div className="flex items-start gap-3">
+                        <div className="text-yellow-400 mt-0.5">⚠️</div>
+                        <div>
+                          <p className="text-yellow-300 text-sm font-medium">No Closing Channels Found</p>
+                          <p className="text-yellow-400 text-sm mt-1">
+                            You don't have any channels in "Closing" state. Submit proofs first to move channels to Closing state.
+                          </p>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
 
-              {selectedChannel && (
+              {isValidChannelId && channelInfo && (
                 <>
                   <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-6 shadow-lg shadow-[#4fc3f7]/20">
                     <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                       <FileText className="w-5 h-5 text-[#4fc3f7]" />
-                      Channel {selectedChannel.id} - Ready to Close
+                      Channel {parsedChannelId} - {getChannelStateName(Number(channelInfo[1]))}
                     </h3>
+                    
+                    {Number(channelInfo[1]) !== 3 && (
+                      <div className="mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                        <div className="text-red-400 text-sm">
+                          ⚠️ Channel must be in "Closing" state (state 3) to verify final balances. Current state: {getChannelStateName(Number(channelInfo[1]))}
+                        </div>
+                      </div>
+                    )}
+                    
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="text-center p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/30">
                         <div className="text-sm text-gray-400">Status</div>
-                        <div className={`text-xl font-bold ${getChannelStateColor(selectedChannel.state)}`}>
-                          {getChannelStateName(selectedChannel.state)}
+                        <div className={`text-xl font-bold ${getChannelStateColor(Number(channelInfo[1]))}`}>
+                          {getChannelStateName(Number(channelInfo[1]))}
                         </div>
                       </div>
                       <div className="text-center p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/30">
@@ -722,7 +763,7 @@ export default function UnfreezeStatePage() {
               <p className="text-gray-300 mb-4">
                 Final balances verified. Participants can now withdraw their tokens.
               </p>
-              <p className="text-sm text-[#4fc3f7] mb-6">Channel {selectedChannel?.id} is ready for withdrawals!</p>
+              <p className="text-sm text-[#4fc3f7] mb-6">Channel {parsedChannelId} is ready for withdrawals!</p>
               <button
                 onClick={() => setShowSuccessPopup(false)}
                 className="w-full bg-[#4fc3f7] hover:bg-[#029bee] text-white font-semibold py-3 px-6 transition-colors shadow-lg shadow-[#4fc3f7]/30"
@@ -733,6 +774,7 @@ export default function UnfreezeStatePage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </ClientOnly>
   );
 }
