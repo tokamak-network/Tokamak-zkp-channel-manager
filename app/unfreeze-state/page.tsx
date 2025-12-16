@@ -323,7 +323,7 @@ export default function UnfreezeStatePage() {
     setProofGenerationStatus('Validating proof against final state root...');
     
     // The circuit should produce a merkle root that matches the final state root stored in the contract
-    const computedMerkleRoot = `0x${result.publicSignals[0].toString(16).padStart(64, '0')}`;
+    const computedMerkleRoot = `0x${BigInt(result.publicSignals[0]).toString(16).padStart(64, '0')}`;
     const expectedFinalStateRoot = finalStateRoot;
     
     console.log('=== PROOF VALIDATION DEBUG ===');
