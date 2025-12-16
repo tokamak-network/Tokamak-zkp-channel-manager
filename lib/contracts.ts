@@ -245,8 +245,7 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
         type: 'tuple',
         components: [
           { name: 'targetContract', type: 'address' },
-          { name: 'participants', type: 'address[]' },
-          { name: 'timeout', type: 'uint256' }
+          { name: 'participants', type: 'address[]' }
         ]
       }
     ],
