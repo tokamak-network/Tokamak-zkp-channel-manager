@@ -12,11 +12,10 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const channelId = searchParams.get('channelId');
-    const token = searchParams.get('token');
 
-    if (!channelId || !token) {
+    if (!channelId) {
       return NextResponse.json(
-        { error: 'Missing required parameters: channelId, token' },
+        { error: 'Missing required parameter: channelId' },
         { status: 400 }
       );
     }
@@ -29,7 +28,7 @@ export async function GET(request: NextRequest) {
       args: [BigInt(channelId)]
     });
 
-    // Get L2 MPT keys for each participant for this token
+    // Get L2 MPT keys for each participant
     const l2MptKeys: bigint[] = [];
     
     for (const participant of participants) {
@@ -38,7 +37,7 @@ export async function GET(request: NextRequest) {
           address: ROLLUP_BRIDGE_CORE_ADDRESS,
           abi: ROLLUP_BRIDGE_CORE_ABI,
           functionName: 'getL2MptKey',
-          args: [BigInt(channelId), participant, token as `0x${string}`]
+          args: [BigInt(channelId), participant]
         });
         l2MptKeys.push(key as bigint);
       } catch (error) {
@@ -61,7 +60,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       channelId,
-      token,
       participants: participants as string[],
       l2MptKeys: l2MptKeys.map(key => key.toString()),
       keyMap,

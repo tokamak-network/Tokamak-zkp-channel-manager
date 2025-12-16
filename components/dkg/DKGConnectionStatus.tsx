@@ -76,11 +76,12 @@ export function DKGConnectionStatus({
               )}
               <div>
                 <h3 className="font-semibold text-white">DKG Server Connection</h3>
-                <p className="text-sm text-gray-400">
-                  Status: <Badge className={connectionStatus === 'connected' ? 'bg-green-500/20 text-green-300 border-green-500/30' : connectionStatus === 'connecting' ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30' : 'bg-red-500/20 text-red-300 border-red-500/30'}>
+                <div className="flex items-center gap-2 text-sm text-gray-400">
+                  <span>Status:</span>
+                  <Badge className={connectionStatus === 'connected' ? 'bg-green-500/20 text-green-300 border-green-500/30' : connectionStatus === 'connecting' ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30' : 'bg-red-500/20 text-red-300 border-red-500/30'}>
                     {connectionStatus}
                   </Badge>
-                </p>
+                </div>
               </div>
             </div>
             {showAdvanced && (
@@ -128,11 +129,12 @@ export function DKGConnectionStatus({
         <div className="mt-4 pt-4 border-t border-[#4fc3f7]/30">
           <div className="flex items-center justify-between">
             <div className="flex-1">
-              <p className="text-sm text-gray-300 mb-3">
-                Authentication: <Badge className={authState.isAuthenticated ? 'bg-green-500/20 text-green-300 border-green-500/30' : 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'}>
+              <div className="flex items-center gap-2 text-sm text-gray-300 mb-3">
+                <span>Authentication:</span>
+                <Badge className={authState.isAuthenticated ? 'bg-green-500/20 text-green-300 border-green-500/30' : 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'}>
                   {authState.isAuthenticated ? 'Authenticated ✓' : 'Required'}
                 </Badge>
-              </p>
+              </div>
               
               {authState.publicKeyHex && (
                 <div className="mt-3 p-3 bg-green-900/20 rounded border border-green-500/30">

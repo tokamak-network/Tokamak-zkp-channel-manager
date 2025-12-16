@@ -556,10 +556,10 @@ export default function WithdrawTokensPage() {
       </ClientOnly>
 
       {/* Main Content Area */}
-      <div className="ml-0 lg:ml-72 transition-all duration-300 min-h-screen space-background">
+      <div className="ml-0 lg:ml-72 transition-all duration-300 min-h-screen space-background flex flex-col">
 
         <ClientOnly>
-          <div className="px-4 py-8 lg:px-8">
+          <div className="px-4 py-8 lg:px-8 flex-1">
             <div className="max-w-5xl mx-auto space-y-6">
               
               {/* Page Header */}

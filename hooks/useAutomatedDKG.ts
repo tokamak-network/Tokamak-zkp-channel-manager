@@ -226,7 +226,7 @@ export function useAutomatedDKG(
           session: session.id,
           id_hex: myIdHex,
           pkg_bincode_hex: packageHex.trim(), // Mock FROST package with correct format
-          sig_ecdsa_hex: signature // Use real wallet signature without 0x prefix
+          signature_hex: signature // Changed from sig_ecdsa_hex to signature_hex
         }
       };
 
@@ -261,6 +261,8 @@ export function useAutomatedDKG(
       if (session.roster) {
         for (const [uid, recipientIdHex, ecdsaPubHex] of session.roster) {
           try {
+            // ecdsaPubHex is already a string after normalization
+            
             // Generate a mock secret share for this recipient
             const secretShare = generateMockSecretShare();
             
@@ -294,12 +296,28 @@ export function useAutomatedDKG(
         }
       }
 
+      // Convert to new server format with EncryptedPayload objects
+      const pkgs_cipher = encryptedPackages.map((pkg: [string, string, string, string, string]) => {
+        const [recipientIdHex, ephPubKeyHex, nonceHex, ciphertextHex, signatureHex] = pkg;
+        
+        const encryptedPayload = {
+          ephemeral_public_key: {
+            type: "Secp256k1",
+            key: ephPubKeyHex
+          },
+          nonce: nonceHex,
+          ciphertext: ciphertextHex
+        };
+        
+        return [recipientIdHex, encryptedPayload, signatureHex];
+      });
+      
       const message = {
         type: 'Round2Submit',
         payload: {
           session: session.id,
           id_hex: myIdHex,
-          pkgs_cipher_hex: encryptedPackages
+          pkgs_cipher: pkgs_cipher
         }
       };
 

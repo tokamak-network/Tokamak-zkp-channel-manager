@@ -1,11 +1,11 @@
 import { Address } from 'wagmi';
 
 // Modular Contract addresses - Updated for new architecture
-export const ROLLUP_BRIDGE_CORE_ADDRESS: Address = '0x3e47aeefffec5e4bce34426ed6c8914937a65435' as Address;
-export const ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS: Address = '0xD5E8B17058809B9491F99D35B67A089A2618f5fB' as Address;
-export const ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS: Address = '0xF0396B7547C7447FBb14A127D3751425893322fc' as Address;
-export const ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS: Address = '0xAf833c7109DB3BfDAc54a98EA7b123CFDE51d777' as Address;
-export const ROLLUP_BRIDGE_ADMIN_MANAGER_ADDRESS: Address = '0x1c38A6739bDb55f357fcd1aF258E0359ed77c662' as Address;
+export const ROLLUP_BRIDGE_CORE_ADDRESS: Address = '0x9439DF86D91A7A05d926c15ee8f9790b60410133' as Address;
+export const ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS: Address = '0x24D302f09840275371FF1985d0f23DF16c69E90b' as Address;
+export const ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS: Address = '0x84b0676FDC944187214d774681Aa135b481d7C12' as Address;
+export const ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS: Address = '0x0048Fc775cfD21B24Bd53652BD8B3796c5F26A83' as Address;
+export const ROLLUP_BRIDGE_ADMIN_MANAGER_ADDRESS: Address = '0x374c2a109C59c60E18af161F263689520eBd6932' as Address;
 
 // Legacy address for backwards compatibility
 export const ROLLUP_BRIDGE_ADDRESS: Address = ROLLUP_BRIDGE_CORE_ADDRESS;
@@ -21,8 +21,8 @@ export const ZECFROST_ADDRESS: Address = '0x910eEE98A93d54AD52694cBf2B45B1534C8c
 
 // Supported token addresses on Sepolia testnet
 export const TON_TOKEN_ADDRESS: Address = '0xa30fe40285B8f5c0457DbC3B7C8A280373c40044' as Address; // TON token (18 decimals)
-export const WTON_TOKEN_ADDRESS: Address = '0x79E0d92670106c85E9067b56B8F674340dCa0Bbd' as Address; // WTON token
 export const USDT_TOKEN_ADDRESS: Address = '0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A' as Address; // USDT token
+export const USDC_TOKEN_ADDRESS: Address = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' as Address;
 export const ETH_TOKEN_ADDRESS: Address = '0x0000000000000000000000000000000000000001' as Address; // ETH placeholder
 
 // Token utilities are in ./tokenUtils.ts to avoid circular dependency
@@ -47,38 +47,9 @@ export function getGroth16VerifierAddress(treeSize: number): Address {
   }
 }
 
-// RollupBridge Core ABI - Main view functions and state management
+// RollupBridge Core ABI - Updated for new storage architecture (Dec 14, 2024)
 export const ROLLUP_BRIDGE_CORE_ABI = [
-  // Channel Management - Core Functions
-  {
-    inputs: [
-      {
-        components: [
-          { name: 'allowedTokens', type: 'address[]' },
-          { name: 'participants', type: 'address[]' },
-          { name: 'timeout', type: 'uint256' }
-        ],
-        name: 'params',
-        type: 'tuple'
-      }
-    ],
-    name: 'openChannel',
-    outputs: [{ name: 'channelId', type: 'uint256' }],
-    stateMutability: 'payable',
-    type: 'function'
-  },
-  {
-    inputs: [
-      { name: 'channelId', type: 'uint256' },
-      { name: 'pkx', type: 'uint256' },
-      { name: 'pky', type: 'uint256' }
-    ],
-    name: 'setChannelPublicKey',
-    outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function'
-  },
-  // View Functions
+  // Essential view functions
   {
     inputs: [{ name: 'channelId', type: 'uint256' }],
     name: 'getChannelState',
@@ -94,8 +65,8 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
     type: 'function'
   },
   {
-    inputs: [{ name: 'channelId', type: 'uint256' }, { name: 'token', type: 'address' }],
-    name: 'isTokenAllowedInChannel',
+    inputs: [{ name: 'targetContract', type: 'address' }],
+    name: 'isAllowedTargetContract',
     outputs: [{ name: '', type: 'bool' }],
     stateMutability: 'view',
     type: 'function'
@@ -116,8 +87,8 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
   },
   {
     inputs: [{ name: 'channelId', type: 'uint256' }],
-    name: 'getChannelAllowedTokens',
-    outputs: [{ name: '', type: 'address[]' }],
+    name: 'getChannelTargetContract',
+    outputs: [{ name: '', type: 'address' }],
     stateMutability: 'view',
     type: 'function'
   },
@@ -129,21 +100,21 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
     type: 'function'
   },
   {
-    inputs: [{ name: 'channelId', type: 'uint256' }, { name: 'participant', type: 'address' }, { name: 'token', type: 'address' }],
-    name: 'getParticipantTokenDeposit',
+    inputs: [{ name: 'channelId', type: 'uint256' }, { name: 'participant', type: 'address' }],
+    name: 'getParticipantDeposit',
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
     type: 'function'
   },
   {
-    inputs: [{ name: 'channelId', type: 'uint256' }, { name: 'participant', type: 'address' }, { name: 'token', type: 'address' }],
+    inputs: [{ name: 'channelId', type: 'uint256' }, { name: 'participant', type: 'address' }],
     name: 'getL2MptKey',
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
     type: 'function'
   },
   {
-    inputs: [{ name: 'channelId', type: 'uint256' }, { name: 'token', type: 'address' }],
+    inputs: [{ name: 'channelId', type: 'uint256' }],
     name: 'getChannelTotalDeposits',
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
@@ -171,32 +142,6 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
     type: 'function'
   },
   {
-    inputs: [{ name: 'channelId', type: 'uint256' }],
-    name: 'getLeaderBond',
-    outputs: [{ name: 'bond', type: 'uint256' }, { name: 'slashed', type: 'bool' }],
-    stateMutability: 'view',
-    type: 'function'
-  },
-  {
-    inputs: [],
-    name: 'nextChannelId',
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function'
-  },
-  {
-    inputs: [{ name: 'channelId', type: 'uint256' }],
-    name: 'getChannelInfo',
-    outputs: [
-      { name: 'allowedTokens', type: 'address[]' },
-      { name: 'state', type: 'uint8' },
-      { name: 'participantCount', type: 'uint256' },
-      { name: 'initialRoot', type: 'bytes32' }
-    ],
-    stateMutability: 'view',
-    type: 'function'
-  },
-  {
     inputs: [{ name: 'channelId', type: 'uint256' }, { name: 'participant', type: 'address' }],
     name: 'hasUserWithdrawn',
     outputs: [{ name: '', type: 'bool' }],
@@ -211,7 +156,7 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
     type: 'function'
   },
   {
-    inputs: [{ name: 'channelId', type: 'uint256' }, { name: 'participant', type: 'address' }, { name: 'token', type: 'address' }],
+    inputs: [{ name: 'channelId', type: 'uint256' }, { name: 'participant', type: 'address' }],
     name: 'getWithdrawableAmount',
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
@@ -226,8 +171,8 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
   },
   {
     inputs: [],
-    name: 'getTotalSlashedBonds',
-    outputs: [{ name: '', type: 'uint256' }],
+    name: 'owner',
+    outputs: [{ name: '', type: 'address' }],
     stateMutability: 'view',
     type: 'function'
   },
@@ -247,9 +192,170 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
   },
   {
     inputs: [],
-    name: 'owner',
+    name: 'getTotalChannels',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelInfo',
+    outputs: [
+      { name: 'targetContract', type: 'address' },
+      { name: 'state', type: 'uint8' },
+      { name: 'participantCount', type: 'uint256' },
+      { name: 'initialRoot', type: 'bytes32' }
+    ],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'targetContract', type: 'address' }, { name: 'mptKey', type: 'bytes32' }],
+    name: 'getPreAllocatedLeaf',
+    outputs: [{ name: 'value', type: 'uint256' }, { name: 'exists', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [],
+    name: 'nextChannelId',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelPreAllocatedLeavesCount',
+    outputs: [{ name: 'count', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'targetContract', type: 'address' }],
+    name: 'getPreAllocatedKeys',
+    outputs: [{ name: 'keys', type: 'bytes32[]' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  // Channel management functions
+  {
+    inputs: [
+      {
+        name: 'params',
+        type: 'tuple',
+        components: [
+          { name: 'targetContract', type: 'address' },
+          { name: 'participants', type: 'address[]' },
+          { name: 'timeout', type: 'uint256' }
+        ]
+      }
+    ],
+    name: 'openChannel',
+    outputs: [{ name: 'channelId', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+    type: 'function'
+  },
+  // Additional view functions from interface
+  {
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelSignerAddr',
     outputs: [{ name: '', type: 'address' }],
     stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelBlockInfosHash',
+    outputs: [{ name: '', type: 'bytes32' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'targetContract', type: 'address' }],
+    name: 'getTargetContractData',
+    outputs: [
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          {
+            name: 'storageSlot',
+            type: 'tuple[]',
+            components: [
+              { name: 'value', type: 'uint256' },
+              { name: 'key', type: 'bytes32' },
+              { name: 'isActive', type: 'bool' }
+            ]
+          },
+          {
+            name: 'registeredFunctions',
+            type: 'tuple[]',
+            components: [
+              { name: 'functionSignature', type: 'bytes32' },
+              { name: 'instancesHash', type: 'bytes32' },
+              { name: 'preprocessedPart1', type: 'uint128[]' },
+              { name: 'preprocessedPart2', type: 'uint256[]' }
+            ]
+          }
+        ]
+      }
+    ],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'targetContract', type: 'address' }],
+    name: 'getPreAllocatedLeavesCount',
+    outputs: [{ name: 'count', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'targetContract', type: 'address' }],
+    name: 'getMaxAllowedParticipants',
+    outputs: [{ name: 'maxParticipants', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [],
+    name: 'getChannelStats',
+    outputs: [
+      { name: 'openChannels', type: 'uint256' },
+      { name: 'activeChannels', type: 'uint256' },
+      { name: 'closingChannels', type: 'uint256' },
+      { name: 'closedChannels', type: 'uint256' }
+    ],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'user', type: 'address' }],
+    name: 'getUserTotalBalance',
+    outputs: [
+      { name: 'targetContracts', type: 'address[]' },
+      { name: 'balances', type: 'uint256[]' }
+    ],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'channelIds', type: 'uint256[]' }],
+    name: 'batchGetChannelStates',
+    outputs: [{ name: 'states', type: 'uint8[]' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  // Setter functions
+  {
+    inputs: [
+      { name: 'channelId', type: 'uint256' },
+      { name: 'pkx', type: 'uint256' },
+      { name: 'pky', type: 'uint256' }
+    ],
+    name: 'setChannelPublicKey',
+    outputs: [],
+    stateMutability: 'nonpayable',
     type: 'function'
   },
   // Events
@@ -257,65 +363,58 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
     anonymous: false,
     inputs: [
       { indexed: true, name: 'channelId', type: 'uint256' },
-      { indexed: false, name: 'allowedTokens', type: 'address[]' }
+      { indexed: false, name: 'targetContract', type: 'address' }
     ],
     name: 'ChannelOpened',
-    type: 'event'
-  },
-  {
-    anonymous: false,
-    inputs: [
-      { indexed: true, name: 'channelId', type: 'uint256' },
-      { indexed: false, name: 'pkx', type: 'uint256' },
-      { indexed: false, name: 'pky', type: 'uint256' },
-      { indexed: false, name: 'signerAddr', type: 'address' }
-    ],
-    name: 'ChannelPublicKeySet',
     type: 'event'
   }
 ] as const;
 
-// Deposit Manager ABI
+// Legacy ABI exports for backwards compatibility
+export const ROLLUP_BRIDGE_ABI = ROLLUP_BRIDGE_CORE_ABI;
+
+// Placeholder ABIs for the other managers (to be implemented)
 export const ROLLUP_BRIDGE_DEPOSIT_MANAGER_ABI = [
   {
-    inputs: [{ name: '_channelId', type: 'uint256' }, { name: '_mptKey', type: 'bytes32' }],
-    name: 'depositETH',
+    inputs: [
+      { name: 'channelId', type: 'uint256' },
+      { name: 'participant', type: 'address' },
+      { name: 'amount', type: 'uint256' }
+    ],
+    name: 'depositToChannel',
     outputs: [],
     stateMutability: 'payable',
     type: 'function'
   },
   {
     inputs: [
-      { name: '_channelId', type: 'uint256' },
-      { name: '_token', type: 'address' },
-      { name: '_amount', type: 'uint256' },
-      { name: '_mptKey', type: 'bytes32' }
+      { name: 'channelId', type: 'uint256' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'mptKey', type: 'bytes32' }
     ],
     name: 'depositToken',
+    outputs: [],
+    stateMutability: 'payable',
+    type: 'function'
+  }
+] as const;
+
+export const ROLLUP_BRIDGE_PROOF_MANAGER_ABI = [
+  {
+    inputs: [
+      { name: 'channelId', type: 'uint256' },
+      { name: 'proof', type: 'tuple' }
+    ],
+    name: 'submitProof',
     outputs: [],
     stateMutability: 'nonpayable',
     type: 'function'
   },
   {
-    anonymous: false,
-    inputs: [
-      { indexed: true, name: 'channelId', type: 'uint256' },
-      { indexed: true, name: 'user', type: 'address' },
-      { indexed: false, name: 'token', type: 'address' },
-      { indexed: false, name: 'amount', type: 'uint256' }
-    ],
-    name: 'Deposited',
-    type: 'event'
-  }
-] as const;
-
-// Proof Manager ABI
-export const ROLLUP_BRIDGE_PROOF_MANAGER_ABI = [
-  {
     inputs: [
       { name: 'channelId', type: 'uint256' },
-      {
-        name: 'proof',
+      { 
+        name: 'proof', 
         type: 'tuple',
         components: [
           { name: 'pA', type: 'uint256[4]' },
@@ -333,27 +432,18 @@ export const ROLLUP_BRIDGE_PROOF_MANAGER_ABI = [
   {
     inputs: [
       { name: 'channelId', type: 'uint256' },
-      {
-        name: 'proofs',
+      { 
+        name: 'proofs', 
         type: 'tuple[]',
         components: [
           { name: 'proofPart1', type: 'uint128[]' },
           { name: 'proofPart2', type: 'uint256[]' },
           { name: 'publicInputs', type: 'uint256[]' },
-          { name: 'smax', type: 'uint256' },
-          {
-            name: 'functions',
-            type: 'tuple[]',
-            components: [
-              { name: 'functionSignature', type: 'bytes32' },
-              { name: 'preprocessedPart1', type: 'uint128[]' },
-              { name: 'preprocessedPart2', type: 'uint256[]' }
-            ]
-          }
+          { name: 'smax', type: 'uint256' }
         ]
       },
-      {
-        name: 'signature',
+      { 
+        name: 'signature', 
         type: 'tuple',
         components: [
           { name: 'message', type: 'bytes32' },
@@ -371,7 +461,7 @@ export const ROLLUP_BRIDGE_PROOF_MANAGER_ABI = [
   {
     inputs: [
       { name: 'channelId', type: 'uint256' },
-      { name: 'finalBalances', type: 'uint256[][]' },
+      { name: 'finalBalances', type: 'uint256[]' },
       {
         name: 'groth16Proof',
         type: 'tuple',
@@ -386,72 +476,30 @@ export const ROLLUP_BRIDGE_PROOF_MANAGER_ABI = [
     outputs: [],
     stateMutability: 'nonpayable',
     type: 'function'
-  },
-  {
-    anonymous: false,
-    inputs: [
-      { indexed: true, name: 'channelId', type: 'uint256' },
-      { indexed: false, name: 'currentStateRoot', type: 'bytes32' }
-    ],
-    name: 'StateInitialized',
-    type: 'event'
-  },
-  {
-    anonymous: false,
-    inputs: [
-      { indexed: true, name: 'channelId', type: 'uint256' },
-      { indexed: true, name: 'signer', type: 'address' }
-    ],
-    name: 'AggregatedProofSigned',
-    type: 'event'
   }
 ] as const;
 
-// Withdraw Manager ABI
 export const ROLLUP_BRIDGE_WITHDRAW_MANAGER_ABI = [
   {
     inputs: [
-      { name: 'channelId', type: 'uint256' }
+      { name: 'channelId', type: 'uint256' },
+      { name: 'participant', type: 'address' }
     ],
-    name: 'closeAndFinalizeChannel',
+    name: 'withdrawFromChannel',
     outputs: [],
     stateMutability: 'nonpayable',
     type: 'function'
   },
   {
-    anonymous: false,
-    inputs: [
-      { indexed: true, name: 'channelId', type: 'uint256' }
-    ],
-    name: 'ChannelClosed',
-    type: 'event'
-  },
-  {
-    anonymous: false,
-    inputs: [
-      { indexed: true, name: 'channelId', type: 'uint256' },
-      { indexed: true, name: 'participant', type: 'address' },
-      { indexed: false, name: 'token', type: 'address' },
-      { indexed: false, name: 'amount', type: 'uint256' }
-    ],
-    name: 'WithdrawCompleted',
-    type: 'event'
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'closeAndFinalizeChannel',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function'
   }
 ] as const;
 
-// Legacy/Combined ABI for backwards compatibility - merging all the individual ABIs
-export const ROLLUP_BRIDGE_ABI = [
-  // Core functions
-  ...ROLLUP_BRIDGE_CORE_ABI,
-  // Deposit functions  
-  ...ROLLUP_BRIDGE_DEPOSIT_MANAGER_ABI,
-  // Proof functions
-  ...ROLLUP_BRIDGE_PROOF_MANAGER_ABI,
-  // Withdraw functions
-  ...ROLLUP_BRIDGE_WITHDRAW_MANAGER_ABI,
-] as const;
-
-// Standard ERC20 ABI for token interactions
+// ERC20 Token ABI - Basic functions for token interactions
 export const ERC20_ABI = [
   {
     inputs: [{ name: 'account', type: 'address' }],

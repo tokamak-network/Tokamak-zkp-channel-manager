@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { useAccount, useContractRead, useContractReads } from 'wagmi';
 import { formatUnits, isAddress } from 'viem';
-import { ROLLUP_BRIDGE_ABI, ROLLUP_BRIDGE_ADDRESS } from '@/lib/contracts';
+import { ROLLUP_BRIDGE_ABI, ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
 import { ClientOnly } from '@/components/ClientOnly';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { Info, Users, Wrench } from 'lucide-react';
@@ -28,8 +28,8 @@ export function ContractInfo() {
 
   // Create dynamic contract calls for user deposits in participating channels
   const depositContracts = participatingChannels.map(channelId => ({
-    address: ROLLUP_BRIDGE_ADDRESS,
-    abi: ROLLUP_BRIDGE_ABI,
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getParticipantDeposit',
     args: address ? [BigInt(channelId), address] : undefined,
   }));
@@ -52,59 +52,59 @@ export function ContractInfo() {
     if (tokenAddress.toLowerCase() === '0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A'.toLowerCase()) {
       return { symbol: 'USDT', decimals: 6, isETH: false, address: tokenAddress }; // USDT has 6 decimals
     }
+    if (tokenAddress.toLowerCase() === '0xa30fe40285B8f5c0457DbC3B7C8A280373c40044'.toLowerCase()) {
+      return { symbol: 'TON', decimals: 18, isETH: false, address: tokenAddress }; // TON has 18 decimals
+    }
     
     return { symbol: 'TOKEN', decimals: 18, isETH: false, address: tokenAddress };
   };
 
   // Create mappings for all tokens in all channels 
+  // In the new architecture, each channel has a single targetContract (token)
   const channelToTokensIndex: Record<number, Array<{ tokenIndex: number; tokenAddress: string }>> = {};
   let tokenContractIndex = 0;
   
   const tokenContracts = participatingChannels.flatMap(channelId => {
     const channelStats = channelStatsData[channelId];
-    const allowedTokens = channelStats?.[1];
+    const targetContract = channelStats?.[1] as string | undefined; // Single target contract, not array
     
-    if (!allowedTokens || !Array.isArray(allowedTokens) || allowedTokens.length === 0) {
+    if (!targetContract || targetContract === '0x0000000000000000000000000000000000000000') {
       return [];
     }
 
-    // Map all tokens in this channel
+    // Map single token for this channel
     channelToTokensIndex[channelId] = [];
+    const tokenInfo = getTokenInfo(targetContract);
+    
+    // Skip if ETH (no contract calls needed) 
+    if (tokenInfo.isETH) {
+      channelToTokensIndex[channelId].push({ tokenIndex: -1, tokenAddress: targetContract }); // -1 for ETH
+      return [];
+    }
 
-    return allowedTokens.flatMap(token => {
-      const tokenInfo = getTokenInfo(token);
-      
-      // Skip if ETH (no contract calls needed) 
-      if (tokenInfo.isETH) {
-        channelToTokensIndex[channelId].push({ tokenIndex: -1, tokenAddress: token }); // -1 for ETH
-        return [];
-      }
+    // Only fetch contract data for non-default tokens (unknown tokens)
+    if (tokenInfo.symbol === 'TOKEN') {
+      // Map this token to current contract index  
+      channelToTokensIndex[channelId].push({ tokenIndex: tokenContractIndex, tokenAddress: targetContract });
+      tokenContractIndex++;
 
-      // Only fetch contract data for non-default tokens (unknown tokens)
-      if (tokenInfo.symbol === 'TOKEN') {
-        // Map this token to current contract index  
-        channelToTokensIndex[channelId].push({ tokenIndex: tokenContractIndex, tokenAddress: token });
-        const currentIndex = tokenContractIndex;
-        tokenContractIndex++;
-
-        return [
-          {
-            address: token,
-            abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }] as const,
-            functionName: 'decimals',
-          },
-          {
-            address: token,
-            abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }] as const,
-            functionName: 'symbol',
-          }
-        ];
-      } else {
-        // Known token, no contract calls needed
-        channelToTokensIndex[channelId].push({ tokenIndex: -2, tokenAddress: token }); // -2 for known tokens  
-        return [];
-      }
-    });
+      return [
+        {
+          address: targetContract as `0x${string}`,
+          abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view', type: 'function', inputs: [] }] as const,
+          functionName: 'decimals',
+        },
+        {
+          address: targetContract as `0x${string}`,
+          abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view', type: 'function', inputs: [] }] as const,
+          functionName: 'symbol',
+        }
+      ];
+    } else {
+      // Known token, no contract calls needed
+      channelToTokensIndex[channelId].push({ tokenIndex: -2, tokenAddress: targetContract }); // -2 for known tokens  
+      return [];
+    }
   });
 
   const { data: tokenData } = useContractReads({
@@ -160,73 +160,51 @@ export function ContractInfo() {
   const canDeposit = depositableChannels.length > 0;
   const canWithdraw = withdrawableChannels.length > 0;
 
-  // Create dynamic contract calls for all token deposits in all channels
-  const allTokenDepositContracts = participatingChannels.flatMap(channelId => {
-    const channelStats = channelStatsData[channelId];
-    const allowedTokens = channelStats?.[1];
-    
-    if (!allowedTokens || !Array.isArray(allowedTokens)) {
-      return [];
-    }
-    
-    return allowedTokens.map(tokenAddress => ({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
-      functionName: 'getParticipantTokenDeposit',
-      args: address ? [BigInt(channelId), address, tokenAddress] : undefined,
-    }));
-  });
+  // In the new architecture, we use getParticipantDeposit which returns the deposit for the channel's token
+  // No need for separate token deposit calls - depositData already contains this
 
-  const { data: allTokenDepositData } = useContractReads({
-    contracts: allTokenDepositContracts,
-    enabled: isConnected && !!address && participatingChannels.length > 0,
-  });
-
-  // Get user deposit information for all tokens in all participating channels
+  // Get user deposit information for all participating channels
+  // In the new architecture, each channel has a single targetContract (token)
   const getUserDepositInfo = () => {
     const deposits: Array<{ amount: bigint; decimals: number; symbol: string; channelId: number; tokenAddress: string; }> = [];
-    let contractIndex = 0;
     
-    participatingChannels.forEach(channelId => {
+    participatingChannels.forEach((channelId, index) => {
       const channelStats = channelStatsData[channelId];
-      const allowedTokens = channelStats?.[1];
+      const targetContract = channelStats?.[1] as string | undefined;
       
-      if (!allowedTokens || !Array.isArray(allowedTokens)) {
+      if (!targetContract || targetContract === '0x0000000000000000000000000000000000000000') {
         return;
       }
       
-      allowedTokens.forEach(tokenAddress => {
-        const depositAmount = allTokenDepositData?.[contractIndex]?.result as bigint;
-        const tokenInfo = getTokenInfo(tokenAddress);
-        
-        let decimals = tokenInfo.decimals;
-        let symbol = tokenInfo.symbol;
-        
-        // Get actual decimals/symbol for unknown tokens
-        if (tokenInfo.symbol === 'TOKEN') {
-          const tokenMapping = channelToTokensIndex[channelId]?.find(t => t.tokenAddress === tokenAddress);
-          if (tokenMapping && tokenMapping.tokenIndex >= 0) {
-            const decimalsResult = tokenData?.[tokenMapping.tokenIndex * 2]?.result as number;
-            const symbolResult = tokenData?.[tokenMapping.tokenIndex * 2 + 1]?.result as string;
-            
-            decimals = decimalsResult || 18;
-            symbol = symbolResult || 'TOKEN';
-          }
+      // Get deposit amount from depositData (same index as participatingChannels)
+      const depositAmount = depositData?.[index]?.result as bigint;
+      const tokenInfo = getTokenInfo(targetContract);
+      
+      let decimals = tokenInfo.decimals;
+      let symbol = tokenInfo.symbol;
+      
+      // Get actual decimals/symbol for unknown tokens
+      if (tokenInfo.symbol === 'TOKEN') {
+        const tokenMapping = channelToTokensIndex[channelId]?.find(t => t.tokenAddress === targetContract);
+        if (tokenMapping && tokenMapping.tokenIndex >= 0) {
+          const decimalsResult = tokenData?.[tokenMapping.tokenIndex * 2]?.result as number;
+          const symbolResult = tokenData?.[tokenMapping.tokenIndex * 2 + 1]?.result as string;
+          
+          decimals = decimalsResult || 18;
+          symbol = symbolResult || 'TOKEN';
         }
-        
-        // Only include if there's a deposit amount > 0
-        if (depositAmount && depositAmount > BigInt(0)) {
-          deposits.push({
-            amount: depositAmount,
-            decimals,
-            symbol,
-            channelId,
-            tokenAddress
-          });
-        }
-        
-        contractIndex++;
-      });
+      }
+      
+      // Only include if there's a deposit amount > 0
+      if (depositAmount && depositAmount > BigInt(0)) {
+        deposits.push({
+          amount: depositAmount,
+          decimals,
+          symbol,
+          channelId,
+          tokenAddress: targetContract
+        });
+      }
     });
     
     return deposits;

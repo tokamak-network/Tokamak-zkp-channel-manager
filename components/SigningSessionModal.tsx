@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, MessageSquare, Hash, Users, Key as KeyIcon } from 'lucide-react';
+import { X, MessageSquare, Hash, Users, Key as KeyIcon, Calculator } from 'lucide-react';
 import { hashKeccak256 } from '@/lib/frost-wasm';
 import { get_key_package_metadata } from '@/lib/wasm/pkg/tokamak_frost_wasm';
+import { keccak256 as ethersKeccak256 } from 'ethers';
 
 interface SigningSessionModalProps {
   isOpen: boolean;
@@ -34,8 +35,10 @@ export function SigningSessionModal({
   onCreateSession,
   isAuthenticated
 }: SigningSessionModalProps) {
-  const [messageToSign, setMessageToSign] = useState('');
-  const [messageHash, setMessageHash] = useState('');
+  const [channelId, setChannelId] = useState('');
+  const [finalStateRoot, setFinalStateRoot] = useState('');
+  const [packedData, setPackedData] = useState('');
+  const [previewHash, setPreviewHash] = useState('');
   const [rosterFromPackage, setRosterFromPackage] = useState<string[]>([]);
 
   // Extract roster from key package when modal opens (same as DKG management)
@@ -57,26 +60,55 @@ export function SigningSessionModal({
     }
   }, [isOpen, keyPackageData]);
 
-  // Auto-compute hash when message changes
+  // Calculate abi.encodePacked(channelId, finalStateRoot) and preview hash
   useEffect(() => {
-    if (messageToSign.trim()) {
-      try {
-        const hash = hashKeccak256(messageToSign);
-        setMessageHash(hash);
-      } catch (e) {
-        console.error('Failed to compute hash:', e);
-        setMessageHash('');
+    try {
+      if (channelId && finalStateRoot) {
+        // Validate channelId is a valid number
+        const channelIdNum = parseInt(channelId);
+        if (isNaN(channelIdNum) || channelIdNum < 0) {
+          setPackedData('');
+          setPreviewHash('');
+          return;
+        }
+        
+        // Validate finalStateRoot is a valid hex string (32 bytes)
+        const cleanStateRoot = finalStateRoot.startsWith('0x') ? finalStateRoot : `0x${finalStateRoot}`;
+        if (!/^0x[a-fA-F0-9]{64}$/.test(cleanStateRoot)) {
+          setPackedData('');
+          setPreviewHash('');
+          return;
+        }
+
+        // Create abi.encodePacked equivalent
+        // For uint256: pad to 32 bytes, for bytes32: use as-is
+        const channelIdHex = BigInt(channelIdNum).toString(16).padStart(64, '0');
+        const stateRootHex = cleanStateRoot.slice(2);
+        const packed = `0x${channelIdHex}${stateRootHex}` as `0x${string}`;
+        
+        setPackedData(packed);
+        
+        // Compute preview hash (what the server will compute)
+        const hash = ethersKeccak256(packed);
+        setPreviewHash(hash);
+      } else {
+        setPackedData('');
+        setPreviewHash('');
       }
-    } else {
-      setMessageHash('');
+    } catch (e) {
+      console.error('Failed to compute packed data:', e);
+      setPackedData('');
+      setPreviewHash('');
     }
-  }, [messageToSign]);
+  }, [channelId, finalStateRoot]);
 
   // Reset form when modal opens/closes
   useEffect(() => {
     if (!isOpen) {
-      setMessageToSign('');
-      setMessageHash('');
+      setChannelId('');
+      setFinalStateRoot('');
+      setPackedData('');
+      setPreviewHash('');
       setRosterFromPackage([]);
     }
   }, [isOpen]);
@@ -84,8 +116,8 @@ export function SigningSessionModal({
   if (!isOpen || !keyPackageData) return null;
 
   const handleSubmit = () => {
-    if (!messageToSign || !messageHash) {
-      alert('Please enter a message to sign');
+    if (!channelId || !finalStateRoot || !packedData || !previewHash) {
+      alert('Please enter both channelId and finalStateRoot');
       return;
     }
 
@@ -94,11 +126,33 @@ export function SigningSessionModal({
       return;
     }
 
+    // Ensure groupId is a valid hex string
+    let validGroupId = keyPackageData!.groupId;
+    
+    // Remove any 0x prefix if present
+    if (validGroupId.startsWith('0x')) {
+      validGroupId = validGroupId.slice(2);
+    }
+    
+    // If it's not a valid hex string (e.g., "group_123456"), convert it to hex
+    if (!/^[0-9a-fA-F]+$/.test(validGroupId)) {
+      // Convert the string to hex representation
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(validGroupId);
+      validGroupId = Array.from(bytes)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      console.log('📝 Converted non-hex groupId to hex:', {
+        original: keyPackageData!.groupId,
+        converted: validGroupId
+      });
+    }
+    
     onCreateSession({
-      groupId: keyPackageData!.groupId,
+      groupId: validGroupId,
       threshold: keyPackageData!.threshold,
-      message: messageToSign,
-      messageHash: messageHash,
+      message: packedData, // Send the packed data, not the hash
+      messageHash: previewHash, // Show what the server will compute
       groupVk: keyPackageData!.groupPublicKeyHex,
       roster: rosterFromPackage
     });
@@ -149,39 +203,73 @@ export function SigningSessionModal({
             </div>
           </div>
 
-          {/* Message to Sign */}
+          {/* Channel ID Input */}
           <div>
             <label className="flex items-center gap-2 text-sm font-semibold mb-2">
-              <MessageSquare className="w-4 h-4 text-blue-400" />
-              Message to Sign
+              <Calculator className="w-4 h-4 text-blue-400" />
+              Channel ID
             </label>
-            <textarea
-              value={messageToSign}
-              onChange={(e) => setMessageToSign(e.target.value)}
-              placeholder="Enter the message you want to sign..."
-              rows={4}
+            <input
+              type="number"
+              value={channelId}
+              onChange={(e) => setChannelId(e.target.value)}
+              placeholder="Enter channel ID (e.g., 123)"
               className="w-full px-4 py-3 bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none text-white placeholder-gray-500"
               autoFocus
             />
-            {messageToSign && (
-              <p className="text-xs text-gray-400 mt-2">
-                {messageToSign.length} characters
-              </p>
-            )}
           </div>
 
-          {/* Message Hash - Auto-computed */}
-          {messageHash && (
+          {/* Final State Root Input */}
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold mb-2">
+              <Hash className="w-4 h-4 text-purple-400" />
+              Final State Root
+            </label>
+            <input
+              type="text"
+              value={finalStateRoot}
+              onChange={(e) => setFinalStateRoot(e.target.value)}
+              placeholder="Enter final state root (0x...)"
+              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none text-white placeholder-gray-500 font-mono"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Must be a 32-byte hex string (66 characters including 0x)
+            </p>
+          </div>
+
+          {/* Packed Data - Auto-computed */}
+          {packedData && (
+            <div>
+              <label className="flex items-center gap-2 text-sm font-semibold mb-2">
+                <MessageSquare className="w-4 h-4 text-orange-400" />
+                abi.encodePacked(channelId, finalStateRoot)
+              </label>
+              <div className="bg-orange-900/20 border border-orange-500/50 p-3">
+                <p className="font-mono text-xs text-orange-400 break-all">
+                  {packedData}
+                </p>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                This packed data will be sent to the server for signing
+              </p>
+            </div>
+          )}
+
+          {/* Preview Hash */}
+          {previewHash && (
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold mb-2">
                 <Hash className="w-4 h-4 text-green-400" />
-                Message Hash (Keccak256)
+                Preview: keccak256(abi.encodePacked(...))
               </label>
               <div className="bg-green-900/20 border border-green-500/50 p-3">
                 <p className="font-mono text-xs text-green-400 break-all">
-                  {messageHash}
+                  {previewHash}
                 </p>
               </div>
+              <p className="text-xs text-gray-400 mt-1">
+                This is what the server will compute and actually sign
+              </p>
             </div>
           )}
 
@@ -223,7 +311,7 @@ export function SigningSessionModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!isAuthenticated || !messageToSign || !messageHash}
+            disabled={!isAuthenticated || !channelId || !finalStateRoot || !packedData}
             className="flex-1 px-6 py-3 bg-[#028bee] hover:bg-[#0277d4] disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold transition-all"
           >
             {!isAuthenticated ? 'Not Authenticated' : 'Create Signing Session'}

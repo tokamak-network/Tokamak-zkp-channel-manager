@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, http } from 'viem';
 import { sepolia } from 'viem/chains';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
 
 const publicClient = createPublicClient({
   chain: sepolia,
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     const channelId = searchParams.get('channelId') || '0';
 
     console.log('Testing contract functions...');
-    console.log('Contract address:', ROLLUP_BRIDGE_ADDRESS);
+    console.log('Contract address:', ROLLUP_BRIDGE_CORE_ADDRESS);
     console.log('Channel ID:', channelId);
 
     const results: any = {};
@@ -22,8 +22,8 @@ export async function GET(request: NextRequest) {
     // Test basic functions first
     try {
       const totalChannels = await publicClient.readContract({
-        address: ROLLUP_BRIDGE_ADDRESS,
-        abi: ROLLUP_BRIDGE_ABI,
+        address: ROLLUP_BRIDGE_CORE_ADDRESS,
+        abi: ROLLUP_BRIDGE_CORE_ABI,
         functionName: 'nextChannelId'
       });
       results.totalChannels = totalChannels.toString();
@@ -37,8 +37,8 @@ export async function GET(request: NextRequest) {
     // Test getChannelParticipants
     try {
       const participants = await publicClient.readContract({
-        address: ROLLUP_BRIDGE_ADDRESS,
-        abi: ROLLUP_BRIDGE_ABI,
+        address: ROLLUP_BRIDGE_CORE_ADDRESS,
+        abi: ROLLUP_BRIDGE_CORE_ABI,
         functionName: 'getChannelParticipants',
         args: [BigInt(channelId)]
       });
@@ -57,10 +57,10 @@ export async function GET(request: NextRequest) {
         const testToken = '0x79E0d92670106c85E9067b56B8F674340dCa0Bbd';
         
         const l2MptKey = await publicClient.readContract({
-          address: ROLLUP_BRIDGE_ADDRESS,
-          abi: ROLLUP_BRIDGE_ABI,
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
           functionName: 'getL2MptKey',
-          args: [BigInt(channelId), participant, testToken]
+          args: [BigInt(channelId), participant]
         });
         results.l2MptKey = l2MptKey.toString();
         console.log('✓ getL2MptKey works:', l2MptKey);
@@ -78,10 +78,10 @@ export async function GET(request: NextRequest) {
         const participant = results.participants[0];
         
         const keysList = await publicClient.readContract({
-          address: ROLLUP_BRIDGE_ADDRESS,
-          abi: ROLLUP_BRIDGE_ABI,
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
           functionName: 'getL2MptKey',
-          args: [BigInt(channelId), participant, testToken]
+          args: [BigInt(channelId), participant]
         });
         results.l2MptKeysList = keysList;
         console.log('✓ getL2MptKey (bulk) works:', keysList);
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      contractAddress: ROLLUP_BRIDGE_ADDRESS,
+      contractAddress: ROLLUP_BRIDGE_CORE_ADDRESS,
       channelId,
       results
     });

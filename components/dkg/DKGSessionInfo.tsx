@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatFrostId } from '@/lib/utils';
+import { decompressPublicKey, isCompressedKey } from '@/lib/key-utils';
 import { 
   ChevronDown, 
   ChevronUp, 
@@ -48,6 +49,11 @@ interface DKGSessionInfoProps {
 export function DKGSessionInfo({ session, myFrostId, authState }: DKGSessionInfoProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
+  
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const copyToClipboard = (text: string, fieldName: string) => {
     navigator.clipboard.writeText(text);
@@ -147,7 +153,7 @@ export function DKGSessionInfo({ session, myFrostId, authState }: DKGSessionInfo
                 {session.status.toUpperCase()}
               </Badge>
               <p className="text-xs text-gray-400 mt-1">
-                Created: {session.createdAt.toLocaleTimeString()}
+                Created: {isMounted ? new Date(session.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '-'}
               </p>
             </div>
           </div>
@@ -225,29 +231,36 @@ export function DKGSessionInfo({ session, myFrostId, authState }: DKGSessionInfo
                     </tr>
                   </thead>
                   <tbody>
-                    {session.roster.map(([uid, frostId, ecdsaPub], idx) => (
-                      <tr 
-                        key={uid} 
-                        className={`${idx % 2 === 0 ? 'bg-[#0a1930]/30' : 'bg-transparent'} ${
-                          frostId === myFrostId ? 'border-l-2 border-green-500' : ''
-                        }`}
-                      >
-                        <td className="px-3 py-2 text-white font-medium">
-                          {uid}
-                          {frostId === myFrostId && (
-                            <Badge className="ml-2 bg-green-500/20 text-green-300 text-[10px]">
-                              YOU
-                            </Badge>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          <code className="text-[#4fc3f7]">{formatFrostId(frostId)}</code>
-                        </td>
-                        <td className="px-3 py-2">
-                          <code className="text-gray-300">{formatAddress(ecdsaPub)}</code>
-                        </td>
-                      </tr>
-                    ))}
+                    {session.roster.map(([uid, frostId, ecdsaPub], idx) => {
+                      // Normalize ecdsaPub in case it's an object
+                      const normalizedPubKey = typeof ecdsaPub === 'string' 
+                        ? ecdsaPub 
+                        : (ecdsaPub as any)?.key || String(ecdsaPub);
+                      
+                      return (
+                        <tr 
+                          key={uid} 
+                          className={`${idx % 2 === 0 ? 'bg-[#0a1930]/30' : 'bg-transparent'} ${
+                            frostId === myFrostId ? 'border-l-2 border-green-500' : ''
+                          }`}
+                        >
+                          <td className="px-3 py-2 text-white font-medium">
+                            {uid}
+                            {frostId === myFrostId && (
+                              <Badge className="ml-2 bg-green-500/20 text-green-300 text-[10px]">
+                                YOU
+                              </Badge>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <code className="text-[#4fc3f7]">{formatFrostId(frostId)}</code>
+                          </td>
+                          <td className="px-3 py-2">
+                            <code className="text-gray-300">{formatAddress(normalizedPubKey)}</code>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -255,33 +268,108 @@ export function DKGSessionInfo({ session, myFrostId, authState }: DKGSessionInfo
           )}
 
           {/* Group Verifying Key (if completed) */}
-          {session.groupVerifyingKey && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-green-400" />
-                <span className="text-sm font-medium text-gray-300">Group Verification Key:</span>
+          {session.groupVerifyingKey && (() => {
+            const decompressed = isCompressedKey(session.groupVerifyingKey) 
+              ? decompressPublicKey(session.groupVerifyingKey) 
+              : null;
+              
+            return (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-green-400" />
+                  <span className="text-sm font-medium text-gray-300">
+                    Group Verification Key (Uncompressed):
+                  </span>
+                </div>
+                {decompressed ? (
+                  // Display decompressed px and py
+                  <div className="space-y-2">
+                    <div className="bg-green-900/20 p-2 rounded border border-green-500/30">
+                      <div className="text-xs text-gray-400 mb-1">px:</div>
+                      <div className="flex items-center justify-between">
+                        <code className="text-xs text-green-300 break-all">0x{decompressed.px}</code>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard('0x' + decompressed.px, 'px')}
+                          className="ml-2"
+                        >
+                          {copiedField === 'px' ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="bg-green-900/20 p-2 rounded border border-green-500/30">
+                      <div className="text-xs text-gray-400 mb-1">py:</div>
+                      <div className="flex items-center justify-between">
+                        <code className="text-xs text-green-300 break-all">0x{decompressed.py}</code>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard('0x' + decompressed.py, 'py')}
+                          className="ml-2"
+                        >
+                          {copiedField === 'py' ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : session.groupVerifyingKey.startsWith('04') ? (
+                  // Already uncompressed - extract px and py
+                  <div className="space-y-2">
+                    <div className="bg-green-900/20 p-2 rounded border border-green-500/30">
+                      <div className="text-xs text-gray-400 mb-1">px:</div>
+                      <div className="flex items-center justify-between">
+                        <code className="text-xs text-green-300 break-all">0x{session.groupVerifyingKey!.slice(2, 66)}</code>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard('0x' + session.groupVerifyingKey!.slice(2, 66), 'px')}
+                          className="ml-2"
+                        >
+                          {copiedField === 'px' ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="bg-green-900/20 p-2 rounded border border-green-500/30">
+                      <div className="text-xs text-gray-400 mb-1">py:</div>
+                      <div className="flex items-center justify-between">
+                        <code className="text-xs text-green-300 break-all">0x{session.groupVerifyingKey!.slice(66)}</code>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard('0x' + session.groupVerifyingKey!.slice(66), 'py')}
+                          className="ml-2"
+                        >
+                          {copiedField === 'py' ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  // Fallback - show raw key
+                  <div className="bg-green-900/20 p-3 rounded border border-green-500/30 flex items-center justify-between">
+                    <code className="text-xs text-green-300 break-all">{session.groupVerifyingKey}</code>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => copyToClipboard(session.groupVerifyingKey!, 'groupKey')}
+                      className="ml-2"
+                    >
+                      {copiedField === 'groupKey' ? (
+                        <CheckCircle2 className="w-4 h-4 text-green-400" />
+                      ) : (
+                        <Copy className="w-4 h-4 text-green-400" />
+                      )}
+                    </Button>
+                  </div>
+                )}
+                <p className="text-xs text-gray-400 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3 h-3" />
+                  This key can verify threshold signatures from your group
+                </p>
               </div>
-              <div className="bg-green-900/20 p-3 rounded border border-green-500/30 flex items-center justify-between">
-                <code className="text-xs text-green-300 break-all">{session.groupVerifyingKey}</code>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => copyToClipboard(session.groupVerifyingKey!, 'groupKey')}
-                  className="ml-2"
-                >
-                  {copiedField === 'groupKey' ? (
-                    <CheckCircle2 className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-green-400" />
-                  )}
-                </Button>
-              </div>
-              <p className="text-xs text-gray-400 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3 h-3" />
-                This key can verify threshold signatures from your group
-              </p>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Key Package (if saved) */}
           {keyPackage && (
@@ -299,7 +387,7 @@ export function DKGSessionInfo({ session, myFrostId, authState }: DKGSessionInfo
                   <div>
                     <span className="text-gray-400">Timestamp:</span>
                     <p className="text-purple-300 font-mono">
-                      {new Date(keyPackage.timestamp).toLocaleTimeString()}
+                      {isMounted ? new Date(keyPackage.timestamp).toISOString().slice(11, 19) : '-'}
                     </p>
                   </div>
                   <div>

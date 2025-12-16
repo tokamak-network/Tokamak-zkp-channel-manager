@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatFrostId } from '@/lib/utils';
 // import { DKGAutomatedCeremonyModal } from './DKGAutomatedCeremonyModal'; // Disabled - requires spawner service
-import { Crown, Users, RefreshCw, Lock, LockKeyhole, FileText, Eye, AlertTriangle, User, Link2, ClipboardList } from 'lucide-react';
+import { Crown, Users, RefreshCw, Lock, LockKeyhole, FileText, Eye, AlertTriangle, User, Link2, ClipboardList, Upload } from 'lucide-react';
 
 interface DKGSession {
   id: string;
@@ -76,6 +76,11 @@ export function DKGSessionsList({
   // const [showAutomatedModal, setShowAutomatedModal] = useState(false); // Disabled
   // const [selectedAutomatedSession, setSelectedAutomatedSession] = useState<DKGSession | null>(null); // Disabled
   const [autoRefreshAttempts, setAutoRefreshAttempts] = useState<Record<string, number>>({});
+  const [isMounted, setIsMounted] = useState(false);
+  
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Auto-refresh FROST IDs for sessions that are missing them
   useEffect(() => {
@@ -363,10 +368,10 @@ export function DKGSessionsList({
       return (
         <Button
           onClick={() => onSelectSession(session)}
-          className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold h-10 shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"
+          className="w-full bg-[#4fc3f7] hover:bg-[#4fc3f7]/90 text-white font-semibold h-10 shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"
         >
-          <FileText className="w-4 h-4" />
-          Download Key Share
+          <Upload className="w-4 h-4" />
+          Post Key On-Chain
         </Button>
       );
     }
@@ -483,7 +488,7 @@ export function DKGSessionsList({
         <div className="bg-white/60 dark:bg-gray-800/60 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Created</p>
           <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            {session.createdAt.toLocaleDateString()}
+            {isMounted ? new Date(session.createdAt).toISOString().split('T')[0] : '-'}
           </p>
               </div>
             </div>
@@ -505,7 +510,7 @@ export function DKGSessionsList({
           className="w-full text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-700 border-gray-300 dark:border-gray-600 flex items-center justify-center gap-2 h-9"
         >
           <Eye className="w-4 h-4" />
-          View More
+          View Session Details
         </Button>
         
         {/* Refresh button for round1 sessions without FROST ID */}

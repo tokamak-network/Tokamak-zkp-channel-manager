@@ -133,23 +133,22 @@ export function useChannelInfo(channelId: number) {
     enabled: isConnected,
   });
 
-  // Get channel allowed tokens
-  const { data: allowedTokens } = useContractRead({
+  // Get channel target contract
+  const { data: targetContract } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
-    functionName: 'getChannelAllowedTokens',
+    functionName: 'getChannelTargetContract',
     args: [BigInt(channelId)],
     enabled: isConnected,
   });
 
-  // Get user deposit for first allowed token (ETH if no tokens or first token)
-  const firstToken = allowedTokens?.[0] || '0x0000000000000000000000000000000000000001'; // ETH placeholder
+  // Get user deposit for the single target contract
   const { data: userDeposit } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
-    functionName: 'getParticipantTokenDeposit',
-    args: address ? [BigInt(channelId), address, firstToken] : undefined,
-    enabled: isConnected && !!address && !!participants && participants.includes(address) && !!allowedTokens,
+    functionName: 'getParticipantDeposit',
+    args: address ? [BigInt(channelId), address] : undefined,
+    enabled: isConnected && !!address && !!participants && participants.includes(address) && !!targetContract,
   });
 
   // Check if user is participant and channel is initialized
@@ -159,7 +158,6 @@ export function useChannelInfo(channelId: number) {
   const isEligible = isUserParticipant && isChannelInitialized;
 
   // Get token info if not ETH
-  const targetContract = firstToken;
   const isETH = !targetContract || targetContract === '0x0000000000000000000000000000000000000001' || targetContract === '0x0000000000000000000000000000000000000000';
 
   const { data: tokenDecimals } = useContractRead({
@@ -176,22 +174,22 @@ export function useChannelInfo(channelId: number) {
     enabled: isConnected && !!targetContract && isAddress(targetContract) && !isETH && isEligible,
   });
 
-  if (!isEligible || channelState === undefined || !allowedTokens) {
+  if (!isEligible || channelState === undefined || !targetContract) {
     return null;
   }
 
-  // Get total deposits for the channel and token
+  // Get total deposits for the channel
   const { data: totalDeposits } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelTotalDeposits',
-    args: [BigInt(channelId), firstToken],
-    enabled: isConnected && isEligible && !!firstToken,
+    args: [BigInt(channelId)],
+    enabled: isConnected && isEligible,
   });
 
   return {
     channelId: BigInt(channelId),
-    targetContract: targetContract || '',
+    targetContract: (targetContract as string) || '',
     state: channelState,
     totalDeposits: totalDeposits || BigInt(0),
     userDeposit: userDeposit || BigInt(0),

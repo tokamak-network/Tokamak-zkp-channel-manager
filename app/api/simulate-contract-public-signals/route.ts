@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, http } from 'viem';
 import { sepolia } from 'viem/chains';
-import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI } from '@/lib/contracts';
+import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
 
 const publicClient = createPublicClient({
   chain: sepolia,
@@ -21,35 +21,35 @@ export async function POST(request: NextRequest) {
 
     // Get channel info
     const channelStats = await publicClient.readContract({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
+      address: ROLLUP_BRIDGE_CORE_ADDRESS,
+      abi: ROLLUP_BRIDGE_CORE_ABI,
       functionName: 'getChannelInfo',
       args: [BigInt(channelId)]
-    }) as readonly [readonly string[], number, bigint, string];
+    }) as readonly [string, number, bigint, string];
 
-    const [allowedTokens, state, participantCount, initialRoot] = channelStats;
+    const [targetContract, state, participantCount, initialRoot] = channelStats;
     
     // Get leader separately
     const leader = await publicClient.readContract({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
+      address: ROLLUP_BRIDGE_CORE_ADDRESS,
+      abi: ROLLUP_BRIDGE_CORE_ABI,
       functionName: 'getChannelLeader',
       args: [BigInt(channelId)]
     }) as string;
 
     // Get channel participants
     const participants = await publicClient.readContract({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
+      address: ROLLUP_BRIDGE_CORE_ADDRESS,
+      abi: ROLLUP_BRIDGE_CORE_ABI,
       functionName: 'getChannelParticipants',
       args: [BigInt(channelId)]
     }) as readonly string[];
 
-    const totalEntries = participants.length * allowedTokens.length;
+    const totalEntries = participants.length; // Only one token per channel now
     
     console.log('=== CONTRACT PUBLIC SIGNALS SIMULATION ===');
     console.log('Participants:', participants);
-    console.log('Allowed tokens:', allowedTokens);
+    console.log('Target contract:', targetContract);
     console.log('Total entries:', totalEntries);
 
     // Build the public signals array exactly as the contract does
@@ -66,80 +66,53 @@ export async function POST(request: NextRequest) {
     debug.push({step: 'merkle_root', index: 0, value: publicSignals[0]});
 
     // Fill merkle keys (L2 MPT keys) and storage values (balances)
-    // Each participant has entries for each token type
     let entryIndex = 0;
-    for (let i = 0; i < participants.length; i++) {
-      const participant = participants[i];
-      
-      for (let j = 0; j < allowedTokens.length; j++) {
-        const token = allowedTokens[j];
+    for (const participant of participants) {
+      // Get balance for the single target contract
+      const balance = await publicClient.readContract({
+        address: ROLLUP_BRIDGE_CORE_ADDRESS,
+        abi: ROLLUP_BRIDGE_CORE_ABI,
+        functionName: 'getParticipantDeposit',
+        args: [BigInt(channelId), participant as `0x${string}`]
+      }) as bigint;
 
-        try {
-          // Get balance
-          const balance = await publicClient.readContract({
-            address: ROLLUP_BRIDGE_ADDRESS,
-            abi: ROLLUP_BRIDGE_ABI,
-            functionName: 'getParticipantTokenDeposit',
-            args: [BigInt(channelId), participant as `0x${string}`, token as `0x${string}`]
-          }) as bigint;
-
-          // Get L2 MPT key
-          let l2MptKey = '0';
-          try {
-            // TODO: Fix function signature mismatch 
-            // const l2MptKeyResult = await publicClient.readContract({
-            //   address: ROLLUP_BRIDGE_ADDRESS,
-            //   abi: ROLLUP_BRIDGE_ABI,
-            //   functionName: 'getL2MptKey',
-            //   args: [BigInt(channelId), participant as `0x${string}`, token as `0x${string}`]
-            // }) as bigint;
-            const participantsList = participants;
-            const l2MptKeys = [BigInt(0)]; // Placeholder
-
-            const participantIndex = participantsList.findIndex(p => p.toLowerCase() === participant.toLowerCase());
-            if (participantIndex >= 0 && l2MptKeys[participantIndex]) {
-              l2MptKey = l2MptKeys[participantIndex].toString();
-            }
-          } catch (error) {
-            console.warn(`Could not fetch L2 MPT key for ${participant}:${token}`);
-          }
-
-          // Contract logic: Add to public signals:
-          // - indices 1-16 are merkle_keys (L2 MPT keys)
-          // - indices 17-32 are storage_values (balances)
-          const l2MptIndex = entryIndex + 1;
-          const balanceIndex = entryIndex + 17;
-          
-          publicSignals[l2MptIndex] = l2MptKey;
-          publicSignals[balanceIndex] = balance.toString();
-
-          debug.push({
-            step: 'participant_token_entry',
-            participant: participant,
-            token: token,
-            entryIndex: entryIndex,
-            l2MptKey: l2MptKey,
-            balance: balance.toString(),
-            l2MptIndex: l2MptIndex,
-            balanceIndex: balanceIndex
-          });
-
-          entryIndex++;
-        } catch (error) {
-          console.error(`Error processing ${participant}:${token}`, error);
-          debug.push({
-            step: 'error',
-            participant: participant,
-            token: token,
-            entryIndex: entryIndex,
-            error: error instanceof Error ? error.message : 'Unknown error'
-          });
-          entryIndex++;
-        }
+      // Get L2 MPT key
+      let l2MptKey = '0';
+      try {
+        const l2MptKeyResult = await publicClient.readContract({
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: 'getL2MptKey',
+          args: [BigInt(channelId), participant as `0x${string}`]
+        }) as bigint;
+        l2MptKey = l2MptKeyResult.toString();
+      } catch (error) {
+        console.warn(`Could not fetch L2 MPT key for ${participant}`);
       }
+
+      // Contract logic: Add to public signals:
+      // - indices 1-16 are merkle_keys (L2 MPT keys)
+      // - indices 17-32 are storage_values (balances)
+      const l2MptIndex = entryIndex + 1;
+      const balanceIndex = entryIndex + 17;
+      
+      publicSignals[l2MptIndex] = l2MptKey;
+      publicSignals[balanceIndex] = balance.toString();
+
+      debug.push({
+        step: 'participant_entry',
+        participant: participant,
+        entryIndex: entryIndex,
+        l2MptKey: l2MptKey,
+        balance: balance.toString(),
+        l2MptIndex: l2MptIndex,
+        balanceIndex: balanceIndex
+      });
+
+      entryIndex++;
     }
 
-    // Pad remaining slots with zeros
+    // Pad remaining slots with zeros (circuit expects exactly 16 entries)
     for (let i = totalEntries; i < 16; i++) {
       publicSignals[i + 1] = '0'; // merkle key
       publicSignals[i + 17] = '0'; // storage value

@@ -8,7 +8,7 @@ import {
   ROLLUP_BRIDGE_CORE_ABI, 
   ROLLUP_BRIDGE_CORE_ADDRESS, 
   TON_TOKEN_ADDRESS,
-  WTON_TOKEN_ADDRESS,
+  USDC_TOKEN_ADDRESS,
   USDT_TOKEN_ADDRESS 
 } from '@/lib/contracts';
 import { Sidebar } from '@/components/Sidebar';
@@ -60,20 +60,19 @@ export default function CreateChannelPage() {
     (channelStats1 && channelStats1[4] && String(channelStats1[4]).toLowerCase() === address.toLowerCase() && Number(channelStats1[2]) !== 5)
   );
 
-  // Form state
-  const [allowedTokens, setAllowedTokens] = useState<string[]>(['']);
+  // Form state - default to TON token since it's the only option
+  const [targetContract, setTargetContract] = useState<string>(TON_TOKEN_ADDRESS);
   const [participants, setParticipants] = useState<Participant[]>([
     { address: '' }
   ]);
-  const [timeout, setTimeout] = useState(1); // in days
+  const [timeout, setTimeout] = useState(1); // in hours
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [createdChannelId, setCreatedChannelId] = useState<string>('');
   const [txHash, setTxHash] = useState<string>('');
 
   // Add/Remove participants
   const addParticipant = () => {
-    const filledTokens = allowedTokens.filter(token => token !== '');
-    const maxParticipants = getMaxParticipants(filledTokens.length || 1); // Use 1 as minimum to show limits
+    const maxParticipants = getMaxParticipants(1); // Always 1 token now
     if (participants.length < maxParticipants) {
       setParticipants([...participants, { address: '' }]);
     }
@@ -91,23 +90,9 @@ export default function CreateChannelPage() {
     setParticipants(newParticipants);
   };
 
-  // Add/Remove allowed tokens
-  const addToken = () => {
-    if (allowedTokens.length < 3) {
-      setAllowedTokens([...allowedTokens, '']);
-    }
-  };
-
-  const removeToken = (index: number) => {
-    if (allowedTokens.length > 1) {
-      setAllowedTokens(allowedTokens.filter((_, i) => i !== index));
-    }
-  };
-
-  const updateToken = (index: number, value: string) => {
-    const newTokens = [...allowedTokens];
-    newTokens[index] = value;
-    setAllowedTokens(newTokens);
+  // Update target contract
+  const updateTargetContract = (value: string) => {
+    setTargetContract(value);
   };
 
 
@@ -115,17 +100,17 @@ export default function CreateChannelPage() {
   const isValidEthereumAddress = (addr: string) => /^0x[a-fA-F0-9]{40}$/.test(addr);
   const isValidHex = (hex: string) => /^0x[a-fA-F0-9]+$/.test(hex);
 
-  // Helper function to get token symbol from address
-  const getTokenSymbol = (address: string): string => {
+  // Helper function to get contract name from address
+  const getContractName = (address: string): string => {
     switch (address.toLowerCase()) {
       case TON_TOKEN_ADDRESS.toLowerCase():
-        return 'TON';
-      case WTON_TOKEN_ADDRESS.toLowerCase():
-        return 'WTON';
+        return 'TON Contract';
+      case USDC_TOKEN_ADDRESS.toLowerCase():
+        return 'USDC Contract';
       case USDT_TOKEN_ADDRESS.toLowerCase():
-        return 'USDT';
+        return 'USDT Contract';
       default:
-        return 'Token';
+        return 'Contract';
     }
   };
 
@@ -137,39 +122,25 @@ export default function CreateChannelPage() {
   };
 
   const isFormValid = () => {
-    const filledTokens = allowedTokens.filter(token => token !== '');
-    const maxParticipants = getMaxParticipants(filledTokens.length);
-    
-    // Check for duplicate tokens
-    const uniqueTokens = new Set(filledTokens);
-    const hasDuplicates = uniqueTokens.size !== filledTokens.length;
+    const maxParticipants = getMaxParticipants(1);
     
     return (
       isAuthorized && // User must be authorized to create channels
       !isAlreadyLeader && // Prevent creation if already leading a channel
-      allowedTokens.length > 0 &&
-      allowedTokens.length <= 3 &&
-      !hasDuplicates && // No duplicate tokens allowed
-      allowedTokens.every(token => 
-        token === '' || // Allow empty tokens during editing
-        token === TON_TOKEN_ADDRESS || // TON
-        token === WTON_TOKEN_ADDRESS || // WTON
-        token === USDT_TOKEN_ADDRESS || // USDT
-        isValidEthereumAddress(token)
-      ) &&
-      filledTokens.length > 0 && // At least one non-empty token
+      targetContract !== '' && // Target contract must be selected
+      targetContract === TON_TOKEN_ADDRESS && // Only TON contract allowed
       participants.length >= 1 && 
       participants.length <= maxParticipants &&
       participants.every(p => isValidEthereumAddress(p.address)) &&
-      timeout >= 1 && timeout <= 365 // 1 day to 365 days
+      timeout >= 1 && timeout <= 8760 // 1 hour to 365 days (8760 hours)
     );
   };
 
   // Prepare contract call
   const channelParams = isFormValid() ? {
-    allowedTokens: allowedTokens.filter(token => token !== '').map(token => token as `0x${string}`),
+    targetContract: targetContract as `0x${string}`,
     participants: participants.map(p => p.address as `0x${string}`),
-    timeout: BigInt(timeout * 86400) // Convert days to seconds
+    timeout: BigInt(timeout * 3600) // Convert hours to seconds
   } : undefined;
 
   const contractConfig = channelParams ? {
@@ -253,9 +224,9 @@ export default function CreateChannelPage() {
         <div className="max-w-5xl mx-auto">
           <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 mb-6 shadow-lg shadow-[#4fc3f7]/20">
             <div className="mb-8">
-              <h2 className="text-2xl font-bold text-white mb-2">Create Multi-Token Channel</h2>
+              <h2 className="text-2xl font-bold text-white mb-2">Create Private Channel</h2>
               <p className="text-gray-300">
-                Set up a channel supporting multiple tokens for zero-knowledge proof operations with multiple participants.
+                Set up a channel targeting the TON token contract for zero-knowledge proof operations with multiple participants.
               </p>
             </div>
 
@@ -279,110 +250,79 @@ export default function CreateChannelPage() {
 
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Allowed Tokens */}
+              {/* Target Contract */}
               <div>
-                <div className="flex justify-between items-center mb-4">
-                  <label className="block text-sm font-medium text-gray-300">
-                    Allowed Tokens ({allowedTokens.length}/3)
-                  </label>
-                  <div className="space-x-2">
-                    <button
-                      type="button"
-                      onClick={addToken}
-                      disabled={allowedTokens.length >= 3}
-                      className="px-3 py-1 text-sm bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 transition-colors duration-200"
-                    >
-                      Add Token
-                    </button>
+                <label className="block text-sm font-medium text-gray-300 mb-4">
+                  Target Contract (TON Token Only)
+                </label>
+                
+                {/* Warning if non-TON contract is entered */}
+                {targetContract && targetContract !== TON_TOKEN_ADDRESS && (
+                  <div className="mb-4 p-3 bg-red-900/20 border border-red-500/50">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-400" />
+                      <p className="text-red-300 text-sm font-semibold">Only TON Token Contract Allowed</p>
+                    </div>
+                    <p className="text-red-200/80 text-xs mt-1">
+                      Please use the TON token contract address: {TON_TOKEN_ADDRESS}
+                    </p>
+                  </div>
+                )}
+                
+                <div className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <h4 className="font-medium text-white">Contract</h4>
+                    {targetContract === TON_TOKEN_ADDRESS && (
+                      <span className="px-2 py-1 text-xs bg-green-600/20 border border-green-500/50 text-green-300 rounded">
+                        ✓ TON Contract
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="flex flex-col gap-3">
+                    <input
+                      type="text"
+                      value={targetContract}
+                      onChange={(e) => updateTargetContract(e.target.value)}
+                      placeholder="Enter TON token contract address"
+                      className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] font-mono"
+                    />
+                    {targetContract && targetContract !== TON_TOKEN_ADDRESS && (
+                      <p className="text-red-400 text-xs mt-1 font-semibold">⚠️ Invalid: Only TON token contract is allowed</p>
+                    )}
+                    
+                    {/* Quick select button for TON only */}
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => updateTargetContract(TON_TOKEN_ADDRESS)}
+                        className="px-3 py-1.5 text-sm bg-green-600/20 border border-green-500/50 text-green-300 hover:bg-green-600/40 transition-colors font-medium"
+                      >
+                        Use TON Token Contract
+                      </button>
+                    </div>
                   </div>
                 </div>
                 
-                <div className="space-y-4">
-                  {allowedTokens.map((token, index) => (
-                    <div key={index} className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4">
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium text-white">Token {index + 1}</h4>
-                          {token && (getTokenSymbol(token) !== 'Token') && (
-                            <span className="px-2 py-1 text-xs bg-green-600/20 border border-green-500/50 text-green-300 rounded">
-                              {getTokenSymbol(token)}
-                            </span>
-                          )}
-                        </div>
-                        {allowedTokens.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeToken(index)}
-                            className="text-red-400 hover:text-red-300 text-sm"
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                      
-                      <div className="flex flex-col gap-3">
-                        <input
-                          type="text"
-                          value={token}
-                          onChange={(e) => updateToken(index, e.target.value)}
-                          placeholder="Enter token address or use quick select buttons below"
-                          className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
-                        />
-                        {token && token !== TON_TOKEN_ADDRESS && token !== WTON_TOKEN_ADDRESS && token !== USDT_TOKEN_ADDRESS && !isValidEthereumAddress(token) && (
-                          <p className="text-red-400 text-xs mt-1">Invalid token address</p>
-                        )}
-                        {token && allowedTokens.filter(t => t === token).length > 1 && (
-                          <p className="text-red-400 text-xs mt-1">Duplicate token address - each token can only be used once</p>
-                        )}
-                        
-                        {/* Quick select buttons */}
-                        <div className="flex gap-2 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => updateToken(index, TON_TOKEN_ADDRESS)}
-                            className="px-2 py-1 text-xs bg-green-600/20 border border-green-500/50 text-green-300 hover:bg-green-600/40 transition-colors"
-                          >
-                            TON
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateToken(index, WTON_TOKEN_ADDRESS)}
-                            className="px-2 py-1 text-xs bg-amber-600/20 border border-amber-500/50 text-amber-300 hover:bg-amber-600/40 transition-colors"
-                          >
-                            WTON
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateToken(index, USDT_TOKEN_ADDRESS)}
-                            className="px-2 py-1 text-xs bg-purple-600/20 border border-purple-500/50 text-purple-300 hover:bg-purple-600/40 transition-colors"
-                          >
-                            USDT
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                
                 <p className="text-sm text-gray-400 mt-2">
-                  You can select up to 3 different tokens for your channel. Participants will be able to deposit any of these tokens.
+                  Currently, only the TON token contract is supported for channel creation.
                 </p>
                 
-                {/* Information for supported tokens */}
+                {/* Information for TON contract */}
                 <div className="mt-3 p-4 bg-blue-900/20 border border-blue-500/50">
                   <div className="flex items-start gap-3">
                     <Lightbulb className="w-5 h-5 text-blue-400" />
                     <div className="flex-1">
                       <h4 className="text-sm font-semibold text-blue-300 mb-2">
-                        Supported Tokens
+                        TON Token Contract
                       </h4>
                       <p className="text-blue-200/90 text-sm mb-3">
-                        Currently supported: TON (18 decimals), WTON, and USDT tokens. Use the quick select buttons above for easy selection.
+                        Channels must target the TON token contract. This ensures consistent state verification across all channels.
                       </p>
                       <div className="space-y-1 text-xs text-blue-200/80">
-                        <p>• TON: {TON_TOKEN_ADDRESS}</p>
-                        <p>• WTON: {WTON_TOKEN_ADDRESS}</p>
-                        <p>• USDT: {USDT_TOKEN_ADDRESS}</p>
+                        <p>• TON Contract Address: {TON_TOKEN_ADDRESS}</p>
+                        <p>• You must manually enter or use the quick select button</p>
+                        <p>• Other token contracts are not supported at this time</p>
                       </div>
                     </div>
                   </div>
@@ -393,13 +333,13 @@ export default function CreateChannelPage() {
               <div>
                 <div className="flex justify-between items-center mb-4">
                   <label className="block text-sm font-medium text-gray-300">
-                    Whitelisted Participants ({participants.length}/{getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)})
+                    Whitelisted Participants ({participants.length}/{getMaxParticipants(1)})
                   </label>
                   <div className="space-x-2">
                     <button
                       type="button"
                       onClick={addParticipant}
-                      disabled={participants.length >= getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)}
+                      disabled={participants.length >= getMaxParticipants(1)}
                       className="px-3 py-1 text-sm bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 transition-colors duration-200"
                     >
                       Add
@@ -443,7 +383,7 @@ export default function CreateChannelPage() {
                 </div>
                 
                 <p className="text-sm text-gray-400 mt-2">
-                  Minimum 1 whitelisted participant, maximum {getMaxParticipants(allowedTokens.filter(token => token !== '').length || 1)} whitelisted participants.
+                  Minimum 1 whitelisted participant, maximum {getMaxParticipants(1)} whitelisted participants.
                 </p>
                 
               </div>
@@ -451,18 +391,18 @@ export default function CreateChannelPage() {
               {/* Timeout */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Channel Timeout (days)
+                  Channel Timeout (hours)
                 </label>
                 <input
                   type="number"
                   min="1"
-                  max="365"
+                  max="8760"
                   value={timeout}
                   onChange={(e) => setTimeout(parseInt(e.target.value) || 1)}
                   className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
                 />
                 <p className="text-sm text-gray-400 mt-1">
-                  Channel timeout period (1 day to 365 days)
+                  Channel timeout period (1 hour to 365 days = 8760 hours)
                 </p>
               </div>
 
@@ -490,10 +430,26 @@ export default function CreateChannelPage() {
           <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-8">
             <h3 className="font-semibold text-[#4fc3f7] mb-4">Channel Requirements & Workflow</h3>
             <ul className="space-y-2 text-sm text-gray-300">
-              <li>• Maximum participants: 128 total leaves (participants × tokens ≤ 128)</li>
-              <li>• 1 token = 128 max participants, 2 tokens = 64 max, 3 tokens = 42 max</li>
-              <li>• Minimum 1 whitelisted participant required</li>
-              <li>• Timeout must be between 1 hour and 365 days</li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-400">✓</span>
+                <span>Target contract must be the TON token contract</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-400">✓</span>
+                <span>Maximum 128 participants per channel</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-400">✓</span>
+                <span>Minimum 1 whitelisted participant required</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-green-400">✓</span>
+                <span>Timeout must be between 1 hour and 365 days (8760 hours)</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-yellow-400">⚠</span>
+                <span>Only TON token channels are currently supported</span>
+              </li>
             </ul>
           </div>
         </div>

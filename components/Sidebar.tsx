@@ -59,7 +59,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
         name: 'Create Channel',
         href: '/create-channel',
         icon: PlusCircle,
-        description: 'Create multi-party bridge channel',
+        description: 'Create private channel',
         requiresConnection: true
       });
     }

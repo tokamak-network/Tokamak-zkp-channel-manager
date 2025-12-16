@@ -30,7 +30,7 @@ interface DKGSession {
   myRole?: 'creator' | 'participant';
   description?: string;
   participants: any[];
-  roster: Array<[number, string, string]>;
+  roster: Array<[number, string, string]>; // Normalized to always be string
   groupVerifyingKey?: string;
   automationMode?: 'manual' | 'automatic';
   _serverMissing?: boolean; // Flag when session exists locally but not on server
@@ -45,6 +45,7 @@ interface AuthState {
   dkgPrivateKey: string | null;
   dkgPublicKey?: string;
   userId: string | null;
+  accessToken?: string; // Access token from the new server format
 }
 
 export function useDKGWebSocket(
@@ -305,7 +306,8 @@ export function useDKGWebSocket(
     
     // Log any error messages immediately
     if (message.type === 'Error') {
-      console.error('❌ SERVER ERROR:', message.payload?.message || 'Unknown error');
+      console.error(`❌ SERVER ERROR [${new Date().toISOString()}]:`, message.payload?.message || 'Unknown error');
+      console.error('Full error message:', message);
     }
     
     switch (message.type) {
@@ -323,16 +325,24 @@ export function useDKGWebSocket(
         setAuthState(prev => ({
           ...prev,
           isAuthenticated: true,
-          userId: message.payload.user_id,
+          userId: message.payload.user_id || message.payload.suid, // Support both old and new formats
           publicKeyHex: prev.publicKeyHex,
-          dkgPrivateKey: prev.dkgPrivateKey
+          dkgPrivateKey: prev.dkgPrivateKey,
+          accessToken: message.payload.access_token // Store access token if provided
         }));
         setError('');
+        
+        // Log successful authentication
+        console.log('✅ Authentication successful:', {
+          suid: message.payload.suid,
+          principal: message.payload.principal,
+          hasAccessToken: !!message.payload.access_token
+        });
         
         // Automatically request session list after authentication
         if (wsConnection) {
           console.log('📋 Authenticated - requesting pending sessions list');
-          const listMessage = { type: 'ListPendingDKGSessions' };
+          const listMessage = { type: 'ListPendingDKGSessions', payload: null };
           wsConnection.send(JSON.stringify(listMessage));
         }
         break;
@@ -384,7 +394,7 @@ export function useDKGWebSocket(
         
         // Immediately request updated session list so others can see it
         if (wsConnection) {
-          const listMessage = { type: 'ListPendingDKGSessions' };
+          const listMessage = { type: 'ListPendingDKGSessions', payload: null };
           wsConnection.send(JSON.stringify(listMessage));
         }
         break;
@@ -561,10 +571,11 @@ export function useDKGWebSocket(
               dkgStateRef.current[sessionId] = {};
             }
             dkgStateRef.current[sessionId].identifier = myIdHex;
-            dkgStateRef.current[sessionId].roster = message.payload.roster.map((r: [number, string, string]) => ({ 
+            dkgStateRef.current[sessionId].roster = message.payload.roster.map((r: [number, string, any]) => ({ 
               uid: r[0], 
               id_hex: r[1], 
-              pubkey: r[2] 
+              // Extract the actual public key hex from RosterPublicKey object or use string directly
+              pubkey: typeof r[2] === 'string' ? r[2] : r[2].key 
             }));
             dkgStateRef.current[sessionId].group_id = message.payload.group_id;
             
@@ -573,7 +584,11 @@ export function useDKGWebSocket(
               session.id === sessionId ? {
                 ...session,
                 status: 'round1' as const,
-                roster: message.payload.roster || session.roster,
+                roster: message.payload.roster ? message.payload.roster.map((r: any[]) => [
+                  r[0], // uid
+                  r[1], // idHex
+                  typeof r[2] === 'string' ? r[2] : r[2].key // normalize pubkey
+                ]) : session.roster,
                 currentParticipants: message.payload.roster ? message.payload.roster.length : session.currentParticipants,
                 myRole: session.myRole // Preserve the existing role
               } : session
@@ -655,7 +670,7 @@ export function useDKGWebSocket(
                         session: sessionId,
                         id_hex: myIdHex,
                         pkg_bincode_hex: public_package_hex,
-                        sig_ecdsa_hex: signature
+                        signature_hex: signature  // Changed from sig_ecdsa_hex to signature_hex
                       }
                     };
                     console.log('📤 Sending Round1Submit message...');
@@ -751,6 +766,22 @@ export function useDKGWebSocket(
                   pkgs_cipher_hex.push([id_hex, ephemeral_public_key_hex, nonce_hex, ciphertext_hex, signature]);
                 }
                 
+                // Convert to new server format with EncryptedPayload objects
+                const pkgs_cipher = pkgs_cipher_hex.map((pkg: [string, string, string, string, string]) => {
+                  const [recipientIdHex, ephPubKeyHex, nonceHex, ciphertextHex, signatureHex] = pkg;
+                  
+                  const encryptedPayload = {
+                    ephemeral_public_key: {
+                      type: "Secp256k1",
+                      key: ephPubKeyHex
+                    },
+                    nonce: nonceHex,
+                    ciphertext: ciphertextHex
+                  };
+                  
+                  return [recipientIdHex, encryptedPayload, signatureHex];
+                });
+                
                 // Submit to server - use ref for current connection
                 const currentWs = wsConnectionRef.current;
                 if (currentWs && currentWs.readyState === WebSocket.OPEN) {
@@ -759,7 +790,7 @@ export function useDKGWebSocket(
                     payload: {
                       session: sessionId,
                       id_hex: state.identifier,
-                      pkgs_cipher_hex: pkgs_cipher_hex
+                      pkgs_cipher: pkgs_cipher
                     }
                   }));
                   console.log('✅ Round 2 encrypted packages submitted automatically!');
@@ -958,12 +989,28 @@ export function useDKGWebSocket(
       case 'Round2All':
         {
           // Server sends encrypted Round 2 packages for this participant
-          // Format: { session, packages: [[from_id_hex, eph_pub_hex, nonce_hex, ct_hex, sig_hex], ...] }
+          // New format: { session, packages: [[from_id_hex, EncryptedPayload, sig_hex], ...] }
           const sessionId = message.payload?.session;
           if (sessionId && message.payload?.packages) {
             console.log('📦 Round2All received:', {
               session: sessionId,
               packageCount: message.payload.packages.length
+            });
+            
+            // Convert new format to the format expected by the client
+            // From: [from_id_hex, EncryptedPayload, sig_hex]
+            // To: [from_id_hex, eph_pub_hex, nonce_hex, ct_hex, sig_hex]
+            const convertedPackages = message.payload.packages.map((pkg: any) => {
+              if (Array.isArray(pkg) && pkg.length === 3) {
+                const [fromIdHex, encryptedPayload, sigHex] = pkg;
+                // Extract values from EncryptedPayload object
+                const ephPubKeyHex = encryptedPayload.ephemeral_public_key?.key || encryptedPayload.ephemeral_public_key;
+                const nonceHex = encryptedPayload.nonce;
+                const ciphertextHex = encryptedPayload.ciphertext;
+                return [fromIdHex, ephPubKeyHex, nonceHex, ciphertextHex, sigHex];
+              }
+              // Fallback for old format
+              return pkg;
             });
             
             setSessions(prev => prev.map(session => 
@@ -995,7 +1042,7 @@ export function useDKGWebSocket(
                 console.log('🔐 Performing DKG Part 3 (Finalization)...');
                 
                 // Decrypt all received packages using current private key
-                const received_packages = message.payload.packages;
+                const received_packages = convertedPackages;
                 const decrypted_packages: any = {};
                 for (const [from_id_hex, eph_pub_hex, nonce_hex, ct_hex, _sig] of received_packages) {
                   const decrypted = ecies_decrypt(privateKeyForSigning, eph_pub_hex, nonce_hex, ct_hex);
@@ -1055,7 +1102,7 @@ export function useDKGWebSocket(
                       session: sessionId,
                       id_hex: state.identifier,
                       group_vk_sec1_hex: group_public_key_hex,
-                      sig_ecdsa_hex: signature
+                      signature_hex: signature
                     }
                   }));
                   console.log('✅ Finalization submitted to server!');
@@ -1089,18 +1136,34 @@ export function useDKGWebSocket(
         // Server confirms DKG finalization is complete
         if (message.payload?.session) {
           const sessionId = message.payload.session;
-          const groupVkHex = message.payload.group_vk_sec1_hex;
+          
+          // Handle both old compressed format and new uncompressed format (px, py)
+          let groupVerifyingKey: string;
+          if (message.payload.px && message.payload.py) {
+            // New format: uncompressed key with px and py
+            const px = message.payload.px.replace('0x', '');
+            const py = message.payload.py.replace('0x', '');
+            // Store as uncompressed format with 04 prefix
+            groupVerifyingKey = `04${px}${py}`;
+            console.log(`   Group VK (uncompressed): px=${px.slice(0, 16)}..., py=${py.slice(0, 16)}...`);
+          } else if (message.payload.group_vk_sec1_hex) {
+            // Old format: compressed key
+            groupVerifyingKey = message.payload.group_vk_sec1_hex;
+            console.log(`   Group VK (compressed): ${groupVerifyingKey?.slice(0, 16)}...`);
+          } else {
+            console.warn('⚠️ No group verifying key found in Finalized message');
+            groupVerifyingKey = '';
+          }
           
           setSessions(prev => prev.map(session => 
             session.id === sessionId ? {
               ...session,
               status: 'completed' as const,
-              groupVerifyingKey: groupVkHex
+              groupVerifyingKey: groupVerifyingKey
             } : session
           ));
           
           console.log(`✅ DKG ceremony finalized for session ${sessionId}`);
-          console.log(`   Group VK: ${groupVkHex?.slice(0, 16)}...`);
           
           setSuccessMessage('🎉 DKG ceremony completed! Group verification key generated.');
         }
@@ -1119,6 +1182,122 @@ export function useDKGWebSocket(
 
     try {
       setConnectionStatus('connecting');
+      
+      // Add global WebSocket message interception for debugging and filtering
+      const connectionId = Math.random().toString(36).substr(2, 9);
+      console.log(`🔌 Setting up WebSocket interception for connection: ${connectionId}`);
+      
+      const originalSend = WebSocket.prototype.send;
+      WebSocket.prototype.send = function(data: string | ArrayBufferLike | Blob | ArrayBufferView) {
+        console.log(`🔍 [${connectionId}] Raw WebSocket.send called with:`, typeof data, data);
+        if (typeof data === 'string') {
+          try {
+            const parsed = JSON.parse(data);
+            
+            // Filter out Next.js development messages
+            if (parsed.event === 'ping' || parsed.appDirRoute !== undefined || parsed.tree) {
+              console.log('🚫 Filtered Next.js development message:', parsed);
+              return; // Don't send this message
+            }
+            
+            console.log(`🔍 [${connectionId}] [OUTGOING MESSAGE]:`, parsed);
+            if (!parsed.hasOwnProperty('payload') && parsed.type !== 'Ping') {
+              console.warn(`⚠️ [${connectionId}] Message missing payload field:`, parsed);
+            }
+            
+            // Validate signing session messages to prevent parse errors
+            if (parsed.type === 'AnnounceSignSession') {
+              const validationErrors: string[] = [];
+              const payload = parsed.payload;
+              
+              if (!payload) {
+                validationErrors.push('Missing payload');
+              } else {
+                // Validate required fields
+                if (!payload.group_id || typeof payload.group_id !== 'string') {
+                  validationErrors.push('Invalid or missing group_id');
+                }
+                if (!payload.message || typeof payload.message !== 'string') {
+                  validationErrors.push('Invalid or missing message');
+                }
+                if (!payload.message_hex || typeof payload.message_hex !== 'string') {
+                  validationErrors.push('Invalid or missing message_hex');
+                }
+                if (!payload.group_vk_sec1_hex || typeof payload.group_vk_sec1_hex !== 'string') {
+                  validationErrors.push('Invalid or missing group_vk_sec1_hex');
+                }
+                if (!Array.isArray(payload.participants)) {
+                  validationErrors.push('Invalid or missing participants array');
+                }
+                if (!Array.isArray(payload.participants_pubs)) {
+                  validationErrors.push('Invalid or missing participants_pubs array');
+                }
+                if (typeof payload.threshold !== 'number' || payload.threshold < 1) {
+                  validationErrors.push('Invalid threshold value');
+                }
+                
+                // Validate hex strings
+                if (payload.group_id && !payload.group_id.match(/^[0-9a-fA-F]+$/)) {
+                  validationErrors.push('group_id is not valid hex');
+                }
+                if (payload.message && !payload.message.match(/^[0-9a-fA-F]+$/)) {
+                  validationErrors.push('message is not valid hex');
+                }
+                if (payload.message_hex && !payload.message_hex.match(/^[0-9a-fA-F]+$/)) {
+                  validationErrors.push('message_hex is not valid hex');
+                }
+                if (payload.group_vk_sec1_hex && !payload.group_vk_sec1_hex.match(/^[0-9a-fA-F]+$/)) {
+                  validationErrors.push('group_vk_sec1_hex is not valid hex');
+                }
+                
+                // Validate participants_pubs structure
+                if (payload.participants_pubs) {
+                  payload.participants_pubs.forEach((pub: any, index: number) => {
+                    if (!Array.isArray(pub) || pub.length !== 2) {
+                      validationErrors.push(`participants_pubs[${index}] should be an array of length 2`);
+                    } else {
+                      const [id, pubkey] = pub;
+                      if (typeof id !== 'number') {
+                        validationErrors.push(`participants_pubs[${index}][0] should be a number`);
+                      }
+                      if (!pubkey || typeof pubkey !== 'object') {
+                        validationErrors.push(`participants_pubs[${index}][1] should be an object`);
+                      } else {
+                        if (pubkey.type !== 'Secp256k1') {
+                          validationErrors.push(`participants_pubs[${index}][1].type should be 'Secp256k1'`);
+                        }
+                        if (!pubkey.key || typeof pubkey.key !== 'string') {
+                          validationErrors.push(`participants_pubs[${index}][1].key should be a string`);
+                        } else if (!pubkey.key.match(/^[0-9a-fA-F]+$/)) {
+                          validationErrors.push(`participants_pubs[${index}][1].key is not valid hex`);
+                        }
+                      }
+                    }
+                  });
+                }
+              }
+              
+              if (validationErrors.length > 0) {
+                console.error(`❌ [${connectionId}] BLOCKED malformed AnnounceSignSession message:`, {
+                  errors: validationErrors,
+                  message: parsed
+                });
+                console.error('🚫 This message would have caused a "parse client msg" error on the server');
+                return; // Block sending this malformed message
+              } else {
+                console.log(`✅ [${connectionId}] AnnounceSignSession message validation passed`);
+              }
+            }
+            
+            // Add timestamp to help correlate with server errors
+            console.log(`📤 [${connectionId}] [${new Date().toISOString()}] Sent message type: ${parsed.type}`);
+          } catch (e) {
+            console.log('🔍 [OUTGOING RAW]:', data);
+          }
+        }
+        return originalSend.call(this, data);
+      };
+      
       const ws = new WebSocket(serverUrl);
       
       ws.onopen = () => {
@@ -1186,7 +1365,7 @@ export function useDKGWebSocket(
     if (!wsConnection) return;
     
     console.log('📩 Requesting challenge...');
-    const message = { type: 'RequestChallenge' };
+    const message = { type: 'RequestChallenge', payload: null };
     wsConnection.send(JSON.stringify(message));
   }, [wsConnection]);
 
@@ -1375,7 +1554,10 @@ export function useDKGWebSocket(
         type: 'Login',
         payload: {
           challenge: authState.uuid,
-          pubkey_hex: pubkeyHex,
+          public_key: {
+            type: 'Secp256k1',
+            key: pubkeyHex
+          },
           signature_hex: signatureHex
         }
       };
@@ -1383,8 +1565,11 @@ export function useDKGWebSocket(
       console.log('🔍 Final login message:', {
         type: 'Login',
         challenge: authState.uuid,
-        pubkey_hex: pubkeyHex,
-        pubkey_length: pubkeyHex.length,
+        public_key: {
+          type: 'Secp256k1',
+          key: pubkeyHex,
+          key_length: pubkeyHex.length
+        },
         signature_hex: signatureHex,
         signature_length: signatureHex.length,
         digest: properDigest,
@@ -1424,10 +1609,57 @@ export function useDKGWebSocket(
     }
   }, [authState.uuid, authState.publicKeyHex, authState.isAuthenticated, wsConnection, authenticate]);
 
+  // Validate authentication state and localStorage consistency
+  const validateAuthenticationState = useCallback(() => {
+    console.log('🔍 Validating authentication state and localStorage consistency...');
+    
+    // Check for authentication state inconsistency
+    if (authState.isAuthenticated && authState.publicKeyHex && address) {
+      const storedPublicKey = localStorage.getItem('dkg_last_public_key');
+      const storedAddress = localStorage.getItem('dkg_last_wallet_address');
+      
+      // Validate stored keys match current auth state
+      if (storedPublicKey && storedPublicKey !== authState.publicKeyHex) {
+        console.warn('⚠️ Stored public key mismatch with auth state');
+        console.log('Stored:', storedPublicKey.substring(0, 20) + '...');
+        console.log('Auth State:', authState.publicKeyHex.substring(0, 20) + '...');
+        
+        // Clear inconsistent state
+        localStorage.removeItem('dkg_last_public_key');
+        localStorage.removeItem('dkg_last_private_key');
+      }
+      
+      // Validate stored address matches current wallet
+      if (storedAddress && storedAddress !== address) {
+        console.warn('⚠️ Stored address mismatch with current wallet');
+        // This will be handled by the wallet change logic below
+      }
+      
+      // Validate hex format of keys
+      if (authState.publicKeyHex && !authState.publicKeyHex.match(/^[0-9a-fA-F]+$/)) {
+        console.error('❌ Invalid public key hex format in auth state');
+        setAuthState({
+          isAuthenticated: false,
+          challenge: '',
+          uuid: '',
+          publicKeyHex: '',
+          dkgPrivateKey: '',
+          userId: null
+        });
+        return;
+      }
+    }
+    
+    console.log('✅ Authentication state validation complete');
+  }, [authState, address]);
+
   // Handle wallet changes - clear auth when address changes
   useEffect(() => {
     // Only clear if we had an authenticated wallet and it changed
     if (authState.publicKeyHex && address) {
+      // First validate current state
+      validateAuthenticationState();
+      
       const previousAddress = localStorage.getItem('dkg_last_wallet_address');
       
       if (previousAddress && previousAddress !== address) {
@@ -1461,6 +1693,9 @@ export function useDKGWebSocket(
             console.log('🔄 Reloaded sessions for new wallet');
           } catch (error) {
             console.error('Failed to reload sessions:', error);
+            // Clear corrupted session data
+            localStorage.removeItem('dkg-sessions');
+            setSessions([]);
           }
         }
         
@@ -1470,7 +1705,7 @@ export function useDKGWebSocket(
       // Store current address
       localStorage.setItem('dkg_last_wallet_address', address);
     }
-  }, [address, authState.publicKeyHex]);
+  }, [address, authState.publicKeyHex, validateAuthenticationState]);
 
   // Join session
   const joinSession = useCallback((sessionId: string) => {
@@ -1607,14 +1842,41 @@ export function useDKGWebSocket(
 
   // Clear all sessions
   const clearAllSessions = useCallback(() => {
+    // Clear session data
     localStorage.removeItem('dkg-sessions');
     localStorage.removeItem('dkg-joined-sessions');
+    
+    // Clear all key packages (these were persisting and causing stale groups to appear)
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('dkg_key_package_')) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+    console.log(`🧹 Cleared ${keysToRemove.length} key packages from localStorage`);
+    
+    // Clear other DKG-related data
+    localStorage.removeItem('dkg_last_wallet_address');
+    localStorage.removeItem('dkg_last_public_key');
+    localStorage.removeItem('dkg_last_private_key');
+    localStorage.removeItem('dkg-pubkey-uid-mapping');
+    localStorage.removeItem('dkg-next-uid');
+    
     setSessions([]);
     setJoinedSessions(new Set());
     setError('');
     
+    // Trigger a page reload to refresh any UI components that depend on localStorage
+    // This ensures that signing pages also refresh their available key packages
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+    
     if (wsConnection) {
       const message = { type: 'ClearAllSessions', payload: null };
+      console.log('📤 Sending message:', message.type);
       wsConnection.send(JSON.stringify(message));
     }
   }, [wsConnection]);
