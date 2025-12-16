@@ -589,8 +589,6 @@ export default function WithdrawTokensPage() {
                     <ul className="list-disc list-inside space-y-1">
                       <li>Channel must be in "Closed" state</li>
                       <li>You must have participated in the channel</li>
-                      <li>Simply enter your claimed balance - Merkle proofs are generated automatically</li>
-                      <li>The system will verify your amount and generate the necessary proof</li>
                       <li>You can only withdraw once per channel</li>
                     </ul>
                   </div>
