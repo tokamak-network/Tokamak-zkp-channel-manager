@@ -6,7 +6,7 @@
  */
 
 import { utf8ToBytes, setLengthLeft, bytesToBigInt, bigIntToBytes, bytesToHex, Address, concatBytes, addHexPrefix, hexToBytes } from '@ethereumjs/util';
-import { jubjub } from '@noble/curves/misc.js';
+import { jubjub } from '@noble/curves/jubjub';
 import { ethers } from 'ethers';
 import "server-only";
 import { generateMptKeyFromWallet } from '@/Tokamak-Zk-EVM/packages/frontend/synthesizer/examples/L2StateChannel/utils/mpt-key-util';
