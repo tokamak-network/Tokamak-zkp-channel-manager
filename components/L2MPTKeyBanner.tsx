@@ -61,6 +61,7 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
       // Generate MPT key using the derived wallet
       const mptKey = generateMptKeyFromWallet(
         wallet,
+        'Alice', // Participant name - using Alice for all participants for now
         channelId,
         tokenAddress
       );
