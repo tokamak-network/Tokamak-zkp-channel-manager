@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { useAccount } from 'wagmi';
 import { X, Upload, FileArchive, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
-import { storage } from '@/lib/firebase';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+// Using API route to avoid CORS issues
+import { getData, updateData, setData } from '@/lib/realtime-db-helpers';
 
 interface SubmitProofModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface SubmitProofModalProps {
 }
 
 export function SubmitProofModal({ isOpen, onClose, channelId }: SubmitProofModalProps) {
+  const { address } = useAccount();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -37,8 +39,8 @@ export function SubmitProofModal({ isOpen, onClose, channelId }: SubmitProofModa
   };
 
   const handleUpload = async () => {
-    if (!file || !storage) {
-      setError('No file selected or storage not available');
+    if (!file) {
+      setError('No file selected');
       return;
     }
 
@@ -47,44 +49,75 @@ export function SubmitProofModal({ isOpen, onClose, channelId }: SubmitProofModa
     setUploadProgress(0);
 
     try {
-      // Create storage reference: channels/{channelId}/proofs/{timestamp}_{filename}
-      const timestamp = Date.now();
-      const fileName = `${timestamp}_${file.name}`;
-      const storageRef = ref(storage, `channels/${channelId}/proofs/${fileName}`);
-
-      // Upload file with progress tracking
-      const uploadTask = uploadBytesResumable(storageRef, file);
-
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setUploadProgress(progress);
+      // Step 1: Get current proof sequence
+      setUploadProgress(10);
+      const verifiedProofs = await getData<any>(`channels/${channelId}/verifiedProofs`);
+      const submittedProofs = await getData<any>(`channels/${channelId}/submittedProofs`);
+      
+      // Calculate proof number
+      const verifiedCount = verifiedProofs ? Object.keys(verifiedProofs).length : 0;
+      const proofNumber = verifiedCount + 1;
+      
+      // Count how many proofs are submitted for this sequence number
+      const currentSequenceProofs = submittedProofs 
+        ? Object.values(submittedProofs).filter((p: any) => p.sequenceNumber === proofNumber)
+        : [];
+      const subNumber = currentSequenceProofs.length + 1;
+      
+      // Use URL-safe format for proof ID
+      const proofId = subNumber === 1 ? `proof#${proofNumber}` : `proof#${proofNumber}-${subNumber}`;
+      const storageProofId = subNumber === 1 ? `proof-${proofNumber}` : `proof-${proofNumber}-${subNumber}`;
+      
+      // Step 2: Upload ZIP file directly to Realtime Database
+      setUploadProgress(30);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('channelId', channelId.toString());
+      formData.append('proofId', storageProofId);
+      
+      const uploadResponse = await fetch('/api/save-proof-zip', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json().catch(() => ({}));
+        const errorMessage = errorData.error || errorData.details || 'Upload failed';
+        throw new Error(errorMessage);
+      }
+      
+      const { path, size } = await uploadResponse.json();
+      setUploadProgress(90);
+      
+      // Step 3: Save metadata to Firebase Realtime Database
+      const proofMetadata = {
+        proofId: proofId,
+        sequenceNumber: proofNumber,
+        subNumber: subNumber,
+        submittedAt: new Date().toISOString(),
+        submitter: address || '',
+        timestamp: Date.now(),
+        zipFile: {
+          path: path,
+          size: size,
+          fileName: file.name,
         },
-        (error) => {
-          console.error('Upload error:', error);
-          setError(`Upload failed: ${error.message}`);
-          setUploading(false);
-        },
-        async () => {
-          // Upload completed successfully
-          try {
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            setUploadedUrl(downloadURL);
-            setSuccess(true);
-            setUploading(false);
-            
-            // Reset after 3 seconds
-            setTimeout(() => {
-              handleClose();
-            }, 3000);
-          } catch (urlError) {
-            console.error('Error getting download URL:', urlError);
-            setError('Upload completed but failed to get download URL');
-            setUploading(false);
-          }
-        }
-      );
+        uploadStatus: 'complete',
+        status: 'pending',
+        channelId: channelId.toString(),
+      };
+      
+      // Save metadata to the same path as ZIP file (proof-1) to avoid duplicate entries
+      await setData(`channels/${channelId}/submittedProofs/${storageProofId}`, proofMetadata);
+      
+      setUploadProgress(100);
+      setSuccess(true);
+      setUploading(false);
+      
+      // Reset after 3 seconds
+      setTimeout(() => {
+        handleClose();
+      }, 3000);
     } catch (err) {
       console.error('Upload error:', err);
       setError(err instanceof Error ? err.message : 'Upload failed');
@@ -264,9 +297,14 @@ export function SubmitProofModal({ isOpen, onClose, channelId }: SubmitProofModa
                   Cancel
                 </button>
                 <button
-                  onClick={handleUpload}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleUpload();
+                  }}
+                  type="button"
                   disabled={!file || uploading}
-                  className="flex-1 px-4 py-2 bg-[#4fc3f7] hover:bg-[#029bee] text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-2 bg-[#4fc3f7] hover:bg-[#029bee] text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer pointer-events-auto"
                 >
                   {uploading ? (
                     <>

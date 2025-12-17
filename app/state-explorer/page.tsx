@@ -21,7 +21,13 @@ import {
   TON_TOKEN_ADDRESS,
   ETH_TOKEN_ADDRESS,
 } from "@/lib/contracts";
-import { getData, getLatestSnapshot } from "@/lib/realtime-db-helpers";
+import {
+  getData,
+  getLatestSnapshot,
+  pushData,
+  updateData,
+  deleteData,
+} from "@/lib/realtime-db-helpers";
 import { ERC20_ABI } from "@/lib/contracts";
 import {
   FileText,
@@ -484,40 +490,262 @@ function StateExplorerDetailView({
     symbol,
   ]);
 
+  const [isVerifying, setIsVerifying] = useState<string | null>(null);
+
+  // Handle proof verification
+  const handleVerifyProof = async (proof: ProofData) => {
+    if (!channel.isLeader || !proof.key || !proof.sequenceNumber) {
+      return;
+    }
+
+    setIsVerifying(proof.key as string);
+
+    try {
+      // Get all submitted proofs
+      const submittedProofs = await getData<any>(
+        `channels/${channel.id}/submittedProofs`
+      );
+      if (!submittedProofs) {
+        throw new Error("No submitted proofs found");
+      }
+
+      const submittedList = Array.isArray(submittedProofs)
+        ? submittedProofs.map((p: any, idx: number) => ({
+            ...p,
+            key: idx.toString(),
+          }))
+        : Object.entries(submittedProofs).map(
+            ([key, value]: [string, any]) => ({ ...value, key })
+          );
+
+      // Find the proof to verify and others with same sequenceNumber
+      const proofToVerify = submittedList.find((p: any) => p.key === proof.key);
+      const sameSequenceProofs = submittedList.filter(
+        (p: any) => p.sequenceNumber === proof.sequenceNumber
+      );
+
+      if (!proofToVerify) {
+        throw new Error("Proof not found in submitted proofs");
+      }
+
+      // Move verified proof to verifiedProofs
+      const verifiedProof = {
+        ...proofToVerify,
+        status: "verified",
+        verifiedAt: new Date().toISOString(),
+        verifiedBy: userAddress,
+      };
+      await pushData(`channels/${channel.id}/verifiedProofs`, verifiedProof);
+
+      // Move other proofs with same sequenceNumber to rejectedProofs
+      const rejectedProofs = sameSequenceProofs
+        .filter((p: any) => p.key !== proof.key)
+        .map((p: any) => ({
+          ...p,
+          status: "rejected",
+          rejectedAt: new Date().toISOString(),
+          rejectedBy: userAddress,
+          reason: "Another proof was verified for this sequence",
+        }));
+
+      for (const rejectedProof of rejectedProofs) {
+        await pushData(`channels/${channel.id}/rejectedProofs`, rejectedProof);
+      }
+
+      // Remove all proofs from submittedProofs
+      // Firebase Realtime Database stores as object with auto-generated keys
+      // So we need to delete each key individually
+      for (const proofToRemove of sameSequenceProofs) {
+        if (proofToRemove.key) {
+          await deleteData(
+            `channels/${channel.id}/submittedProofs/${proofToRemove.key}`
+          );
+        }
+      }
+
+      // Refresh proofs list
+      const fetchProofs = async () => {
+        try {
+          const [verifiedProofs, submittedProofs, rejectedProofs] =
+            await Promise.all([
+              getData<any>(`channels/${channel.id}/verifiedProofs`),
+              getData<any>(`channels/${channel.id}/submittedProofs`),
+              getData<any>(`channels/${channel.id}/rejectedProofs`),
+            ]);
+
+          const allProofs: ProofData[] = [];
+
+          // Add verified proofs
+          if (verifiedProofs) {
+            const verifiedList = Array.isArray(verifiedProofs)
+              ? verifiedProofs
+              : Object.entries(verifiedProofs).map(
+                  ([key, value]: [string, any]) => ({ ...value, key })
+                );
+            verifiedList.forEach((proof: any, idx: number) => {
+              allProofs.push({
+                ...proof,
+                id: proof.id || `verified-${idx}`,
+                key:
+                  proof.key ||
+                  (Array.isArray(verifiedProofs)
+                    ? undefined
+                    : Object.keys(verifiedProofs)[idx]),
+                status: "verified" as const,
+              });
+            });
+          }
+
+          // Add submitted proofs (pending)
+          if (submittedProofs) {
+            const submittedList = Array.isArray(submittedProofs)
+              ? submittedProofs
+              : Object.entries(submittedProofs).map(
+                  ([key, value]: [string, any]) => ({ ...value, key })
+                );
+            submittedList.forEach((proof: any, idx: number) => {
+              allProofs.push({
+                ...proof,
+                id: proof.id || `submitted-${idx}`,
+                key:
+                  proof.key ||
+                  (Array.isArray(submittedProofs)
+                    ? undefined
+                    : Object.keys(submittedProofs)[idx]),
+                status: "pending" as const,
+              });
+            });
+          }
+
+          // Add rejected proofs
+          if (rejectedProofs) {
+            const rejectedList = Array.isArray(rejectedProofs)
+              ? rejectedProofs
+              : Object.entries(rejectedProofs).map(
+                  ([key, value]: [string, any]) => ({ ...value, key })
+                );
+            rejectedList.forEach((proof: any, idx: number) => {
+              allProofs.push({
+                ...proof,
+                id: proof.id || `rejected-${idx}`,
+                key:
+                  proof.key ||
+                  (Array.isArray(rejectedProofs)
+                    ? undefined
+                    : Object.keys(rejectedProofs)[idx]),
+                status: "rejected" as const,
+              });
+            });
+          }
+
+          setProofs(allProofs);
+        } catch (error) {
+          console.error("Error refreshing proofs:", error);
+        }
+      };
+
+      await fetchProofs();
+    } catch (error) {
+      console.error("Error verifying proof:", error);
+      alert(
+        `Failed to verify proof: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    } finally {
+      setIsVerifying(null);
+    }
+  };
+
   // Fetch proofs from Firebase
   useEffect(() => {
     const fetchProofs = async () => {
       setIsLoadingProofs(true);
       try {
-        const [verifiedProofs, submittedProofs] = await Promise.all([
-          getData<ProofData[]>(`channels/${channel.id}/verifiedProofs`),
-          getData<ProofData[]>(`channels/${channel.id}/submittedProofs`),
-        ]);
+        const [verifiedProofs, submittedProofs, rejectedProofs] =
+          await Promise.all([
+            getData<any>(`channels/${channel.id}/verifiedProofs`),
+            getData<any>(`channels/${channel.id}/submittedProofs`),
+            getData<any>(`channels/${channel.id}/rejectedProofs`),
+          ]);
 
         const allProofs: ProofData[] = [];
 
         // Add verified proofs
-        if (verifiedProofs && Array.isArray(verifiedProofs)) {
-          verifiedProofs.forEach((proof, idx) => {
+        if (verifiedProofs) {
+          const verifiedList = Array.isArray(verifiedProofs)
+            ? verifiedProofs
+            : Object.entries(verifiedProofs).map(
+                ([key, value]: [string, any]) => ({ ...value, key })
+              );
+
+          verifiedList.forEach((proof: any, idx: number) => {
+            const proofKey =
+              proof.key ||
+              (Array.isArray(verifiedProofs)
+                ? undefined
+                : Object.keys(verifiedProofs)[idx]);
             allProofs.push({
               ...proof,
-              id: typeof proof.id === "number" ? proof.id : idx + 1000, // Use number for verified
+              id: proof.proofId || proof.id || `verified-${idx}`, // Use proofId as id
+              key: proofKey,
               status: "verified" as const,
             });
           });
         }
 
         // Add submitted proofs (pending)
-        if (submittedProofs && Array.isArray(submittedProofs)) {
-          submittedProofs.forEach((proof, idx) => {
-            // Only add if not already verified
-            if (!allProofs.some((p) => p.id === proof.id)) {
+        if (submittedProofs) {
+          const submittedList = Array.isArray(submittedProofs)
+            ? submittedProofs
+            : Object.entries(submittedProofs).map(
+                ([key, value]: [string, any]) => ({ ...value, key })
+              );
+
+          submittedList.forEach((proof: any, idx: number) => {
+            // Only add if not already added (check by proofId and key)
+            const existingProof = allProofs.find(
+              (p) =>
+                p.proofId === proof.proofId &&
+                p.key === (proof.key || Object.keys(submittedProofs)[idx])
+            );
+
+            if (!existingProof) {
+              const proofKey =
+                proof.key ||
+                (Array.isArray(submittedProofs)
+                  ? undefined
+                  : Object.keys(submittedProofs)[idx]);
               allProofs.push({
                 ...proof,
-                id: typeof proof.id === "number" ? proof.id : idx + 2000, // Use number for submitted
+                id: proof.proofId || proof.id || `submitted-${idx}`, // Use proofId as id
+                key: proofKey,
                 status: "pending" as const,
               });
             }
+          });
+        }
+
+        // Add rejected proofs
+        if (rejectedProofs) {
+          const rejectedList = Array.isArray(rejectedProofs)
+            ? rejectedProofs
+            : Object.entries(rejectedProofs).map(
+                ([key, value]: [string, any]) => ({ ...value, key })
+              );
+
+          rejectedList.forEach((proof: any, idx: number) => {
+            const proofKey =
+              proof.key ||
+              (Array.isArray(rejectedProofs)
+                ? undefined
+                : Object.keys(rejectedProofs)[idx]);
+            allProofs.push({
+              ...proof,
+              id: proof.proofId || proof.id || `rejected-${idx}`, // Use proofId as id
+              key: proofKey,
+              status: "rejected" as const,
+            });
           });
         }
 
@@ -593,8 +821,13 @@ function StateExplorerDetailView({
               {/* Action Buttons */}
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setIsSubmitProofModalOpen(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#4fc3f7] hover:bg-[#029bee] text-white rounded transition-all hover:shadow-lg hover:shadow-[#4fc3f7]/30 font-medium"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsSubmitProofModalOpen(true);
+                  }}
+                  type="button"
+                  className="flex items-center gap-2 px-4 py-2 bg-[#4fc3f7] hover:bg-[#029bee] text-white rounded transition-all hover:shadow-lg hover:shadow-[#4fc3f7]/30 font-medium cursor-pointer pointer-events-auto"
                 >
                   <Upload className="w-4 h-4" />
                   Submit Proof
@@ -947,7 +1180,13 @@ function StateExplorerDetailView({
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredProofs.map((proof) => (
-                  <ProofCard key={proof.id} proof={proof} />
+                  <ProofCard
+                    key={proof.id || proof.key}
+                    proof={proof}
+                    isLeader={channel.isLeader}
+                    onVerify={handleVerifyProof}
+                    isVerifying={isVerifying === proof.key}
+                  />
                 ))}
               </div>
             )}
