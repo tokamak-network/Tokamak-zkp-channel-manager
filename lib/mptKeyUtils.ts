@@ -6,7 +6,7 @@
  */
 
 import { utf8ToBytes, setLengthLeft, bytesToBigInt, bigIntToBytes, bytesToHex, Address, concatBytes, addHexPrefix, hexToBytes } from '@ethereumjs/util';
-import { jubjub } from '@noble/curves/misc.js';
+import { jubjub } from '@noble/curves/misc';
 import { ethers } from 'ethers';
 import "server-only";
 import { generateMptKeyFromWallet } from '@/Tokamak-Zk-EVM/packages/frontend/synthesizer/examples/L2StateChannel/utils/mpt-key-util';
@@ -16,99 +16,87 @@ export function generateMptKey(wallet: ethers.Wallet, participantName: string, c
   return generateMptKeyFromWallet(wallet, participantName, channelId, tokenAddress, slot);
 }
 
-//hash function for L2MPT key generation
-function keccakHashFunc(data: Uint8Array): Uint8Array {
-  // For now, use a deterministic hash based on input
-  // This mimics the behavior but isn't the real poseidon hash
-  const hashInput = bytesToHex(data);
-  const simpleHash = ethers.keccak256(ethers.toUtf8Bytes(hashInput + 'poseidon_placeholder'));
-  return ethers.getBytes(simpleHash);
+function batchBigIntTo32BytesEach(...inVals: bigint[]): Uint8Array {
+    return concatBytes(...inVals.map(x => setLengthLeft(bigIntToBytes(x), 32)))
 }
 
-// Convert Edwards point to Ethereum address
 function fromEdwardsToAddress(point: any | Uint8Array): Address {
-  const edwardsToAffineBytes = (point: any): Uint8Array => {
-    const affine = point.toAffine();
-    const xBytes = setLengthLeft(bigIntToBytes(affine.x), 32);
-    const yBytes = setLengthLeft(bigIntToBytes(affine.y), 32);
-    return concatBytes(xBytes, yBytes);
-  };
-
-  let pointBytes: Uint8Array;
-  if (point instanceof Uint8Array) {
-    if (point.length === 32) {
-      // compressed point
-      pointBytes = edwardsToAffineBytes(jubjub.Point.fromBytes(point));
-    } else if (point.length === 64) {
-      // Uncompressed Affine coordinates
-      pointBytes = point;
-    } else {
-      throw new Error('Invalid EdwardsPoint format');
+    const edwardsToAffineBytes = (point: any): Uint8Array => {
+        const affine = point.toAffine()
+        return batchBigIntTo32BytesEach(affine.x, affine.y)
     }
-  } else {
-    pointBytes = edwardsToAffineBytes(point);
-  }
-  
-  const addressBytes = keccakHashFunc(pointBytes).slice(-20);
-  return new Address(addressBytes);
+    let pointBytes: Uint8Array
+    if( point instanceof Uint8Array ) {
+        if (point.length === 32) {
+            // compressed point
+            pointBytes = edwardsToAffineBytes(jubjub.Point.fromBytes(point))
+        }
+        else if (point.length === 64) {
+            // Uncompressed Affine coordinates
+            pointBytes = point
+        }
+        else {
+            throw new Error('Invalid EdwardsPoint format')
+        }
+            
+    } else {
+        pointBytes = edwardsToAffineBytes(point)
+    }
+    const addressByte = ethers.getBytes(ethers.keccak256(pointBytes)).slice(-20)
+    return new Address(addressByte)
 }
 
-// Generate user storage key for MPT
 function getUserStorageKey(parts: Array<Address | number | bigint | string>, layer: 'L1' | 'TokamakL2'): Uint8Array {
-  const bytesArray: Uint8Array[] = [];
+    const bytesArray: Uint8Array[] = []
 
-  for (const p of parts) {
-    let b: Uint8Array;
+    for (const p of parts) {
+        let b: Uint8Array
 
-    if (p instanceof Address) {
-      b = p.toBytes();
-    } else if (typeof p === 'number') {
-      b = bigIntToBytes(BigInt(p));
-    } else if (typeof p === 'bigint') {
-      b = bigIntToBytes(p);
-    } else if (typeof p === 'string') {
-      b = hexToBytes(addHexPrefix(p));
-    } else {
-      throw new Error('getUserStorageKey accepts only Address | number | bigint | string');
-    }
+        if (p instanceof Address) {
+        b = p.toBytes()
+        } else if (typeof p === 'number') {
+        b = bigIntToBytes(BigInt(p))
+        } else if (typeof p === 'bigint') {
+        b = bigIntToBytes(p)
+        } else if (typeof p === 'string') {
+        b = hexToBytes(addHexPrefix(p))
+        } else {
+        throw new Error('getStorageKey accepts only Address | number | bigint | string');
+        }
 
-    bytesArray.push(setLengthLeft(b, 32));
-  }
-  
-  const packed = concatBytes(...bytesArray);
-  
-  let hash: Uint8Array;
-  switch (layer) {
-    case 'L1': {
-      const keccakHash = ethers.keccak256(packed);
-      hash = ethers.getBytes(keccakHash);
-      break;
+        bytesArray.push(setLengthLeft(b, 32))
     }
-    case 'TokamakL2': {
-      hash = keccakHashFunc(packed);
-      break;
+    const packed = concatBytes(...bytesArray)
+    let hash
+    switch (layer) {
+        case 'L1': {
+            hash = ethers.getBytes(ethers.keccak256(packed));
+        }
+        break;
+        case 'TokamakL2': {
+            hash = ethers.getBytes(ethers.keccak256(packed));
+        }
+        break;
+        default: {
+            throw new Error(`Error while making a user's storage key: Undefined layer "${layer}"`);
+        }
     }
-    default: {
-      throw new Error(`Error while making a user's storage key: Undefined layer "${layer}"`);
-    }
-  }
-  
-  return hash;
+    return hash
 }
 
 /**
  * Generate MPT key for a participant using the same logic as deposit-ton.ts
- * All participants use "Alice" as the participant name for key generation
  *
  * Steps:
  * 1. Extract public key from L1 wallet (EOA public key)
- * 2. Create seed from L1 public key + channel ID + "Alice" => keccak256 hash
+ * 2. Create seed from L1 public key + channel ID + participant name => keccak256 hash
  * 3. Generate private key from seed using jubjub
  * 4. Generate public key from private key
  * 5. Derive L2 address from public key
- * 6. Generate MPT key using getUserStorageKey([l2Address, slot], 'TokamakL2') with poseidon hash
+ * 6. Generate MPT key using getUserStorageKey([l2Address, slot], 'TokamakL2') with keccak hash
  *
  * @param wallet - ethers.js Wallet instance (contains L1 private key)
+ * @param participantName - Name of the participant (Alice, Bob, Charlie)
  * @param channelId - Channel ID
  * @param tokenAddress - Token address (TON in this case)
  * @param slot - Storage slot number (default: 0 for ERC20 balance)
@@ -187,10 +175,50 @@ function getUserStorageKey(parts: Array<Address | number | bigint | string>, lay
 // }
 
 /**
+ * Generate MPT key from L1 address by looking up the wallet
+ * This requires the private key to be available in the environment
+ *
+ * @param l1Address - L1 address (EOA)
+ * @param participantName - Name of the participant (Alice, Bob, Charlie)
+ * @param channelId - Channel ID
+ * @param tokenAddress - Token address
+ * @param slot - Storage slot number (default: 0 for ERC20 balance)
+ * @param privateKeys - Array of private keys corresponding to participants
+ * @param participantNames - Array of participant names
+ * @returns MPT key as hex string (bytes32)
+ */
+export function generateMptKeyFromL1Address(
+  l1Address: string,
+  participantName: string,
+  channelId: number,
+  tokenAddress: string,
+  slot: number = 0,
+  privateKeys: string[],
+  participantNames: string[],
+): string {
+  // Find the index of the participant
+  const participantIndex = participantNames.indexOf(participantName);
+  if (participantIndex === -1 || !privateKeys[participantIndex]) {
+    throw new Error(`Private key not found for participant ${participantName} (${l1Address})`);
+  }
+
+  // Create wallet from private key
+  const wallet = new ethers.Wallet(privateKeys[participantIndex]);
+
+  // Verify the address matches
+  if (wallet.address.toLowerCase() !== l1Address.toLowerCase()) {
+    throw new Error(`Address mismatch: expected ${l1Address}, got ${wallet.address}`);
+  }
+
+  // Generate MPT key using the wallet
+  return generateMptKeyFromWallet(wallet, participantName, channelId, tokenAddress, slot);
+}
+
+/**
  * Generate MPT key from address (for use with connected wallet)
- * All participants use "Alice" as the participant name for key generation
  *
  * @param address - Connected wallet address
+ * @param participantName - Name of the participant
  * @param channelId - Channel ID
  * @param tokenAddress - Token address
  * @param slot - Storage slot number (default: 0 for ERC20 balance)
@@ -198,11 +226,11 @@ function getUserStorageKey(parts: Array<Address | number | bigint | string>, lay
  */
 export async function generateMptKeyFromAddress(
   address: string,
+  participantName: string,
   channelId: number,
   tokenAddress: string,
   slot: number = 0,
 ): Promise<string> {
-  const participantName = "Alice"; // Hardcoded for all participants
   
   // This is a simplified version for connected wallets where we don't have private key access
   // In practice, you would need to sign a message to prove ownership and derive the key
