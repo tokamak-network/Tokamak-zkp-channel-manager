@@ -34,6 +34,7 @@
     "js-sha3": "^0.9.3",
     "lucide-react": "^0.292.0",
     "next": "^15.5.7",
+    "poseidon-bls12381": "^1.0.0",
     "react": "^18",
     "react-dom": "^18",
     "snarkjs": "^0.7.5",
