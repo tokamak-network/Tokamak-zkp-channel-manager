@@ -12,7 +12,6 @@ export function StatusBadge({ state, className }: StatusBadgeProps) {
   const getVariant = (state: ChannelState) => {
     switch (state) {
       case ChannelState.Open:
-      case ChannelState.Active:
         return 'active' as const;
       case ChannelState.Initialized:
       case ChannelState.Closing:

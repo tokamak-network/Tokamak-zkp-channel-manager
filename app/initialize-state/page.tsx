@@ -251,9 +251,8 @@ export default function InitializeStatePage() {
       case 0: return 'None';
       case 1: return 'Initialized';
       case 2: return 'Open';
-      case 3: return 'Active';
-      case 4: return 'Closing';
-      case 5: return 'Closed';
+      case 3: return 'Closing';
+      case 4: return 'Closed';
       default: return 'Unknown';
     }
   };

@@ -46,7 +46,7 @@ export function ChannelTimeoutManager({
   
   const isChannelExpired = currentTime >= channelDeadline;
   const isProofDeadlineExpired = currentTime >= proofDeadline;
-  const canSubmitProof = isChannelExpired && !isProofDeadlineExpired && (state === 2 || state === 3); // Open or Active
+  const canSubmitProof = isChannelExpired && !isProofDeadlineExpired && state === 2; // Open
 
   // Get channel timeout info
   const { data: timeoutInfo } = useContractRead({
