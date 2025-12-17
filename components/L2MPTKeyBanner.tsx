@@ -26,11 +26,12 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
   const [isComputing, setIsComputing] = useState(false);
   const [error, setError] = useState<string>('');
   const [copiedKey, setCopiedKey] = useState<string>('');
+  const [privateKey, setPrivateKey] = useState<string>('');
 
   // Reset error when inputs change
   useEffect(() => {
     setError('');
-  }, [channelId, tokenAddress]);
+  }, [channelId, tokenAddress, privateKey]);
 
   const computeMPTKey = async () => {
     if (!isConnected || !address) {
@@ -38,25 +39,22 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
       return;
     }
 
+    if (!privateKey) {
+      setError('Please enter your private key');
+      return;
+    }
+
+    if (!privateKey.match(/^0x[a-fA-F0-9]{64}$/)) {
+      setError('Invalid private key format. Must be 64 hex characters with 0x prefix');
+      return;
+    }
+
     setIsComputing(true);
     setError('');
 
     try {
-      // Create a deterministic message for the user to sign
-      // This message includes the channel ID and token address to make it unique
-      const message = `Generate MPT Key for Channel ${channelId} with token ${tokenAddress}\n\nThis signature is used to derive your L2 MPT key deterministically.\nSigning this message is safe and does not give anyone access to your funds.`;
-      
-      // Request user to sign the message
-      const signature = await signMessageAsync({ message });
-      
-      // Use the signature to derive a deterministic private key
-      // Hash the signature to get a deterministic seed
-      const signatureHash = ethers.keccak256(ethers.toUtf8Bytes(signature));
-      const privateKeyBigInt = BigInt(signatureHash) % BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141'); // secp256k1 order
-      const privateKeyHex = '0x' + privateKeyBigInt.toString(16).padStart(64, '0');
-      
-      // Create a wallet from the derived private key
-      const wallet = new ethers.Wallet(privateKeyHex);
+      // Create a wallet from the provided private key
+      const wallet = new ethers.Wallet(privateKey);
       
       // Generate MPT key using the derived wallet
       const mptKey = generateMptKeyFromWallet(
@@ -133,31 +131,49 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
         {isExpanded && (
           <div className="mt-6 space-y-4">
             {/* Input Form */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Channel ID
+                  Private Key
                 </label>
                 <input
-                  type="number"
-                  min="1"
-                  value={channelId}
-                  onChange={(e) => setChannelId(parseInt(e.target.value) || 1)}
+                  type="password"
+                  value={privateKey}
+                  onChange={(e) => setPrivateKey(e.target.value)}
+                  placeholder="0x..."
                   className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
                 />
+                <p className="text-xs text-gray-400 mt-1">
+                  Enter your 64-character hexadecimal private key with 0x prefix
+                </p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Token Address
-                </label>
-                <select
-                  value={tokenAddress}
-                  onChange={(e) => setTokenAddress(e.target.value)}
-                  className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
-                >
-                  <option value="0xa30fe40285B8f5c0457DbC3B7C8A280373c40044">TON Token</option>
-                </select>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    Channel ID
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={channelId}
+                    onChange={(e) => setChannelId(parseInt(e.target.value) || 1)}
+                    className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    Token Address
+                  </label>
+                  <select
+                    value={tokenAddress}
+                    onChange={(e) => setTokenAddress(e.target.value)}
+                    className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
+                  >
+                    <option value="0xa30fe40285B8f5c0457DbC3B7C8A280373c40044">TON Token</option>
+                  </select>
+                </div>
               </div>
             </div>
         
