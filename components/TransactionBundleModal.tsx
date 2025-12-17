@@ -10,7 +10,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import {
   Package,
@@ -30,6 +29,7 @@ import {
   getLatestSnapshot,
   getChannelUserBalances,
   getChannelParticipants,
+  getData,
 } from '@/lib/realtime-db-helpers';
 import type { Channel, StateSnapshot, UserBalance, Participant } from '@/lib/firebase-types';
 
@@ -51,7 +51,6 @@ export function TransactionBundleModal({
   onClose,
   defaultChannelId,
 }: TransactionBundleModalProps) {
-  const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedChannelId, setSelectedChannelId] = useState<string>(defaultChannelId || '');
   const [bundleData, setBundleData] = useState<BundleData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -59,12 +58,12 @@ export function TransactionBundleModal({
   const [downloadComplete, setDownloadComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch available channels on mount
+  // Auto-select default channel when modal opens
   useEffect(() => {
-    if (isOpen) {
-      fetchChannels();
+    if (isOpen && defaultChannelId) {
+      setSelectedChannelId(defaultChannelId);
     }
-  }, [isOpen]);
+  }, [isOpen, defaultChannelId]);
 
   // Fetch bundle data when channel is selected
   useEffect(() => {
@@ -72,21 +71,6 @@ export function TransactionBundleModal({
       fetchBundleData(selectedChannelId);
     }
   }, [selectedChannelId]);
-
-  const fetchChannels = async () => {
-    try {
-      const activeChannels = await getActiveChannels();
-      setChannels(activeChannels);
-      
-      // Auto-select first channel if no default
-      if (!defaultChannelId && activeChannels.length > 0) {
-        setSelectedChannelId(activeChannels[0].channelId);
-      }
-    } catch (err) {
-      console.error('Failed to fetch channels:', err);
-      setError('Failed to load channels');
-    }
-  };
 
   const fetchBundleData = async (channelId: string) => {
     setIsLoading(true);
@@ -116,65 +100,172 @@ export function TransactionBundleModal({
   };
 
   const handleDownload = async () => {
-    if (!bundleData?.channel) return;
+    if (!selectedChannelId) {
+      setError('No channel selected');
+      return;
+    }
 
     setIsDownloading(true);
     setError(null);
 
     try {
+      // Fetch data if not already loaded
+      let channel = bundleData?.channel;
+      let snapshot = bundleData?.snapshot;
+      let balances = bundleData?.balances || [];
+      let participants = bundleData?.participants || [];
+
+      if (!channel) {
+        try {
+          channel = await getChannel(selectedChannelId);
+        } catch (err) {
+          console.warn('Failed to load channel from Firebase:', err);
+        }
+      }
+      if (!snapshot) {
+        try {
+          snapshot = await getLatestSnapshot(selectedChannelId);
+        } catch (err) {
+          console.warn('Failed to load snapshot:', err);
+        }
+      }
+      if (balances.length === 0) {
+        try {
+          balances = await getChannelUserBalances(selectedChannelId);
+        } catch (err) {
+          console.warn('Failed to load balances:', err);
+        }
+      }
+      if (participants.length === 0) {
+        try {
+          participants = await getChannelParticipants(selectedChannelId);
+        } catch (err) {
+          console.warn('Failed to load participants:', err);
+        }
+      }
+
       const zip = new JSZip();
 
-      // Create bundle metadata
-      const metadata = {
-        bundleVersion: '1.0.0',
-        createdAt: new Date().toISOString(),
-        channelId: bundleData.channel.channelId,
-        stateVersion: bundleData.snapshot?.sequenceNumber || 0,
-        participantCount: bundleData.participants.length,
-        bundleType: 'transaction_creation',
-      };
-
-      // Add files to zip
-      zip.file('metadata.json', JSON.stringify(metadata, null, 2));
-      zip.file('channel.json', JSON.stringify(bundleData.channel, null, 2));
-      
-      if (bundleData.snapshot) {
-        zip.file('state.json', JSON.stringify(bundleData.snapshot, null, 2));
+      // Check if verifiedProofs exists and has content
+      let verifiedProofs = null;
+      let hasVerifiedProofs = false;
+      try {
+        verifiedProofs = await getData<any[]>(`channels/${selectedChannelId}/verifiedProofs`);
+        hasVerifiedProofs = verifiedProofs && Array.isArray(verifiedProofs) && verifiedProofs.length > 0;
+      } catch (err) {
+        console.warn('Failed to check verifiedProofs:', err);
       }
-      
-      zip.file('participants.json', JSON.stringify(bundleData.participants, null, 2));
-      zip.file('balances.json', JSON.stringify(bundleData.balances, null, 2));
 
-      // Add a README for the desktop app
-      const readme = `# Tokamak Channel State Bundle
+      // If verifiedProofs folder is empty or doesn't exist, create channel-info.json only
+      if (!hasVerifiedProofs) {
+        // Get initializationTxHash from Firebase - try multiple paths and ID formats
+        let initializationTxHash = null;
+        
+        // Try from channel object first
+        if (channel?.initializationTxHash) {
+          initializationTxHash = channel.initializationTxHash;
+        }
+        
+        // Try from initialProof object in channel data
+        if (!initializationTxHash && channel?.initialProof?.initializationTxHash) {
+          initializationTxHash = channel.initialProof.initializationTxHash;
+        }
+        
+        // Try from getChannel with current ID format
+        if (!initializationTxHash) {
+          try {
+            const channelData = await getChannel(selectedChannelId);
+            initializationTxHash = channelData?.initializationTxHash || channelData?.initialProof?.initializationTxHash || null;
+          } catch (err) {
+            console.warn('Failed to get channel data with ID:', selectedChannelId, err);
+          }
+        }
+        
+        // Try from initialProof object path
+        if (!initializationTxHash) {
+          try {
+            const initialProofData = await getData<any>(`channels/${selectedChannelId}/initialProof`);
+            if (initialProofData?.initializationTxHash) {
+              initializationTxHash = initialProofData.initializationTxHash;
+            }
+          } catch (err) {
+            console.warn('Failed to get initializationTxHash from initialProof:', err);
+          }
+        }
+        
+        // Try direct path access with current ID
+        if (!initializationTxHash) {
+          try {
+            const directData = await getData<string>(`channels/${selectedChannelId}/initializationTxHash`);
+            initializationTxHash = directData || null;
+          } catch (err) {
+            console.warn('Failed to get initializationTxHash from direct path:', err);
+          }
+        }
+        
+        // Try with numeric ID if current is string
+        if (!initializationTxHash && !isNaN(Number(selectedChannelId))) {
+          try {
+            const numericId = Number(selectedChannelId);
+            const channelData = await getChannel(String(numericId));
+            initializationTxHash = channelData?.initializationTxHash || channelData?.initialProof?.initializationTxHash || null;
+          } catch (err) {
+            console.warn('Failed to get channel data with numeric ID:', err);
+          }
+        }
+        
+        // Try from initialProof object with numeric ID
+        if (!initializationTxHash && !isNaN(Number(selectedChannelId))) {
+          try {
+            const numericId = Number(selectedChannelId);
+            const initialProofData = await getData<any>(`channels/${numericId}/initialProof`);
+            if (initialProofData?.initializationTxHash) {
+              initializationTxHash = initialProofData.initializationTxHash;
+            }
+          } catch (err) {
+            console.warn('Failed to get initializationTxHash from initialProof with numeric ID:', err);
+          }
+        }
+        
+        // Try direct path access with numeric ID
+        if (!initializationTxHash && !isNaN(Number(selectedChannelId))) {
+          try {
+            const numericId = Number(selectedChannelId);
+            const directData = await getData<string>(`channels/${numericId}/initializationTxHash`);
+            initializationTxHash = directData || null;
+          } catch (err) {
+            console.warn('Failed to get initializationTxHash from numeric path:', err);
+          }
+        }
 
-This bundle contains the current state of channel ${bundleData.channel.channelId}.
-
-## Contents
-- metadata.json: Bundle metadata and version info
-- channel.json: Channel configuration and settings
-- state.json: Latest verified state snapshot
-- participants.json: Channel participants info
-- balances.json: Current user balances
-
-## Usage
-1. Open the Tokamak Desktop App
-2. Drag and drop this zip file into the app
-3. Create and sign your transaction
-
-## Bundle Info
-- Created: ${metadata.createdAt}
-- State Version: ${metadata.stateVersion}
-- Participants: ${metadata.participantCount}
-`;
-      zip.file('README.md', readme);
+        if (initializationTxHash) {
+          const channelInfo = {
+            initializedTxHash: initializationTxHash,
+          };
+          zip.file('channel-info.json', JSON.stringify(channelInfo, null, 2));
+        } else {
+          // More helpful error message
+          const errorMsg = `Could not find initialization transaction hash for channel ${selectedChannelId}. The channel may not have been initialized yet. Please ensure the channel has been initialized on the blockchain.`;
+          console.error(errorMsg, {
+            channelId: selectedChannelId,
+            channelIdType: typeof selectedChannelId,
+            numericId: Number(selectedChannelId),
+            channelData: channel,
+            verifiedProofs: hasVerifiedProofs,
+          });
+          throw new Error(errorMsg);
+        }
+      } else {
+        // If verifiedProofs exists, don't create the bundle
+        throw new Error('Verified proofs already exist. No bundle needed.');
+      }
 
       // Generate and download
       const content = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(content);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `tokamak-channel-${bundleData.channel.channelId}-state-v${bundleData.snapshot?.sequenceNumber || 0}.zip`;
+      link.download = `tokamak-channel-${channel?.channelId || selectedChannelId}-state-v${snapshot?.sequenceNumber || 0}.zip`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -227,25 +318,25 @@ This bundle contains the current state of channel ${bundleData.channel.channelId
         </DialogHeader>
 
         <div className="space-y-5 py-2">
-          {/* Channel Selection */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-300">Select Channel</label>
-            <Select
-              value={selectedChannelId}
-              onValueChange={setSelectedChannelId}
-            >
-              <SelectTrigger className="bg-[#0a1930] border-[#4fc3f7]/30 text-white">
-                <SelectValue placeholder="Select a channel..." />
-              </SelectTrigger>
-              <SelectContent className="bg-[#1a2347] border-[#4fc3f7]/30 text-white">
-                {channels.map((channel) => (
-                  <SelectItem key={channel.channelId} value={channel.channelId}>
-                    Channel #{channel.channelId.slice(0, 8)}... ({channel.participantCount} participants)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Current Channel Display */}
+          {selectedChannelId && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-300">Channel</label>
+              <div className="bg-[#0a1930] border border-[#4fc3f7]/30 rounded p-3">
+                <div className="flex items-center gap-2">
+                  <Package className="w-4 h-4 text-[#4fc3f7]" />
+                  <span className="text-white font-mono">
+                    Channel #{selectedChannelId}
+                  </span>
+                  {bundleData?.participants && (
+                    <span className="text-gray-400 text-sm">
+                      ({bundleData.participants.length} participants)
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Loading State */}
           {isLoading && (
@@ -263,68 +354,70 @@ This bundle contains the current state of channel ${bundleData.channel.channelId
             </div>
           )}
 
-          {/* Bundle Preview */}
-          {bundleData?.channel && !isLoading && (
-            <div className="space-y-3">
-              {/* State Info Card */}
-              <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/20 rounded p-4 space-y-3">
-                <h4 className="text-sm font-medium text-[#4fc3f7] flex items-center gap-2">
-                  <Layers className="w-4 h-4" />
-                  Bundle Contents
-                </h4>
-                
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="space-y-1">
-                    <div className="text-gray-400 text-xs">State Version</div>
-                    <div className="font-mono text-white">
-                      #{bundleData.snapshot?.sequenceNumber || 'N/A'}
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-gray-400 text-xs">Merkle Root</div>
-                    <div className="font-mono text-white text-xs truncate">
-                      {bundleData.snapshot?.merkleRoot?.slice(0, 16) || 'N/A'}...
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-gray-400 text-xs flex items-center gap-1">
-                      <Users className="w-3 h-3" />
-                      Participants
-                    </div>
-                    <div className="font-medium text-white">
-                      {bundleData.participants.length}
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-gray-400 text-xs">Threshold</div>
-                    <div className="font-medium text-white">
-                      {bundleData.channel.threshold}/{bundleData.channel.participantCount}
-                    </div>
-                  </div>
-                </div>
 
-                {/* Files included */}
-                <div className="pt-2 border-t border-[#4fc3f7]/10">
-                  <div className="text-xs text-gray-400 mb-2">Files included:</div>
-                  <div className="flex flex-wrap gap-2">
-                    {['channel.json', 'state.json', 'participants.json', 'balances.json'].map((file) => (
-                      <span
-                        key={file}
-                        className="inline-flex items-center gap-1 bg-[#1a2347] px-2 py-0.5 rounded text-xs text-gray-300"
-                      >
-                        <FileJson className="w-3 h-3 text-[#4fc3f7]" />
-                        {file}
-                      </span>
-                    ))}
+          {/* Download Button - Always show if channel is selected */}
+          {selectedChannelId && !isLoading && (
+            <div className="space-y-3">
+              {bundleData?.channel && (
+                <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/20 rounded p-4 space-y-3">
+                  <h4 className="text-sm font-medium text-[#4fc3f7] flex items-center gap-2">
+                    <Layers className="w-4 h-4" />
+                    Bundle Contents
+                  </h4>
+                  
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="space-y-1">
+                      <div className="text-gray-400 text-xs">State Version</div>
+                      <div className="font-mono text-white">
+                        #{bundleData.snapshot?.sequenceNumber || 'N/A'}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-gray-400 text-xs">Merkle Root</div>
+                      <div className="font-mono text-white text-xs truncate">
+                        {bundleData.snapshot?.merkleRoot?.slice(0, 16) || 'N/A'}...
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-gray-400 text-xs flex items-center gap-1">
+                        <Users className="w-3 h-3" />
+                        Participants
+                      </div>
+                      <div className="font-medium text-white">
+                        {bundleData.participants.length}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-gray-400 text-xs">Threshold</div>
+                      <div className="font-medium text-white">
+                        {bundleData.channel.threshold}/{bundleData.channel.participantCount}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Files included */}
+                  <div className="pt-2 border-t border-[#4fc3f7]/10">
+                    <div className="text-xs text-gray-400 mb-2">Files included:</div>
+                    <div className="flex flex-wrap gap-2">
+                      {['channel.json', 'state.json', 'participants.json', 'balances.json'].map((file) => (
+                        <span
+                          key={file}
+                          className="inline-flex items-center gap-1 bg-[#1a2347] px-2 py-0.5 rounded text-xs text-gray-300"
+                        >
+                          <FileJson className="w-3 h-3 text-[#4fc3f7]" />
+                          {file}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Download Button */}
               <Button
                 onClick={handleDownload}
-                disabled={isDownloading}
-                className="w-full bg-[#4fc3f7] hover:bg-[#4fc3f7]/80 text-[#0a1930] font-medium"
+                disabled={isDownloading || !selectedChannelId}
+                className="w-full bg-[#4fc3f7] hover:bg-[#4fc3f7]/80 text-[#0a1930] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isDownloading ? (
                   <>
@@ -389,12 +482,12 @@ This bundle contains the current state of channel ${bundleData.channel.channelId
             </div>
           )}
 
-          {/* No channels available */}
-          {!isLoading && channels.length === 0 && (
+          {/* No channel selected or available */}
+          {!isLoading && !selectedChannelId && (
             <div className="text-center py-8">
               <Package className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-              <p className="text-gray-400 text-sm">No active channels found</p>
-              <p className="text-gray-500 text-xs mt-1">Create a channel first to generate transaction bundles</p>
+              <p className="text-gray-400 text-sm">No channel selected</p>
+              <p className="text-gray-500 text-xs mt-1">Please select a channel from the state explorer</p>
             </div>
           )}
         </div>

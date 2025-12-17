@@ -1,30 +1,38 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useAccount, usePublicClient } from 'wagmi';
-import { Layout } from '@/components/Layout';
-import { ProofCard, ProofData } from '@/components/ProofCard';
-import { TransactionBundleModal } from '@/components/TransactionBundleModal';
-import { SubmitProofModal } from '@/components/SubmitProofModal';
-import { LoadingSpinner } from '@/components/LoadingSpinner';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { 
+import { useState, useEffect } from "react";
+import { useAccount, usePublicClient, useContractReads } from "wagmi";
+import { formatUnits } from "viem";
+import { Layout } from "@/components/Layout";
+import { ProofCard, ProofData } from "@/components/ProofCard";
+import { TransactionBundleModal } from "@/components/TransactionBundleModal";
+import { SubmitProofModal } from "@/components/SubmitProofModal";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   ROLLUP_BRIDGE_CORE_ADDRESS,
   ROLLUP_BRIDGE_CORE_ABI,
   TON_TOKEN_ADDRESS,
-  WTON_TOKEN_ADDRESS,
-  ETH_TOKEN_ADDRESS
-} from '@/lib/contracts';
-import { 
-  FileText, 
-  CheckCircle2, 
-  Clock, 
-  XCircle, 
-  Activity, 
-  Users, 
-  Coins, 
-  Plus, 
-  ChevronDown, 
+  ETH_TOKEN_ADDRESS,
+} from "@/lib/contracts";
+import { getData, getLatestSnapshot } from "@/lib/realtime-db-helpers";
+import { ERC20_ABI } from "@/lib/contracts";
+import {
+  FileText,
+  CheckCircle2,
+  Clock,
+  XCircle,
+  Activity,
+  Users,
+  Coins,
+  Plus,
+  ChevronDown,
   ChevronUp,
   ArrowLeft,
   Layers,
@@ -32,18 +40,16 @@ import {
   Hash,
   RefreshCw,
   AlertCircle,
-  Upload
-} from 'lucide-react';
-import { formatEther } from 'viem';
+  Upload,
+} from "lucide-react";
 
 // Types
 interface ParticipantBalance {
   address: string;
-  balances: {
-    token: string;
-    amount: string;
-    symbol: string;
-  }[];
+  initialDeposit: string; // 초기 deposit 금액
+  currentBalance: string; // 현재 state 기준 밸런스
+  symbol: string;
+  decimals: number;
 }
 
 interface OnChainChannel {
@@ -53,72 +59,72 @@ interface OnChainChannel {
   participants: string[];
   leader: string;
   isLeader: boolean;
-  allowedTokens: string[];
+  targetAddress: string;
   hasPublicKey: boolean;
 }
 
 // Channel state enum - matches contract: None(0), Initialized(1), Open(2), Active(3), Closing(4), Closed(5)
 const ChannelState = {
-  0: 'none',
-  1: 'pending',    // Initialized - awaiting deposits/setup
-  2: 'active',     // Open - ready for operations  
-  3: 'active',     // Active - in use
-  4: 'closing',    // Closing - being finalized
-  5: 'closed'      // Closed - finalized
+  0: "none",
+  1: "pending", // Initialized - awaiting deposits/setup
+  2: "active", // Open - ready for operations
+  3: "active", // Active - in use
+  4: "closing", // Closing - being finalized
+  5: "closed", // Closed - finalized
 } as const;
 
 // Mock proofs data - In production, fetch from Firebase
 const getMockProofsForChannel = (channelId: number): ProofData[] => {
   return [
-  {
-    id: 1,
-    status: 'verified',
-    timestamp: Date.now() - 3600000,
-    submitter: '0x1234567890123456789012345678901234567890',
-      channelId
-  },
-  {
-    id: 2,
-    status: 'verified',
-    timestamp: Date.now() - 7200000,
-    submitter: '0x9876543210987654321098765432109876543210',
-      channelId
-  },
-  {
-    id: 3,
-    status: 'pending',
-    timestamp: Date.now() - 1800000,
-    submitter: '0x1234567890123456789012345678901234567890',
-      channelId
-    }
+    {
+      id: 1,
+      status: "verified",
+      timestamp: Date.now() - 3600000,
+      submitter: "0x1234567890123456789012345678901234567890",
+      channelId,
+    },
+    {
+      id: 2,
+      status: "verified",
+      timestamp: Date.now() - 7200000,
+      submitter: "0x9876543210987654321098765432109876543210",
+      channelId,
+    },
+    {
+      id: 3,
+      status: "pending",
+      timestamp: Date.now() - 1800000,
+      submitter: "0x1234567890123456789012345678901234567890",
+      channelId,
+    },
   ];
 };
 
 // Channel Selection View Component
-function ChannelSelectionView({ 
-  channels, 
+function ChannelSelectionView({
+  channels,
   onSelectChannel,
   isLoading,
   onRefresh,
-  error
-}: { 
+  error,
+}: {
   channels: OnChainChannel[];
   onSelectChannel: (channel: OnChainChannel) => void;
   isLoading: boolean;
   onRefresh: () => void;
   error: string | null;
 }) {
-  const activeChannels = channels.filter(c => {
+  const activeChannels = channels.filter((c) => {
     const state = ChannelState[c.state as keyof typeof ChannelState];
-    return state === 'active';
+    return state === "active";
   });
-  const pendingChannels = channels.filter(c => {
+  const pendingChannels = channels.filter((c) => {
     const state = ChannelState[c.state as keyof typeof ChannelState];
-    return state === 'pending';
+    return state === "pending";
   });
-  const closedChannels = channels.filter(c => {
+  const closedChannels = channels.filter((c) => {
     const state = ChannelState[c.state as keyof typeof ChannelState];
-    return state === 'closed' || state === 'closing';
+    return state === "closed" || state === "closing";
   });
 
   return (
@@ -132,8 +138,12 @@ function ChannelSelectionView({
                 <Layers className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-white">State Explorer</h2>
-                <p className="text-gray-400 text-sm">Select a channel to view its state</p>
+                <h2 className="text-xl font-semibold text-white">
+                  State Explorer
+                </h2>
+                <p className="text-gray-400 text-sm">
+                  Select a channel to view its state
+                </p>
               </div>
             </div>
             <button
@@ -141,7 +151,9 @@ function ChannelSelectionView({
               disabled={isLoading}
               className="flex items-center gap-2 px-3 py-2 bg-[#4fc3f7]/10 hover:bg-[#4fc3f7]/20 text-[#4fc3f7] rounded transition-colors disabled:opacity-50"
             >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw
+                className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`}
+              />
               Refresh
             </button>
           </div>
@@ -151,7 +163,9 @@ function ChannelSelectionView({
         {isLoading && (
           <div className="flex items-center justify-center py-20">
             <LoadingSpinner size="lg" />
-            <span className="ml-4 text-gray-400">Loading your channels from blockchain...</span>
+            <span className="ml-4 text-gray-400">
+              Loading your channels from blockchain...
+            </span>
           </div>
         )}
 
@@ -160,7 +174,9 @@ function ChannelSelectionView({
           <div className="bg-red-500/10 border border-red-500/30 p-4 rounded mb-6 flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
             <div>
-              <p className="text-red-400 font-medium">Failed to load channels</p>
+              <p className="text-red-400 font-medium">
+                Failed to load channels
+              </p>
               <p className="text-red-400/70 text-sm">{error}</p>
             </div>
           </div>
@@ -170,8 +186,12 @@ function ChannelSelectionView({
         {!isLoading && !error && channels.length === 0 && (
           <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7]/30 p-12 text-center">
             <Users className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">No Channels Found</h3>
-            <p className="text-gray-400">You are not participating in any channels.</p>
+            <h3 className="text-lg font-semibold text-white mb-2">
+              No Channels Found
+            </h3>
+            <p className="text-gray-400">
+              You are not participating in any channels.
+            </p>
           </div>
         )}
 
@@ -226,14 +246,15 @@ function ChannelSelectionView({
                         Public Key
                       </div>
                       <div className="text-white font-medium text-sm">
-                        {channel.hasPublicKey ? '✓ Set' : '✗ Not set'}
+                        {channel.hasPublicKey ? "✓ Set" : "✗ Not set"}
                       </div>
                     </div>
                   </div>
 
-                  {/* Tokens */}
+                  {/* Target Contract */}
                   <div className="text-xs text-gray-500">
-                    {channel.allowedTokens.length} allowed tokens
+                    Target: {channel.targetAddress.slice(0, 6)}...
+                    {channel.targetAddress.slice(-4)}
                   </div>
                 </button>
               ))}
@@ -257,7 +278,9 @@ function ChannelSelectionView({
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-2">
-                      <h4 className="text-white font-semibold font-mono">Channel #{channel.id}</h4>
+                      <h4 className="text-white font-semibold font-mono">
+                        Channel #{channel.id}
+                      </h4>
                       {channel.isLeader && (
                         <span className="bg-amber-500/20 text-amber-400 text-[10px] px-1.5 py-0.5 rounded font-medium">
                           LEADER
@@ -270,7 +293,8 @@ function ChannelSelectionView({
                     </div>
                   </div>
                   <div className="text-xs text-gray-500">
-                    {channel.participantCount} participants • Awaiting initialization
+                    {channel.participantCount} participants • Awaiting
+                    initialization
                   </div>
                 </button>
               ))}
@@ -293,7 +317,9 @@ function ChannelSelectionView({
                   className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-gray-600/30 p-5 text-left hover:border-gray-500/50 transition-all opacity-60 group"
                 >
                   <div className="flex items-start justify-between mb-3">
-                    <h4 className="text-gray-400 font-semibold font-mono">Channel #{channel.id}</h4>
+                    <h4 className="text-gray-400 font-semibold font-mono">
+                      Channel #{channel.id}
+                    </h4>
                     <div className="flex items-center gap-1.5 text-gray-500 text-xs">
                       <XCircle className="w-3 h-3" />
                       Closed
@@ -316,43 +342,211 @@ function ChannelSelectionView({
 function StateExplorerDetailView({
   channel,
   onBack,
-  userAddress
+  userAddress,
 }: {
   channel: OnChainChannel;
   onBack: () => void;
   userAddress: string;
 }) {
-  const [filter, setFilter] = useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
+  const [filter, setFilter] = useState<
+    "all" | "pending" | "verified" | "rejected"
+  >("all");
   const [isBalancesExpanded, setIsBalancesExpanded] = useState(false);
   const [isBundleModalOpen, setIsBundleModalOpen] = useState(false);
   const [isSubmitProofModalOpen, setIsSubmitProofModalOpen] = useState(false);
+  const [participantBalances, setParticipantBalances] = useState<
+    ParticipantBalance[]
+  >([]);
+  const [proofs, setProofs] = useState<ProofData[]>([]);
+  const [isLoadingBalances, setIsLoadingBalances] = useState(true);
+  const [isLoadingProofs, setIsLoadingProofs] = useState(true);
+  const publicClient = usePublicClient();
   const VISIBLE_PARTICIPANTS_COLLAPSED = 3;
 
-  const mockProofs = getMockProofsForChannel(channel.id);
-  
-  // Create participant balances from on-chain data (mock balances for now)
-  const mockParticipantBalances: ParticipantBalance[] = channel.participants.map((addr, idx) => ({
-    address: addr,
-    balances: [
-      { token: 'ETH', amount: (Math.random() * 5).toFixed(2), symbol: 'ETH' },
-      { token: 'WTON', amount: (Math.random() * 3000).toFixed(2), symbol: 'WTON' },
-      { token: 'TON', amount: (Math.random() * 5000).toFixed(2), symbol: 'TON' }
-    ]
-  }));
+  // Get token info (decimals, symbol)
+  const isETH =
+    channel.targetAddress === ETH_TOKEN_ADDRESS ||
+    channel.targetAddress === "0x0000000000000000000000000000000000000001" ||
+    channel.targetAddress === "0x0000000000000000000000000000000000000000";
 
-  const filteredProofs = mockProofs.filter(proof => {
-    if (filter === 'all') return true;
+  const { data: tokenDecimals } = useContractReads({
+    contracts: channel.participants.map(() => ({
+      address: channel.targetAddress as `0x${string}`,
+      abi: ERC20_ABI,
+      functionName: "decimals",
+    })),
+    enabled:
+      !isETH &&
+      channel.targetAddress !== "0x0000000000000000000000000000000000000000",
+  });
+
+  const { data: tokenSymbol } = useContractReads({
+    contracts: channel.participants.map(() => ({
+      address: channel.targetAddress as `0x${string}`,
+      abi: ERC20_ABI,
+      functionName: "symbol",
+    })),
+    enabled:
+      !isETH &&
+      channel.targetAddress !== "0x0000000000000000000000000000000000000000",
+  });
+
+  const decimals = isETH ? 18 : Number(tokenDecimals?.[0]?.result) || 18;
+  const symbol = isETH ? "ETH" : String(tokenSymbol?.[0]?.result || "TOKEN");
+
+  // Get initial deposits from contract
+  const { data: initialDeposits } = useContractReads({
+    contracts: channel.participants.map((participant) => ({
+      address: ROLLUP_BRIDGE_CORE_ADDRESS,
+      abi: ROLLUP_BRIDGE_CORE_ABI,
+      functionName: "getParticipantDeposit",
+      args: [BigInt(channel.id), participant as `0x${string}`],
+    })),
+    enabled: channel.participants.length > 0,
+  });
+
+  // Fetch current balances from latest state snapshot
+  useEffect(() => {
+    const fetchCurrentBalances = async () => {
+      if (!publicClient) return;
+
+      setIsLoadingBalances(true);
+      try {
+        // Get latest state snapshot from Firebase
+        const latestSnapshot = await getLatestSnapshot(channel.id.toString());
+
+        const balances: ParticipantBalance[] = channel.participants.map(
+          (participant, idx) => {
+            const initialDeposit =
+              (initialDeposits?.[idx]?.result as bigint) || BigInt(0);
+            const initialDepositFormatted = formatUnits(
+              initialDeposit,
+              decimals
+            );
+
+            // Get current balance from latest snapshot
+            let currentBalance = initialDepositFormatted;
+            if (latestSnapshot?.userBalances) {
+              const userBalance = latestSnapshot.userBalances.find(
+                (ub: any) =>
+                  ub.userAddressL1?.toLowerCase() === participant.toLowerCase()
+              );
+              if (userBalance?.amount) {
+                currentBalance = formatUnits(
+                  BigInt(userBalance.amount),
+                  decimals
+                );
+              }
+            }
+
+            return {
+              address: participant,
+              initialDeposit: initialDepositFormatted,
+              currentBalance: currentBalance,
+              symbol: symbol,
+              decimals: decimals,
+            };
+          }
+        );
+
+        setParticipantBalances(balances);
+      } catch (error) {
+        console.error("Error fetching current balances:", error);
+        // Fallback to initial deposits only
+        const balances: ParticipantBalance[] = channel.participants.map(
+          (participant, idx) => {
+            const initialDeposit =
+              (initialDeposits?.[idx]?.result as bigint) || BigInt(0);
+            return {
+              address: participant,
+              initialDeposit: formatUnits(initialDeposit, decimals),
+              currentBalance: formatUnits(initialDeposit, decimals),
+              symbol: symbol,
+              decimals: decimals,
+            };
+          }
+        );
+        setParticipantBalances(balances);
+      } finally {
+        setIsLoadingBalances(false);
+      }
+    };
+
+    if (initialDeposits && channel.participants.length > 0) {
+      fetchCurrentBalances();
+    }
+  }, [
+    initialDeposits,
+    channel.id,
+    channel.participants,
+    publicClient,
+    decimals,
+    symbol,
+  ]);
+
+  // Fetch proofs from Firebase
+  useEffect(() => {
+    const fetchProofs = async () => {
+      setIsLoadingProofs(true);
+      try {
+        const [verifiedProofs, submittedProofs] = await Promise.all([
+          getData<ProofData[]>(`channels/${channel.id}/verifiedProofs`),
+          getData<ProofData[]>(`channels/${channel.id}/submittedProofs`),
+        ]);
+
+        const allProofs: ProofData[] = [];
+
+        // Add verified proofs
+        if (verifiedProofs && Array.isArray(verifiedProofs)) {
+          verifiedProofs.forEach((proof, idx) => {
+            allProofs.push({
+              ...proof,
+              id: typeof proof.id === "number" ? proof.id : idx + 1000, // Use number for verified
+              status: "verified" as const,
+            });
+          });
+        }
+
+        // Add submitted proofs (pending)
+        if (submittedProofs && Array.isArray(submittedProofs)) {
+          submittedProofs.forEach((proof, idx) => {
+            // Only add if not already verified
+            if (!allProofs.some((p) => p.id === proof.id)) {
+              allProofs.push({
+                ...proof,
+                id: typeof proof.id === "number" ? proof.id : idx + 2000, // Use number for submitted
+                status: "pending" as const,
+              });
+            }
+          });
+        }
+
+        setProofs(allProofs);
+      } catch (error) {
+        console.error("Error fetching proofs:", error);
+        setProofs([]);
+      } finally {
+        setIsLoadingProofs(false);
+      }
+    };
+
+    fetchProofs();
+  }, [channel.id]);
+
+  const filteredProofs = proofs.filter((proof) => {
+    if (filter === "all") return true;
     return proof.status === filter;
   });
 
   const stats = {
-    total: mockProofs.length,
-    verified: mockProofs.filter(p => p.status === 'verified').length,
-    pending: mockProofs.filter(p => p.status === 'pending').length,
-    rejected: mockProofs.filter(p => p.status === 'rejected').length
+    total: proofs.length,
+    verified: proofs.filter((p) => p.status === "verified").length,
+    pending: proofs.filter((p) => p.status === "pending").length,
+    rejected: proofs.filter((p) => p.status === "rejected").length,
   };
 
-  const channelStateLabel = ChannelState[channel.state as keyof typeof ChannelState] || 'unknown';
+  const channelStateLabel =
+    ChannelState[channel.state as keyof typeof ChannelState] || "unknown";
 
   return (
     <>
@@ -374,17 +568,23 @@ function StateExplorerDetailView({
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-xl font-semibold text-white font-mono">Channel #{channel.id}</h2>
+                    <h2 className="text-xl font-semibold text-white font-mono">
+                      Channel #{channel.id}
+                    </h2>
                     {channel.isLeader && (
                       <span className="bg-amber-500/20 text-amber-400 text-xs px-2 py-0.5 rounded font-medium">
                         LEADER
                       </span>
                     )}
-                    <span className={`text-xs px-2 py-0.5 rounded ${
-                      channelStateLabel === 'active' ? 'bg-green-500/20 text-green-400' :
-                      channelStateLabel === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                      'bg-gray-500/20 text-gray-400'
-                    }`}>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded ${
+                        channelStateLabel === "active"
+                          ? "bg-green-500/20 text-green-400"
+                          : channelStateLabel === "pending"
+                          ? "bg-yellow-500/20 text-yellow-400"
+                          : "bg-gray-500/20 text-gray-400"
+                      }`}
+                    >
                       {channelStateLabel.toUpperCase()}
                     </span>
                   </div>
@@ -399,12 +599,12 @@ function StateExplorerDetailView({
                   <Upload className="w-4 h-4" />
                   Submit Proof
                 </button>
-              <button
+                <button
                   onClick={() => setIsBundleModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded transition-all hover:shadow-lg hover:shadow-green-500/30 font-medium"
-              >
-                <Plus className="w-4 h-4" />
-                Create Transaction
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded transition-all hover:shadow-lg hover:shadow-green-500/30 font-medium"
+                >
+                  <Plus className="w-4 h-4" />
+                  Create Transaction
                 </button>
               </div>
             </div>
@@ -415,11 +615,12 @@ function StateExplorerDetailView({
               </span>
               <span className="flex items-center gap-1">
                 <Shield className="w-4 h-4" />
-                Public Key: {channel.hasPublicKey ? 'Set' : 'Not set'}
+                Public Key: {channel.hasPublicKey ? "Set" : "Not set"}
               </span>
               <span className="flex items-center gap-1">
                 <Coins className="w-4 h-4" />
-                {channel.allowedTokens.length} tokens
+                Target: {channel.targetAddress.slice(0, 6)}...
+                {channel.targetAddress.slice(-4)}
               </span>
             </div>
           </div>
@@ -436,20 +637,34 @@ function StateExplorerDetailView({
                   <Users className="w-4 h-4 text-white" />
                 </div>
                 <div className="text-left">
-                  <h3 className="text-sm font-semibold text-white">Current State - Participant Balances</h3>
-                  <p className="text-xs text-gray-400">{channel.participantCount} participants</p>
+                  <h3 className="text-sm font-semibold text-white">
+                    Participant Balances
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    {channel.participantCount} participants
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-4">
                 {/* Quick Summary Stats */}
                 <div className="hidden md:flex items-center gap-4 text-xs">
-                  <span className="text-gray-400">
-                    Total: <span className="text-white font-medium">
-                      {mockParticipantBalances.reduce((sum, p) => 
-                        sum + parseFloat(p.balances.find(b => b.symbol === 'ETH')?.amount || '0'), 0
-                      ).toFixed(2)} ETH
+                  {isLoadingBalances ? (
+                    <span className="text-gray-400">Loading...</span>
+                  ) : (
+                    <span className="text-gray-400">
+                      Total:{" "}
+                      <span className="text-white font-medium">
+                        {participantBalances
+                          .reduce(
+                            (sum, p) =>
+                              sum + parseFloat(p.currentBalance || "0"),
+                            0
+                          )
+                          .toFixed(2)}{" "}
+                        {symbol}
+                      </span>
                     </span>
-                  </span>
+                  )}
                 </div>
                 {/* Expand/Collapse Icon */}
                 <div className="text-[#4fc3f7]">
@@ -460,57 +675,123 @@ function StateExplorerDetailView({
                   )}
                 </div>
               </div>
-              </button>
+            </button>
 
             {/* Expandable Content */}
             <div
               className={`transition-all duration-300 ease-in-out ${
-                isBalancesExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
+                isBalancesExpanded
+                  ? "max-h-[600px] opacity-100"
+                  : "max-h-0 opacity-0"
               } overflow-hidden`}
             >
-              <div className="px-4 pb-4">
-                {/* Compact Participant Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {mockParticipantBalances.map((participant, index) => (
-                    <div
-                      key={participant.address}
-                      className={`bg-[#0a1930]/50 border p-3 hover:border-[#4fc3f7]/50 transition-all rounded ${
-                        participant.address.toLowerCase() === userAddress?.toLowerCase() 
-                          ? 'border-[#4fc3f7]/50 bg-[#4fc3f7]/5' 
-                          : 'border-[#4fc3f7]/20'
-                      }`}
-                    >
-                      {/* Compact Header */}
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="bg-[#4fc3f7] px-1.5 py-0.5 rounded text-white font-bold text-[10px]">
-                          #{index + 1}
-                        </span>
-                        <span className="font-mono text-xs text-[#4fc3f7] truncate flex-1">
-                          {participant.address.slice(0, 6)}...{participant.address.slice(-4)}
-                        </span>
-                        {participant.address.toLowerCase() === userAddress?.toLowerCase() && (
-                          <span className="text-[9px] text-[#4fc3f7] bg-[#4fc3f7]/20 px-1 rounded">YOU</span>
-                        )}
-                        {participant.address.toLowerCase() === channel.leader.toLowerCase() && (
-                          <span className="text-[9px] text-amber-400 bg-amber-500/20 px-1 rounded">LEADER</span>
-                        )}
-                      </div>
-                      
-                      {/* Compact Balances - Horizontal */}
-                      <div className="flex flex-wrap gap-2 text-xs">
-                        {participant.balances.map((balance) => (
-                          <div
-                            key={balance.token}
-                            className="flex items-center gap-1 bg-[#1a2347]/50 px-2 py-1 rounded"
-                          >
-                            <Coins className="w-3 h-3 text-[#4fc3f7]" />
-                            <span className="font-medium text-white">{balance.amount}</span>
-                            <span className="text-gray-400">{balance.symbol}</span>
-                          </div>
-                        ))}
-                      </div>
+              <div className="px-4 pb-4 space-y-6">
+                {/* Initial Deposits Section */}
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-300 mb-3 flex items-center gap-2">
+                    <div className="w-1 h-1 bg-[#4fc3f7] rounded-full" />
+                    Initial Deposits (Channel Creation)
+                  </h4>
+                  {isLoadingBalances ? (
+                    <div className="text-center py-4">
+                      <LoadingSpinner size="sm" />
                     </div>
-                  ))}
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {participantBalances.map((participant, index) => (
+                        <div
+                          key={participant.address}
+                          className={`bg-[#0a1930]/50 border p-3 hover:border-[#4fc3f7]/50 transition-all rounded ${
+                            participant.address.toLowerCase() ===
+                            userAddress?.toLowerCase()
+                              ? "border-[#4fc3f7]/50 bg-[#4fc3f7]/5"
+                              : "border-[#4fc3f7]/20"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="bg-[#4fc3f7] px-1.5 py-0.5 rounded text-white font-bold text-[10px]">
+                              #{index + 1}
+                            </span>
+                            <span className="font-mono text-xs text-[#4fc3f7] truncate flex-1">
+                              {participant.address.slice(0, 6)}...
+                              {participant.address.slice(-4)}
+                            </span>
+                            {participant.address.toLowerCase() ===
+                              userAddress?.toLowerCase() && (
+                              <span className="text-[9px] text-[#4fc3f7] bg-[#4fc3f7]/20 px-1 rounded">
+                                YOU
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 bg-[#1a2347]/50 px-2 py-1 rounded text-xs">
+                            <Coins className="w-3 h-3 text-[#4fc3f7]" />
+                            <span className="font-medium text-white">
+                              {parseFloat(participant.initialDeposit).toFixed(
+                                2
+                              )}
+                            </span>
+                            <span className="text-gray-400">
+                              {participant.symbol}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Current State Balances Section */}
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-300 mb-3 flex items-center gap-2">
+                    <div className="w-1 h-1 bg-green-500 rounded-full" />
+                    Current State Balances (Latest Approved State)
+                  </h4>
+                  {isLoadingBalances ? (
+                    <div className="text-center py-4">
+                      <LoadingSpinner size="sm" />
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {participantBalances.map((participant, index) => (
+                        <div
+                          key={participant.address}
+                          className={`bg-[#0a1930]/50 border p-3 hover:border-green-500/50 transition-all rounded ${
+                            participant.address.toLowerCase() ===
+                            userAddress?.toLowerCase()
+                              ? "border-green-500/50 bg-green-500/5"
+                              : "border-green-500/20"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="bg-green-500 px-1.5 py-0.5 rounded text-white font-bold text-[10px]">
+                              #{index + 1}
+                            </span>
+                            <span className="font-mono text-xs text-green-400 truncate flex-1">
+                              {participant.address.slice(0, 6)}...
+                              {participant.address.slice(-4)}
+                            </span>
+                            {participant.address.toLowerCase() ===
+                              userAddress?.toLowerCase() && (
+                              <span className="text-[9px] text-green-400 bg-green-500/20 px-1 rounded">
+                                YOU
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 bg-[#1a2347]/50 px-2 py-1 rounded text-xs">
+                            <Coins className="w-3 h-3 text-green-400" />
+                            <span className="font-medium text-white">
+                              {parseFloat(participant.currentBalance).toFixed(
+                                2
+                              )}
+                            </span>
+                            <span className="text-gray-400">
+                              {participant.symbol}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -518,30 +799,43 @@ function StateExplorerDetailView({
             {/* Preview when collapsed - show first few participants inline */}
             {!isBalancesExpanded && (
               <div className="px-4 pb-3 flex flex-wrap gap-2 text-xs">
-                {mockParticipantBalances.slice(0, 4).map((participant, index) => (
-                  <div
-                    key={participant.address}
-                    className={`flex items-center gap-1.5 bg-[#0a1930]/50 border px-2 py-1 rounded ${
-                      participant.address.toLowerCase() === userAddress?.toLowerCase() 
-                        ? 'border-[#4fc3f7]/30' 
-                        : 'border-[#4fc3f7]/10'
-                    }`}
-                  >
-                    <span className="bg-[#4fc3f7]/80 px-1 rounded text-white font-bold text-[9px]">
-                      #{index + 1}
-                    </span>
-                    <span className="font-mono text-[#4fc3f7]/80 text-[10px]">
-                      {participant.address.slice(0, 4)}...{participant.address.slice(-3)}
-                    </span>
-                    {participant.address.toLowerCase() === userAddress?.toLowerCase() && (
-                      <span className="text-[8px] text-[#4fc3f7]">(you)</span>
+                {isLoadingBalances ? (
+                  <span className="text-gray-400">Loading balances...</span>
+                ) : (
+                  <>
+                    {participantBalances
+                      .slice(0, 4)
+                      .map((participant, index) => (
+                        <div
+                          key={participant.address}
+                          className={`flex items-center gap-1.5 bg-[#0a1930]/50 border px-2 py-1 rounded ${
+                            participant.address.toLowerCase() ===
+                            userAddress?.toLowerCase()
+                              ? "border-[#4fc3f7]/30"
+                              : "border-[#4fc3f7]/10"
+                          }`}
+                        >
+                          <span className="bg-[#4fc3f7]/80 px-1 rounded text-white font-bold text-[9px]">
+                            #{index + 1}
+                          </span>
+                          <span className="font-mono text-[#4fc3f7]/80 text-[10px]">
+                            {participant.address.slice(0, 4)}...
+                            {participant.address.slice(-3)}
+                          </span>
+                          {participant.address.toLowerCase() ===
+                            userAddress?.toLowerCase() && (
+                            <span className="text-[8px] text-[#4fc3f7]">
+                              (you)
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    {participantBalances.length > 4 && (
+                      <div className="flex items-center text-gray-400">
+                        +{participantBalances.length - 4} more
+                      </div>
                     )}
-                  </div>
-                ))}
-                {mockParticipantBalances.length > 4 && (
-                  <div className="flex items-center text-gray-400">
-                    +{mockParticipantBalances.length - 4} more
-                  </div>
+                  </>
                 )}
               </div>
             )}
@@ -554,45 +848,61 @@ function StateExplorerDetailView({
               {/* Total Proofs */}
               <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7]/30 p-5 hover:border-[#4fc3f7] transition-all hover:shadow-lg hover:shadow-[#4fc3f7]/20">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-gray-300">Total Proofs</span>
+                  <span className="text-sm font-medium text-gray-300">
+                    Total Proofs
+                  </span>
                   <div className="bg-[#4fc3f7] p-2 rounded">
                     <FileText className="h-4 w-4 text-white" />
                   </div>
                 </div>
-                <div className="text-3xl font-bold text-white">{stats.total}</div>
+                <div className="text-3xl font-bold text-white">
+                  {stats.total}
+                </div>
               </div>
 
               {/* Verified */}
               <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7]/30 p-5 hover:border-[#4fc3f7] transition-all hover:shadow-lg hover:shadow-[#4fc3f7]/20">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-gray-300">Verified</span>
+                  <span className="text-sm font-medium text-gray-300">
+                    Verified
+                  </span>
                   <div className="bg-green-500 p-2 rounded">
                     <CheckCircle2 className="h-4 w-4 text-white" />
                   </div>
                 </div>
-                <div className="text-3xl font-bold text-green-400">{stats.verified}</div>
+                <div className="text-3xl font-bold text-green-400">
+                  {stats.verified}
+                </div>
               </div>
 
               {/* Pending */}
               <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7]/30 p-5 hover:border-[#4fc3f7] transition-all hover:shadow-lg hover:shadow-[#4fc3f7]/20">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-gray-300">Pending</span>
+                  <span className="text-sm font-medium text-gray-300">
+                    Pending
+                  </span>
                   <div className="bg-yellow-500 p-2 rounded">
                     <Clock className="h-4 w-4 text-white" />
                   </div>
                 </div>
-                <div className="text-3xl font-bold text-yellow-400">{stats.pending}</div>
+                <div className="text-3xl font-bold text-yellow-400">
+                  {stats.pending}
+                </div>
               </div>
 
               {/* Rejected */}
               <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7]/30 p-5 hover:border-[#4fc3f7] transition-all hover:shadow-lg hover:shadow-[#4fc3f7]/20">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-gray-300">Rejected</span>
+                  <span className="text-sm font-medium text-gray-300">
+                    Rejected
+                  </span>
                   <div className="bg-red-500 p-2 rounded">
                     <XCircle className="h-4 w-4 text-white" />
                   </div>
                 </div>
-                <div className="text-3xl font-bold text-red-400">{stats.rejected}</div>
+                <div className="text-3xl font-bold text-red-400">
+                  {stats.rejected}
+                </div>
               </div>
             </div>
 
@@ -615,12 +925,23 @@ function StateExplorerDetailView({
             </div>
 
             {/* Proof Cards Grid */}
-            {filteredProofs.length === 0 ? (
+            {isLoadingProofs ? (
+              <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7]/50 p-12 text-center">
+                <LoadingSpinner size="lg" />
+                <p className="text-gray-400 mt-4">Loading proofs...</p>
+              </div>
+            ) : filteredProofs.length === 0 ? (
               <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7]/50 p-12 text-center">
                 <Activity className="h-12 w-12 text-[#4fc3f7] mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-white mb-2">No Proofs Found</h3>
+                <h3 className="text-lg font-semibold text-white mb-2">
+                  {proofs.length === 0
+                    ? "No Proofs Submitted"
+                    : "No Proofs Match Filter"}
+                </h3>
                 <p className="text-gray-400">
-                  No proofs match the selected filter
+                  {proofs.length === 0
+                    ? "This channel has been initialized but no proofs have been submitted yet."
+                    : "No proofs match the selected filter"}
                 </p>
               </div>
             ) : (
@@ -655,83 +976,122 @@ function StateExplorerDetailView({
 export default function StateExplorerPage() {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
-  const [selectedChannel, setSelectedChannel] = useState<OnChainChannel | null>(null);
+  const [selectedChannel, setSelectedChannel] = useState<OnChainChannel | null>(
+    null
+  );
   const [channels, setChannels] = useState<OnChainChannel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Fetch user's channels from blockchain
   const fetchChannels = async () => {
-    if (!address || !publicClient) return;
-    
+    if (!address || !publicClient) {
+      console.log("State Explorer: Missing address or publicClient", {
+        address,
+        publicClient: !!publicClient,
+      });
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
       // Get the next channel ID to know how many channels exist
-      const nextChannelId = await publicClient.readContract({
+      const nextChannelId = (await publicClient.readContract({
         address: ROLLUP_BRIDGE_CORE_ADDRESS,
         abi: ROLLUP_BRIDGE_CORE_ABI,
-        functionName: 'nextChannelId',
-      }) as bigint;
+        functionName: "nextChannelId",
+      })) as bigint;
 
       const totalChannels = Number(nextChannelId);
+      console.log(
+        `State Explorer: Checking ${
+          totalChannels - 1
+        } channels for user ${address}`
+      );
       const userChannels: OnChainChannel[] = [];
 
       // Check each channel if user is a participant
       for (let i = 1; i < totalChannels; i++) {
         try {
-          const isParticipant = await publicClient.readContract({
+          // First check if channel exists by getting the leader
+          const leader = (await publicClient.readContract({
             address: ROLLUP_BRIDGE_CORE_ADDRESS,
             abi: ROLLUP_BRIDGE_CORE_ABI,
-            functionName: 'isChannelParticipant',
-            args: [BigInt(i), address],
-          }) as boolean;
+            functionName: "getChannelLeader",
+            args: [BigInt(i)],
+          })) as string;
 
-          if (isParticipant) {
-            // Fetch channel details
-            const [channelInfo, participants, leader, publicKey, allowedTokens] = await Promise.all([
+          // Skip if channel doesn't exist (zero address)
+          if (
+            !leader ||
+            leader === "0x0000000000000000000000000000000000000000"
+          ) {
+            continue;
+          }
+
+          // Get participants to check if user is a participant
+          const participants = (await publicClient.readContract({
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: "getChannelParticipants",
+            args: [BigInt(i)],
+          })) as string[];
+
+          // Check if user is a participant (case-insensitive comparison)
+          const isParticipant = participants.some(
+            (p) => p.toLowerCase() === address.toLowerCase()
+          );
+
+          // Also check if user is the leader
+          const isLeader = leader.toLowerCase() === address.toLowerCase();
+
+          console.log(
+            `State Explorer: Channel ${i} - Leader: ${leader}, Participants: ${participants.length}, IsParticipant: ${isParticipant}, IsLeader: ${isLeader}`
+          );
+
+          if (isParticipant || isLeader) {
+            console.log(`State Explorer: Adding channel ${i} to user channels`);
+            // Fetch remaining channel details
+            // getChannelInfo returns: [targetAddress, state, participantCount, initialRoot]
+            const [channelInfo, publicKey, targetAddress] = await Promise.all([
               publicClient.readContract({
                 address: ROLLUP_BRIDGE_CORE_ADDRESS,
                 abi: ROLLUP_BRIDGE_CORE_ABI,
-                functionName: 'getChannelInfo',
+                functionName: "getChannelInfo",
                 args: [BigInt(i)],
-              }) as Promise<[string[], number, bigint, string]>,
+              }) as Promise<
+                readonly [`0x${string}`, number, bigint, `0x${string}`]
+              >,
               publicClient.readContract({
                 address: ROLLUP_BRIDGE_CORE_ADDRESS,
                 abi: ROLLUP_BRIDGE_CORE_ABI,
-                functionName: 'getChannelParticipants',
-                args: [BigInt(i)],
-              }) as Promise<string[]>,
-              publicClient.readContract({
-                address: ROLLUP_BRIDGE_CORE_ADDRESS,
-                abi: ROLLUP_BRIDGE_CORE_ABI,
-                functionName: 'getChannelLeader',
-                args: [BigInt(i)],
-              }) as Promise<string>,
-              publicClient.readContract({
-                address: ROLLUP_BRIDGE_CORE_ADDRESS,
-                abi: ROLLUP_BRIDGE_CORE_ABI,
-                functionName: 'getChannelPublicKey',
+                functionName: "getChannelPublicKey",
                 args: [BigInt(i)],
               }) as Promise<[bigint, bigint]>,
               publicClient.readContract({
                 address: ROLLUP_BRIDGE_CORE_ADDRESS,
                 abi: ROLLUP_BRIDGE_CORE_ABI,
-                functionName: 'getChannelAllowedTokens',
+                functionName: "getChannelTargetContract",
                 args: [BigInt(i)],
-              }) as Promise<string[]>,
+              }) as Promise<string>,
             ]);
+
+            // channelInfo structure: [targetAddress, state, participantCount, initialRoot]
+            const state = channelInfo[1];
+            const participantCount = Number(channelInfo[2]);
 
             userChannels.push({
               id: i,
-              state: channelInfo[1],
-              participantCount: Number(channelInfo[2]),
+              state: state,
+              participantCount: participantCount,
               participants: participants,
               leader: leader,
-              isLeader: leader.toLowerCase() === address.toLowerCase(),
-              allowedTokens: allowedTokens,
-              hasPublicKey: publicKey[0] !== BigInt(0) || publicKey[1] !== BigInt(0),
+              isLeader: isLeader,
+              targetAddress: targetAddress,
+              hasPublicKey:
+                publicKey[0] !== BigInt(0) || publicKey[1] !== BigInt(0),
             });
           }
         } catch (err) {
@@ -740,10 +1100,13 @@ export default function StateExplorerPage() {
         }
       }
 
+      console.log(
+        `State Explorer: Found ${userChannels.length} channels for user`
+      );
       setChannels(userChannels);
     } catch (err) {
-      console.error('Failed to fetch channels:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch channels');
+      console.error("State Explorer: Failed to fetch channels:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch channels");
     } finally {
       setIsLoading(false);
     }
@@ -770,14 +1133,14 @@ export default function StateExplorerPage() {
   return (
     <Layout>
       {selectedChannel ? (
-        <StateExplorerDetailView 
-          channel={selectedChannel} 
+        <StateExplorerDetailView
+          channel={selectedChannel}
           onBack={handleBack}
-          userAddress={address || ''}
+          userAddress={address || ""}
         />
       ) : (
-        <ChannelSelectionView 
-          channels={channels} 
+        <ChannelSelectionView
+          channels={channels}
           onSelectChannel={handleSelectChannel}
           isLoading={isLoading}
           onRefresh={fetchChannels}
