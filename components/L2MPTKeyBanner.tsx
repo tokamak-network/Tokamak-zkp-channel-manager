@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAccount, useSignMessage } from 'wagmi';
 import { Key, Calculator, AlertCircle, Copy, CheckCircle2 } from 'lucide-react';
 import { ethers } from 'ethers';
 import { generateMptKeyFromWallet } from "@/Tokamak-Zk-EVM/packages/frontend/synthesizer/examples/L2StateChannel/utils/mpt-key-util";
@@ -19,11 +18,10 @@ interface ComputedKey {
 }
 
 export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
-  const { address, isConnected } = useAccount();
-  const { signMessageAsync } = useSignMessage();
   const [isExpanded, setIsExpanded] = useState(false);
   const [channelId, setChannelId] = useState<number>(1);
   const [tokenAddress, setTokenAddress] = useState('0xa30fe40285B8f5c0457DbC3B7C8A280373c40044'); // TON token
+  const [privateKey, setPrivateKey] = useState<string>('');
   const [computedKeys, setComputedKeys] = useState<ComputedKey[]>([]);
   const [isComputing, setIsComputing] = useState(false);
   const [error, setError] = useState<string>('');
@@ -32,22 +30,28 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
   // Reset error when inputs change
   useEffect(() => {
     setError('');
-  }, [channelId, tokenAddress]);
+  }, [channelId, tokenAddress, privateKey]);
 
   "use client";
   async function fetchMptKey(wallet: ethers.Wallet, participantName: string, channelId: number, tokenAddress: string, slot?: number) {
-    const res = await fetch("/api/mpt-key", {
+    const res = await fetch("/api/get-l2-mpt-key", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ wallet, participantName, channelId, tokenAddress, slot }),
+      body: JSON.stringify({ privateKey: wallet.privateKey, participantName, channelId, tokenAddress, slot }),
     });
     const { key } = await res.json();
     return key;
   }
 
   const computeMPTKey = async () => {
-    if (!isConnected || !address) {
-      setError('Please connect your wallet first');
+    if (!privateKey) {
+      setError('Please enter a private key');
+      return;
+    }
+
+    // Validate private key format
+    if (!privateKey.match(/^(0x)?[a-fA-F0-9]{64}$/)) {
+      setError('Invalid private key format. Must be 64 hex characters (with or without 0x prefix)');
       return;
     }
 
@@ -55,25 +59,15 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
     setError('');
 
     try {
-      // Create a deterministic message for the user to sign
-      // This message includes the channel ID and token address to make it unique
-      const message = `Generate MPT Key for Channel ${channelId} with token ${tokenAddress}\n\nThis signature is used to derive your L2 MPT key deterministically.\nSigning this message is safe and does not give anyone access to your funds.`;
+      // Ensure private key has 0x prefix
+      const normalizedPrivateKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
       
-      // Request user to sign the message
-      const signature = await signMessageAsync({ message });
-      
-      // Use the signature to derive a deterministic private key
-      // Hash the signature to get a deterministic seed
-      const signatureHash = ethers.keccak256(ethers.toUtf8Bytes(signature));
-      const privateKeyBigInt = BigInt(signatureHash) % BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141'); // secp256k1 order
-      const privateKeyHex = '0x' + privateKeyBigInt.toString(16).padStart(64, '0');
-      
-      // Create a wallet from the derived private key
-      const wallet = new ethers.Wallet(privateKeyHex);
+      // Create a wallet from the provided private key
+      const wallet = new ethers.Wallet(normalizedPrivateKey);
       
       
 
-      // Generate MPT key using the derived wallet
+      // Generate MPT key using the wallet
       const mptKey = await fetchMptKey(
         wallet,
         'Alice',
@@ -92,11 +86,7 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
       setError(''); // Clear any previous errors
 
     } catch (err) {
-      if (err instanceof Error && err.message.includes('User rejected')) {
-        setError('Signature cancelled by user');
-      } else {
-        setError(err instanceof Error ? err.message : 'Failed to compute MPT key');
-      }
+      setError(err instanceof Error ? err.message : 'Failed to compute MPT key');
     } finally {
       setIsComputing(false);
     }
@@ -116,7 +106,6 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
     setComputedKeys(prev => prev.filter((_, i) => i !== index));
   };
 
-  if (!isConnected) return null;
 
   return (
     <div className={`bg-gradient-to-r from-[#4fc3f7]/10 to-[#029bee]/10 border border-[#4fc3f7]/30 ${className || ''}`}>
@@ -148,31 +137,46 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
         {isExpanded && (
           <div className="mt-6 space-y-4">
             {/* Input Form */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Channel ID
+                  Private Key
                 </label>
                 <input
-                  type="number"
-                  min="1"
-                  value={channelId}
-                  onChange={(e) => setChannelId(parseInt(e.target.value) || 1)}
+                  type="password"
+                  placeholder="Enter private key (64 hex characters, with or without 0x prefix)"
+                  value={privateKey}
+                  onChange={(e) => setPrivateKey(e.target.value)}
                   className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
                 />
               </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    Channel ID
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={channelId}
+                    onChange={(e) => setChannelId(parseInt(e.target.value) || 1)}
+                    className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Token Address
-                </label>
-                <select
-                  value={tokenAddress}
-                  onChange={(e) => setTokenAddress(e.target.value)}
-                  className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
-                >
-                  <option value="0xa30fe40285B8f5c0457DbC3B7C8A280373c40044">TON Token</option>
-                </select>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    Token Address
+                  </label>
+                  <select
+                    value={tokenAddress}
+                    onChange={(e) => setTokenAddress(e.target.value)}
+                    className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
+                  >
+                    <option value="0xa30fe40285B8f5c0457DbC3B7C8A280373c40044">TON Token</option>
+                  </select>
+                </div>
               </div>
             </div>
         
