@@ -26,7 +26,6 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
   const [isComputing, setIsComputing] = useState(false);
   const [error, setError] = useState<string>('');
   const [copiedKey, setCopiedKey] = useState<string>('');
-  const [privateKey, setPrivateKey] = useState<string>('');
 
   // Reset error when inputs change
   useEffect(() => {
