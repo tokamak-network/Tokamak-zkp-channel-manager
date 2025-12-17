@@ -13,6 +13,7 @@ import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI, ROLLUP_BRIDGE_DEPOS
 import { getTokenSymbol, getTokenDecimals } from '@/lib/tokenUtils';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { ArrowDownCircle, Clock, Inbox, CheckCircle2, AlertCircle, Key, AlertTriangle, X } from 'lucide-react';
+import { L2MPTKeyBanner } from '@/components/L2MPTKeyBanner';
 
 export default function DepositTokensPage() {
   const { address, isConnected } = useAccount();
@@ -482,6 +483,9 @@ export default function DepositTokensPage() {
                 Select a channel to deposit tokens. Each channel supports a single target contract. You must provide an L2 MPT key for your deposit.
               </p>
             </div>
+
+            {/* L2 MPT Key Generator Banner */}
+            <L2MPTKeyBanner className="mb-6" />
 
             <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 mb-6 shadow-lg shadow-[#4fc3f7]/20">
 
