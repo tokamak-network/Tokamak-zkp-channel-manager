@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Key, Calculator, AlertCircle, Copy, CheckCircle2 } from 'lucide-react';
 import { ethers } from 'ethers';
+import { generateMptKeyFromWalletClient } from '@/lib/clientMptKeyUtils';
 
 interface L2MPTKeyBannerProps {
   className?: string;
@@ -29,21 +30,9 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
     setError('');
   }, [channelId, tokenAddress, privateKey]);
 
-  "use client";
-  async function fetchMptKey(wallet: ethers.Wallet, participantName: string, channelId: number, tokenAddress: string, slot?: number) {
-    const res = await fetch("/api/get-l2-mpt-key", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ privateKey: wallet.privateKey, participantName, channelId, tokenAddress, slot }),
-    });
-    
-    if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.error || `API error: ${res.status}`);
-    }
-    
-    const { key } = await res.json();
-    return key;
+  // Generate MPT key directly on client-side
+  function generateMptKey(wallet: ethers.Wallet, participantName: string, channelId: number, tokenAddress: string, slot: number = 0) {
+    return generateMptKeyFromWalletClient(wallet, participantName, channelId, tokenAddress, slot);
   }
 
   const computeMPTKey = async () => {
@@ -83,8 +72,8 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
       
       
 
-      // Generate MPT key using the wallet
-      const mptKey = await fetchMptKey(
+      // Generate MPT key using the wallet (client-side)
+      const mptKey = generateMptKey(
         wallet,
         'Alice',
         channelId,
@@ -276,10 +265,11 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
             <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-4">
               <h4 className="font-semibold text-[#4fc3f7] mb-2">How to use generated keys:</h4>
               <ul className="text-sm text-gray-300 space-y-1">
-                <li>• These are real L2MPT keys generated using JubJub cryptography</li>
+                <li>• Keys are generated client-side using JubJub cryptography and Poseidon hash</li>
                 <li>• Copy the generated MPT key and paste it into the "L2 MPT Key" field when making deposits</li>
                 <li>• Ensure the channel ID matches your deposit parameters</li>
                 <li>• Each unique combination of wallet address, channel ID, and token generates a different key deterministically</li>
+                <li>• Your private key never leaves your browser - all computation is done locally</li>
               </ul>
             </div>
           </div>
