@@ -28,19 +28,19 @@ const statusConfig = {
   pending: {
     label: 'Pending',
     icon: Clock,
-    badgeClass: 'bg-yellow-500/20 border-yellow-500/30 text-yellow-400',
+    badgeClass: 'bg-yellow-500/20 border-yellow-500 text-yellow-400',
     borderClass: 'border-yellow-500/50'
   },
   verified: {
     label: 'Verified',
     icon: CheckCircle2,
-    badgeClass: 'bg-green-500/20 border-green-500/30 text-green-400',
+    badgeClass: 'bg-green-500/20 border-green-500 text-green-400',
     borderClass: 'border-green-500/50'
   },
   rejected: {
     label: 'Rejected',
     icon: XCircle,
-    badgeClass: 'bg-red-500/20 border-red-500/30 text-red-400',
+    badgeClass: 'bg-red-500/20 border-red-500 text-red-400',
     borderClass: 'border-red-500/50'
   }
 };
@@ -66,20 +66,22 @@ export function ProofCard({ proof, isLeader = false, onVerify, isVerifying = fal
           <h3 className="text-lg font-semibold text-white mb-2">
             Proof {proofDisplayId}
           </h3>
-          <div className={`inline-flex items-center gap-1.5 px-2 py-1 border ${config.badgeClass} rounded text-xs font-medium`}>
-            <Icon className="w-3 h-3" />
-            {config.label}
-          </div>
         </div>
-        {proof.status === 'pending' && isLeader && (
-          <button
-            onClick={handleVerify}
-            disabled={isVerifying}
-            className="p-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
-            title="Verify this proof"
-          >
-            <Check className="w-4 h-4" />
-          </button>
+        {/* Status Icon - Only one icon per status */}
+        {proof.status === 'verified' && (
+          <div className="bg-green-500 p-2 rounded">
+            <CheckCircle2 className="h-4 w-4 text-white" />
+          </div>
+        )}
+        {proof.status === 'pending' && (
+          <div className="bg-yellow-500 p-2 rounded">
+            <Clock className="h-4 w-4 text-white" />
+          </div>
+        )}
+        {proof.status === 'rejected' && (
+          <div className="bg-red-500 p-2 rounded">
+            <XCircle className="h-4 w-4 text-white" />
+          </div>
         )}
       </div>
 
@@ -104,13 +106,21 @@ export function ProofCard({ proof, isLeader = false, onVerify, isVerifying = fal
           </span>
         </div>
 
-        <div className="pt-2 border-t border-[#4fc3f7]/20">
+        <div className="pt-2 border-t border-[#4fc3f7]/20 flex items-center justify-between">
           <Link href={`/state-explorer/${proof.channelId}/${encodeURIComponent(proof.id || proof.proofId || proof.key || '')}`}>
             <div className="text-sm text-gray-400 group-hover:text-[#4fc3f7] transition-colors flex items-center gap-1 cursor-pointer">
               View Details
               <ArrowRight className="w-4 h-4" />
             </div>
           </Link>
+          {/* Status Text */}
+          <span className={`text-xs font-medium ${
+            proof.status === 'verified' ? 'text-green-400' :
+            proof.status === 'pending' ? 'text-yellow-400' :
+            'text-red-400'
+          }`}>
+            {config.label}
+          </span>
         </div>
       </div>
     </div>
