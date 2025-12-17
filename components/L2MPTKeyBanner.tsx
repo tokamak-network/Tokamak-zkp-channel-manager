@@ -211,9 +211,6 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-2">
                             <span className="px-2 py-1 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] text-xs">
-                              Alice
-                            </span>
-                            <span className="px-2 py-1 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] text-xs">
                               Channel {key.channelId}
                             </span>
                             <span className="px-2 py-1 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] text-xs">
