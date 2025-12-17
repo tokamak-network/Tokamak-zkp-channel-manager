@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react';
 import { useAccount, useSignMessage } from 'wagmi';
 import { Key, Calculator, AlertCircle, Copy, CheckCircle2 } from 'lucide-react';
 import { ethers } from 'ethers';
-import { generateMptKeyFromWallet } from '@/lib/mptKeyUtils';
+import { generateMptKeyFromWallet } from "@/Tokamak-Zk-EVM/packages/frontend/synthesizer/examples/L2StateChannel/utils/mpt-key-util";
+import { poseidon } from '@/Tokamak-Zk-EVM/packages/frontend/synthesizer/src/TokamakL2JS/crypto';
+import { fromEdwardsToAddress } from '@/Tokamak-Zk-EVM/packages/frontend/synthesizer/src/TokamakL2JS/utils';
 
 interface L2MPTKeyBannerProps {
   className?: string;
@@ -32,6 +34,17 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
     setError('');
   }, [channelId, tokenAddress]);
 
+  "use client";
+  async function fetchMptKey(wallet: ethers.Wallet, participantName: string, channelId: number, tokenAddress: string, slot?: number) {
+    const res = await fetch("/api/mpt-key", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ wallet, participantName, channelId, tokenAddress, slot }),
+    });
+    const { key } = await res.json();
+    return key;
+  }
+
   const computeMPTKey = async () => {
     if (!isConnected || !address) {
       setError('Please connect your wallet first');
@@ -58,9 +71,12 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
       // Create a wallet from the derived private key
       const wallet = new ethers.Wallet(privateKeyHex);
       
+      
+
       // Generate MPT key using the derived wallet
-      const mptKey = generateMptKeyFromWallet(
+      const mptKey = await fetchMptKey(
         wallet,
+        'Alice',
         channelId,
         tokenAddress
       );
