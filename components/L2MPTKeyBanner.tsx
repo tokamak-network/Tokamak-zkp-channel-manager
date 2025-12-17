@@ -44,8 +44,11 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
       return;
     }
 
-    if (!privateKey.match(/^0x[a-fA-F0-9]{64}$/)) {
-      setError('Invalid private key format. Must be 64 hex characters with 0x prefix');
+    // Normalize private key: add 0x prefix if missing
+    const normalizedPrivateKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
+
+    if (!normalizedPrivateKey.match(/^0x[a-fA-F0-9]{64}$/)) {
+      setError('Invalid private key format. Must be 64 hex characters (with or without 0x prefix)');
       return;
     }
 
@@ -54,7 +57,7 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
 
     try {
       // Create a wallet from the provided private key
-      const wallet = new ethers.Wallet(privateKey);
+      const wallet = new ethers.Wallet(normalizedPrivateKey);
       
       // Generate MPT key using the derived wallet
       const mptKey = generateMptKeyFromWallet(
@@ -144,7 +147,7 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
                   className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
                 />
                 <p className="text-xs text-gray-400 mt-1">
-                  Enter your 64-character hexadecimal private key with 0x prefix
+                  Enter your 64-character hexadecimal private key (with or without 0x prefix)
                 </p>
               </div>
 
