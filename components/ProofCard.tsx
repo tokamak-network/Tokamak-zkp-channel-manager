@@ -105,7 +105,7 @@ export function ProofCard({ proof, isLeader = false, onVerify, isVerifying = fal
         </div>
 
         <div className="pt-2 border-t border-[#4fc3f7]/20">
-          <Link href={`/state-explorer/${proof.id}`}>
+          <Link href={`/state-explorer/${proof.channelId}/${encodeURIComponent(proof.id || proof.proofId || proof.key || '')}`}>
             <div className="text-sm text-gray-400 group-hover:text-[#4fc3f7] transition-colors flex items-center gap-1 cursor-pointer">
               View Details
               <ArrowRight className="w-4 h-4" />

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback } from "react";
 import { useAccount, usePublicClient, useContractReads } from "wagmi";
+import { useSearchParams } from "next/navigation";
 import { formatUnits } from "viem";
 import { Layout } from "@/components/Layout";
 import { ProofCard, ProofData } from "@/components/ProofCard";
@@ -657,109 +658,110 @@ function StateExplorerDetailView({
     }
   };
 
-  // Fetch proofs from Firebase
-  useEffect(() => {
-    const fetchProofs = async () => {
-      setIsLoadingProofs(true);
-      try {
-        const [verifiedProofs, submittedProofs, rejectedProofs] =
-          await Promise.all([
-            getData<any>(`channels/${channel.id}/verifiedProofs`),
-            getData<any>(`channels/${channel.id}/submittedProofs`),
-            getData<any>(`channels/${channel.id}/rejectedProofs`),
-          ]);
+  // Fetch proofs from Firebase - extracted to useCallback for reusability
+  const fetchProofs = useCallback(async () => {
+    setIsLoadingProofs(true);
+    try {
+      const [verifiedProofs, submittedProofs, rejectedProofs] =
+        await Promise.all([
+          getData<any>(`channels/${channel.id}/verifiedProofs`),
+          getData<any>(`channels/${channel.id}/submittedProofs`),
+          getData<any>(`channels/${channel.id}/rejectedProofs`),
+        ]);
 
-        const allProofs: ProofData[] = [];
+      const allProofs: ProofData[] = [];
 
-        // Add verified proofs
-        if (verifiedProofs) {
-          const verifiedList = Array.isArray(verifiedProofs)
-            ? verifiedProofs
-            : Object.entries(verifiedProofs).map(
-                ([key, value]: [string, any]) => ({ ...value, key })
-              );
-
-          verifiedList.forEach((proof: any, idx: number) => {
-            const proofKey =
-              proof.key ||
-              (Array.isArray(verifiedProofs)
-                ? undefined
-                : Object.keys(verifiedProofs)[idx]);
-            allProofs.push({
-              ...proof,
-              id: proof.proofId || proof.id || `verified-${idx}`, // Use proofId as id
-              key: proofKey,
-              status: "verified" as const,
-            });
-          });
-        }
-
-        // Add submitted proofs (pending)
-        if (submittedProofs) {
-          const submittedList = Array.isArray(submittedProofs)
-            ? submittedProofs
-            : Object.entries(submittedProofs).map(
-                ([key, value]: [string, any]) => ({ ...value, key })
-              );
-
-          submittedList.forEach((proof: any, idx: number) => {
-            // Only add if not already added (check by proofId and key)
-            const existingProof = allProofs.find(
-              (p) =>
-                p.proofId === proof.proofId &&
-                p.key === (proof.key || Object.keys(submittedProofs)[idx])
+      // Add verified proofs
+      if (verifiedProofs) {
+        const verifiedList = Array.isArray(verifiedProofs)
+          ? verifiedProofs
+          : Object.entries(verifiedProofs).map(
+              ([key, value]: [string, any]) => ({ ...value, key })
             );
 
-            if (!existingProof) {
-              const proofKey =
-                proof.key ||
-                (Array.isArray(submittedProofs)
-                  ? undefined
-                  : Object.keys(submittedProofs)[idx]);
-              allProofs.push({
-                ...proof,
-                id: proof.proofId || proof.id || `submitted-${idx}`, // Use proofId as id
-                key: proofKey,
-                status: "pending" as const,
-              });
-            }
+        verifiedList.forEach((proof: any, idx: number) => {
+          const proofKey =
+            proof.key ||
+            (Array.isArray(verifiedProofs)
+              ? undefined
+              : Object.keys(verifiedProofs)[idx]);
+          allProofs.push({
+            ...proof,
+            id: proof.proofId || proof.id || `verified-${idx}`, // Use proofId as id
+            key: proofKey,
+            status: "verified" as const,
           });
-        }
+        });
+      }
 
-        // Add rejected proofs
-        if (rejectedProofs) {
-          const rejectedList = Array.isArray(rejectedProofs)
-            ? rejectedProofs
-            : Object.entries(rejectedProofs).map(
-                ([key, value]: [string, any]) => ({ ...value, key })
-              );
+      // Add submitted proofs (pending)
+      if (submittedProofs) {
+        const submittedList = Array.isArray(submittedProofs)
+          ? submittedProofs
+          : Object.entries(submittedProofs).map(
+              ([key, value]: [string, any]) => ({ ...value, key })
+            );
 
-          rejectedList.forEach((proof: any, idx: number) => {
+        submittedList.forEach((proof: any, idx: number) => {
+          // Only add if not already added (check by proofId and key)
+          const existingProof = allProofs.find(
+            (p) =>
+              p.proofId === proof.proofId &&
+              p.key === (proof.key || Object.keys(submittedProofs)[idx])
+          );
+
+          if (!existingProof) {
             const proofKey =
               proof.key ||
-              (Array.isArray(rejectedProofs)
+              (Array.isArray(submittedProofs)
                 ? undefined
-                : Object.keys(rejectedProofs)[idx]);
+                : Object.keys(submittedProofs)[idx]);
             allProofs.push({
               ...proof,
-              id: proof.proofId || proof.id || `rejected-${idx}`, // Use proofId as id
+              id: proof.proofId || proof.id || `submitted-${idx}`, // Use proofId as id
               key: proofKey,
-              status: "rejected" as const,
+              status: "pending" as const,
             });
-          });
-        }
-
-        setProofs(allProofs);
-      } catch (error) {
-        console.error("Error fetching proofs:", error);
-        setProofs([]);
-      } finally {
-        setIsLoadingProofs(false);
+          }
+        });
       }
-    };
 
-    fetchProofs();
+      // Add rejected proofs
+      if (rejectedProofs) {
+        const rejectedList = Array.isArray(rejectedProofs)
+          ? rejectedProofs
+          : Object.entries(rejectedProofs).map(
+              ([key, value]: [string, any]) => ({ ...value, key })
+            );
+
+        rejectedList.forEach((proof: any, idx: number) => {
+          const proofKey =
+            proof.key ||
+            (Array.isArray(rejectedProofs)
+              ? undefined
+              : Object.keys(rejectedProofs)[idx]);
+          allProofs.push({
+            ...proof,
+            id: proof.proofId || proof.id || `rejected-${idx}`, // Use proofId as id
+            key: proofKey,
+            status: "rejected" as const,
+          });
+        });
+      }
+
+      setProofs(allProofs);
+    } catch (error) {
+      console.error("Error fetching proofs:", error);
+      setProofs([]);
+    } finally {
+      setIsLoadingProofs(false);
+    }
   }, [channel.id]);
+
+  // Initial fetch on mount
+  useEffect(() => {
+    fetchProofs();
+  }, [fetchProofs]);
 
   const filteredProofs = proofs.filter((proof) => {
     if (filter === "all") return true;
@@ -1139,8 +1141,8 @@ function StateExplorerDetailView({
               </div>
             </div>
 
-            {/* Filter */}
-            <div className="mb-6">
+            {/* Filter and Refresh */}
+            <div className="mb-6 flex items-center justify-between">
               <Select
                 value={filter}
                 onValueChange={(value: any) => setFilter(value)}
@@ -1155,6 +1157,20 @@ function StateExplorerDetailView({
                   <SelectItem value="rejected">Rejected</SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* Refresh Button */}
+              <button
+                onClick={fetchProofs}
+                disabled={isLoadingProofs}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#4fc3f7] to-[#2196f3] text-white rounded-lg hover:from-[#2196f3] hover:to-[#1976d2] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${isLoadingProofs ? "animate-spin" : ""}`}
+                />
+                <span>
+                  {isLoadingProofs ? "Refreshing..." : "Refresh Proofs"}
+                </span>
+              </button>
             </div>
 
             {/* Proof Cards Grid */}
@@ -1206,6 +1222,7 @@ function StateExplorerDetailView({
         isOpen={isSubmitProofModalOpen}
         onClose={() => setIsSubmitProofModalOpen(false)}
         channelId={channel.id}
+        onUploadSuccess={fetchProofs}
       />
     </>
   );
@@ -1215,21 +1232,101 @@ function StateExplorerDetailView({
 export default function StateExplorerPage() {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
+  const searchParams = useSearchParams();
   const [selectedChannel, setSelectedChannel] = useState<OnChainChannel | null>(
     null
   );
+  // Cache key for localStorage
+  const getCacheKey = (addr: string) =>
+    `state-explorer-channels-${addr.toLowerCase()}`;
+  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+  // Load cached channels
+  const loadCachedChannels = (addr: string): OnChainChannel[] | null => {
+    try {
+      const cacheKey = getCacheKey(addr);
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        const now = Date.now();
+        if (now - timestamp < CACHE_DURATION) {
+          console.log("State Explorer: Loading channels from cache");
+          return data;
+        } else {
+          localStorage.removeItem(cacheKey);
+        }
+      }
+    } catch (error) {
+      console.warn("State Explorer: Failed to load cache", error);
+    }
+    return null;
+  };
+
   const [channels, setChannels] = useState<OnChainChannel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cacheLoaded, setCacheLoaded] = useState(false); // Track if cache was loaded
+
+  // Check cache immediately when address or connection status changes (before render)
+  useLayoutEffect(() => {
+    if (address && isConnected) {
+      const cachedChannels = loadCachedChannels(address);
+      if (cachedChannels && cachedChannels.length > 0) {
+        setChannels(cachedChannels);
+        setIsLoading(false);
+        setCacheLoaded(true); // Mark that cache was loaded
+        return; // Early return to prevent useEffect from fetching
+      }
+    }
+    // If no cache or not connected, set loading state appropriately
+    if (!isConnected || !address) {
+      setIsLoading(false);
+      setCacheLoaded(false);
+    } else {
+      setCacheLoaded(false); // No cache found
+    }
+  }, [address, isConnected]);
+
+  // Save channels to cache
+  const saveChannelsToCache = (
+    addr: string,
+    channelsData: OnChainChannel[]
+  ) => {
+    try {
+      const cacheKey = getCacheKey(addr);
+      localStorage.setItem(
+        cacheKey,
+        JSON.stringify({
+          data: channelsData,
+          timestamp: Date.now(),
+        })
+      );
+      console.log("State Explorer: Saved channels to cache");
+    } catch (error) {
+      console.warn("State Explorer: Failed to save cache", error);
+    }
+  };
 
   // Fetch user's channels from blockchain
-  const fetchChannels = async () => {
+  const fetchChannels = async (forceRefresh = false) => {
     if (!address || !publicClient) {
       console.log("State Explorer: Missing address or publicClient", {
         address,
         publicClient: !!publicClient,
       });
       return;
+    }
+
+    // Try to load from cache first (unless force refresh)
+    if (!forceRefresh) {
+      const cachedChannels = loadCachedChannels(address);
+      if (cachedChannels && cachedChannels.length > 0) {
+        setChannels(cachedChannels);
+        setIsLoading(false);
+        // Still fetch in background to update cache
+        fetchChannels(true).catch(console.error);
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -1343,6 +1440,8 @@ export default function StateExplorerPage() {
         `State Explorer: Found ${userChannels.length} channels for user`
       );
       setChannels(userChannels);
+      // Save to cache
+      saveChannelsToCache(address, userChannels);
     } catch (err) {
       console.error("State Explorer: Failed to fetch channels:", err);
       setError(err instanceof Error ? err.message : "Failed to fetch channels");
@@ -1353,13 +1452,48 @@ export default function StateExplorerPage() {
 
   // Fetch channels on mount and when address changes
   useEffect(() => {
-    if (isConnected && address) {
-      fetchChannels();
-    } else {
+    if (isConnected && address && publicClient) {
+      // If cache was already loaded in useLayoutEffect, skip fetching
+      if (cacheLoaded) {
+        // Cache was loaded, optionally update in background (but don't show loading)
+        // Only update if cache is getting old (more than 2 minutes)
+        const cacheKey = getCacheKey(address);
+        try {
+          const cached = localStorage.getItem(cacheKey);
+          if (cached) {
+            const { timestamp } = JSON.parse(cached);
+            const now = Date.now();
+            // Only update in background if cache is older than 2 minutes
+            if (now - timestamp > 2 * 60 * 1000) {
+              fetchChannels(true).catch(console.error);
+            }
+          }
+        } catch (error) {
+          // Ignore cache read errors
+        }
+        return; // Don't fetch again
+      }
+
+      // No cache was loaded, fetch fresh data
+      fetchChannels(false);
+    } else if (!isConnected) {
       setChannels([]);
       setIsLoading(false);
+      setCacheLoaded(false);
     }
-  }, [isConnected, address, publicClient]);
+  }, [isConnected, address, publicClient, cacheLoaded]);
+
+  // Auto-select channel from URL query parameter
+  useEffect(() => {
+    const channelIdParam = searchParams.get("channelId");
+    if (channelIdParam && channels.length > 0 && !selectedChannel) {
+      const channelIdNum = parseInt(channelIdParam, 10);
+      const channel = channels.find((c) => c.id === channelIdNum);
+      if (channel) {
+        setSelectedChannel(channel);
+      }
+    }
+  }, [searchParams, channels, selectedChannel]);
 
   const handleSelectChannel = (channel: OnChainChannel) => {
     setSelectedChannel(channel);
@@ -1382,7 +1516,7 @@ export default function StateExplorerPage() {
           channels={channels}
           onSelectChannel={handleSelectChannel}
           isLoading={isLoading}
-          onRefresh={fetchChannels}
+          onRefresh={() => fetchChannels(true)}
           error={error}
         />
       )}

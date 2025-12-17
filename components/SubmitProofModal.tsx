@@ -10,9 +10,10 @@ interface SubmitProofModalProps {
   isOpen: boolean;
   onClose: () => void;
   channelId: number;
+  onUploadSuccess?: () => void; // Callback when upload completes successfully
 }
 
-export function SubmitProofModal({ isOpen, onClose, channelId }: SubmitProofModalProps) {
+export function SubmitProofModal({ isOpen, onClose, channelId, onUploadSuccess }: SubmitProofModalProps) {
   const { address } = useAccount();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -90,6 +91,8 @@ export function SubmitProofModal({ isOpen, onClose, channelId }: SubmitProofModa
       setUploadProgress(90);
       
       // Step 3: Save metadata to Firebase Realtime Database
+      // IMPORTANT: Don't include zipFile object to avoid overwriting zipFile.content
+      // The zipFile.content was already saved by /api/save-proof-zip
       const proofMetadata = {
         proofId: proofId,
         sequenceNumber: proofNumber,
@@ -97,22 +100,29 @@ export function SubmitProofModal({ isOpen, onClose, channelId }: SubmitProofModa
         submittedAt: new Date().toISOString(),
         submitter: address || '',
         timestamp: Date.now(),
-        zipFile: {
-          path: path,
-          size: size,
-          fileName: file.name,
-        },
         uploadStatus: 'complete',
         status: 'pending',
         channelId: channelId.toString(),
       };
       
-      // Save metadata to the same path as ZIP file (proof-1) to avoid duplicate entries
-      await setData(`channels/${channelId}/submittedProofs/${storageProofId}`, proofMetadata);
+      // Use updateData to merge with existing data (preserves zipFile.content)
+      await updateData(`channels/${channelId}/submittedProofs/${storageProofId}`, proofMetadata);
+      
+      // Update zipFile metadata fields individually to preserve content
+      await updateData(`channels/${channelId}/submittedProofs/${storageProofId}/zipFile`, {
+        fileName: file.name,
+        size: size,
+        path: path,
+      });
       
       setUploadProgress(100);
       setSuccess(true);
       setUploading(false);
+      
+      // Notify parent component of successful upload
+      if (onUploadSuccess) {
+        onUploadSuccess();
+      }
       
       // Reset after 3 seconds
       setTimeout(() => {
