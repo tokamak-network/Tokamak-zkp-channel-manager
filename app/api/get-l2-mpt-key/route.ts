@@ -1,12 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, http } from 'viem';
 import { sepolia } from 'viem/chains';
+import { ethers } from 'ethers';
 import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
 
 const publicClient = createPublicClient({
   chain: sepolia,
   transport: http('https://eth-sepolia.g.alchemy.com/v2/N-Gnpjy1WvCfokwj6fiOfuAVL_At6IvE')
 });
+
+export const runtime = "nodejs";
+
+import { generateMptKey } from "@/lib/mptKeyUtils";
+
+export async function POST(req: Request) {
+  const body = await req.json();
+  
+  // Create wallet from the private key sent from client
+  const wallet = new ethers.Wallet(body.privateKey);
+  
+  const key = generateMptKey(wallet, body.participantName, body.channelId, body.tokenAddress, body.slot);
+  return NextResponse.json({ key });
+}
 
 export async function GET(request: NextRequest) {
   try {

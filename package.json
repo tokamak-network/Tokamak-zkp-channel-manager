@@ -29,7 +29,7 @@
     "date-fns": "^2.30.0",
     "elliptic": "^6.6.1",
     "ethereum-cryptography": "^3.2.0",
-    "ethers": "^6.8.1",
+    "ethers": "^6.14.3",
     "js-sha256": "^0.11.1",
     "js-sha3": "^0.9.3",
     "lucide-react": "^0.292.0",
@@ -40,7 +40,7 @@
     "tailwind-merge": "^2.0.0",
     "viem": "^1.21.4",
     "wagmi": "^1.4.13",
-    "poseidon-bls12381": "^1.0.2"
+    "@tokamak-zk-evm/mpt-key-utils": "file:Tokamak-Zk-EVM/packages/frontend/synthesizer/examples/L2StateChannel/utils/mpt-key-util.ts"
   },
   "devDependencies": {
     "@types/crypto-js": "^4.2.2",

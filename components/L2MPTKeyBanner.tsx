@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAccount, useSignMessage } from 'wagmi';
 import { Key, Calculator, AlertCircle, Copy, CheckCircle2 } from 'lucide-react';
 import { ethers } from 'ethers';
-import { generateMptKeyFromWallet } from '@/lib/mptKeyUtils';
+import { generateMptKeyFromWallet } from "@/Tokamak-Zk-EVM/packages/frontend/synthesizer/examples/L2StateChannel/utils/mpt-key-util";
+import { poseidon } from '@/Tokamak-Zk-EVM/packages/frontend/synthesizer/src/TokamakL2JS/crypto';
+import { fromEdwardsToAddress } from '@/Tokamak-Zk-EVM/packages/frontend/synthesizer/src/TokamakL2JS/utils';
 
 interface L2MPTKeyBannerProps {
   className?: string;
@@ -17,11 +18,10 @@ interface ComputedKey {
 }
 
 export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
-  const { address, isConnected } = useAccount();
-  const { signMessageAsync } = useSignMessage();
   const [isExpanded, setIsExpanded] = useState(false);
   const [channelId, setChannelId] = useState<number>(1);
   const [tokenAddress, setTokenAddress] = useState('0xa30fe40285B8f5c0457DbC3B7C8A280373c40044'); // TON token
+  const [privateKey, setPrivateKey] = useState<string>('');
   const [computedKeys, setComputedKeys] = useState<ComputedKey[]>([]);
   const [isComputing, setIsComputing] = useState(false);
   const [error, setError] = useState<string>('');
@@ -33,9 +33,26 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
     setError('');
   }, [channelId, tokenAddress, privateKey]);
 
+  "use client";
+  async function fetchMptKey(wallet: ethers.Wallet, participantName: string, channelId: number, tokenAddress: string, slot?: number) {
+    const res = await fetch("/api/get-l2-mpt-key", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ privateKey: wallet.privateKey, participantName, channelId, tokenAddress, slot }),
+    });
+    const { key } = await res.json();
+    return key;
+  }
+
   const computeMPTKey = async () => {
-    if (!isConnected || !address) {
-      setError('Please connect your wallet first');
+    if (!privateKey) {
+      setError('Please enter a private key');
+      return;
+    }
+
+    // Validate private key format
+    if (!privateKey.match(/^(0x)?[a-fA-F0-9]{64}$/)) {
+      setError('Invalid private key format. Must be 64 hex characters (with or without 0x prefix)');
       return;
     }
 
@@ -56,13 +73,18 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
     setError('');
 
     try {
+      // Ensure private key has 0x prefix
+      const normalizedPrivateKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
+      
       // Create a wallet from the provided private key
       const wallet = new ethers.Wallet(normalizedPrivateKey);
       
-      // Generate MPT key using the derived wallet
-      const mptKey = generateMptKeyFromWallet(
+      
+
+      // Generate MPT key using the wallet
+      const mptKey = await fetchMptKey(
         wallet,
-        'Alice', // Participant name - using Alice for all participants for now
+        'Alice',
         channelId,
         tokenAddress
       );
@@ -78,11 +100,7 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
       setError(''); // Clear any previous errors
 
     } catch (err) {
-      if (err instanceof Error && err.message.includes('User rejected')) {
-        setError('Signature cancelled by user');
-      } else {
-        setError(err instanceof Error ? err.message : 'Failed to compute MPT key');
-      }
+      setError(err instanceof Error ? err.message : 'Failed to compute MPT key');
     } finally {
       setIsComputing(false);
     }
@@ -102,7 +120,6 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
     setComputedKeys(prev => prev.filter((_, i) => i !== index));
   };
 
-  if (!isConnected) return null;
 
   return (
     <div className={`bg-gradient-to-r from-[#4fc3f7]/10 to-[#029bee]/10 border border-[#4fc3f7]/30 ${className || ''}`}>
@@ -134,23 +151,23 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
         {isExpanded && (
           <div className="mt-6 space-y-4">
             {/* Input Form */}
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
                   Private Key
                 </label>
                 <input
                   type="password"
+                  placeholder="Enter private key (64 hex characters, with or without 0x prefix)"
                   value={privateKey}
                   onChange={(e) => setPrivateKey(e.target.value)}
-                  placeholder="0x..."
                   className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
                 />
                 <p className="text-xs text-gray-400 mt-1">
                   Enter your 64-character hexadecimal private key (with or without 0x prefix)
                 </p>
               </div>
-
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1">
