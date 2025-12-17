@@ -13,7 +13,7 @@ import { generateMptKeyFromWallet } from '@/Tokamak-Zk-EVM/packages/frontend/syn
 
 
 export function generateMptKey(wallet: ethers.Wallet, participantName: string, channelId: number, tokenAddress: string, slot?: number): string {
-  return generateMptKeyFromWallet(wallet, participantName, channelId, tokenAddress, slot);
+  return generateMptKeyFromWallet(wallet as any, participantName, channelId, tokenAddress, slot);
 }
 
 function batchBigIntTo32BytesEach(...inVals: bigint[]): Uint8Array {
@@ -211,7 +211,7 @@ export function generateMptKeyFromL1Address(
   }
 
   // Generate MPT key using the wallet
-  return generateMptKeyFromWallet(wallet, participantName, channelId, tokenAddress, slot);
+  return generateMptKeyFromWallet(wallet as any, participantName, channelId, tokenAddress, slot);
 }
 
 /**

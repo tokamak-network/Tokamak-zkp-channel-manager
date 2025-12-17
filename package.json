@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@ethereumjs/util": "^10.1.0",
-    "@noble/curves": "^2.0.1",
+    "@noble/curves": "^1.9.0",
     "@radix-ui/react-dialog": "^1.0.5",
     "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-portal": "^1.0.4",
