@@ -481,10 +481,9 @@ export const ROLLUP_BRIDGE_PROOF_MANAGER_ABI = [
 export const ROLLUP_BRIDGE_WITHDRAW_MANAGER_ABI = [
   {
     inputs: [
-      { name: 'channelId', type: 'uint256' },
-      { name: 'participant', type: 'address' }
+      { name: 'channelId', type: 'uint256' }
     ],
-    name: 'withdrawFromChannel',
+    name: 'withdraw',
     outputs: [],
     stateMutability: 'nonpayable',
     type: 'function'
