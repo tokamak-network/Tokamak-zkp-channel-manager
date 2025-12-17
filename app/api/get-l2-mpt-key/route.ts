@@ -11,16 +11,51 @@ const publicClient = createPublicClient({
 
 export const runtime = "nodejs";
 
-import { generateMptKey } from "@/lib/mptKeyUtils";
+// Check if we're in a production serverless environment (Vercel)
+const isServerless = process.env.VERCEL || process.env.NODE_ENV === 'production';
+
+// Import function conditionally
+async function getGenerateMptKey() {
+  if (isServerless) {
+    return null;
+  }
+  const { generateMptKey } = await import("@/lib/mptKeyUtils");
+  return generateMptKey;
+}
 
 export async function POST(req: Request) {
-  const body = await req.json();
-  
-  // Create wallet from the private key sent from client
-  const wallet = new ethers.Wallet(body.privateKey);
-  
-  const key = generateMptKey(wallet, body.participantName, body.channelId, body.tokenAddress, body.slot);
-  return NextResponse.json({ key });
+  try {
+    const body = await req.json();
+    
+    // Get the generateMptKey function
+    const generateMptKey = await getGenerateMptKey();
+    
+    // In serverless environment, return error indicating this functionality is not available
+    if (!generateMptKey) {
+      return NextResponse.json(
+        { 
+          error: 'MPT key generation not available in serverless environment',
+          message: 'Please use the client-side MPT key generator in the UI instead'
+        },
+        { status: 501 }
+      );
+    }
+    
+    // Create wallet from the private key sent from client
+    const wallet = new ethers.Wallet(body.privateKey);
+    
+    const key = generateMptKey(wallet, body.participantName, body.channelId, body.tokenAddress, body.slot);
+    return NextResponse.json({ key });
+  } catch (error) {
+    console.error('Error generating MPT key:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to generate MPT key',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
 }
 
 export async function GET(request: NextRequest) {

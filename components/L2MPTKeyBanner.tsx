@@ -3,9 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Key, Calculator, AlertCircle, Copy, CheckCircle2 } from 'lucide-react';
 import { ethers } from 'ethers';
-import { generateMptKeyFromWallet } from "@/Tokamak-Zk-EVM/packages/frontend/synthesizer/examples/L2StateChannel/utils/mpt-key-util";
-import { poseidon } from '@/Tokamak-Zk-EVM/packages/frontend/synthesizer/src/TokamakL2JS/crypto';
-import { fromEdwardsToAddress } from '@/Tokamak-Zk-EVM/packages/frontend/synthesizer/src/TokamakL2JS/utils';
 
 interface L2MPTKeyBannerProps {
   className?: string;
@@ -39,6 +36,12 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ privateKey: wallet.privateKey, participantName, channelId, tokenAddress, slot }),
     });
+    
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || `API error: ${res.status}`);
+    }
+    
     const { key } = await res.json();
     return key;
   }
