@@ -31,6 +31,11 @@ import {
 import { ERC20_ABI } from '@/lib/contracts';
 import { getData, getLatestSnapshot } from '@/lib/realtime-db-helpers';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { 
+  parseProofFromBase64Zip, 
+  analyzeProof, 
+  type ProofAnalysisResult 
+} from '@/lib/proofAnalyzer';
 
 // Participant Balance Type
 interface ParticipantBalance {
@@ -99,6 +104,8 @@ export default function ProofDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [decimals, setDecimals] = useState(18);
   const [symbol, setSymbol] = useState('TOKEN');
+  const [proofAnalysis, setProofAnalysis] = useState<ProofAnalysisResult | null>(null);
+  const [isAnalyzingProof, setIsAnalyzingProof] = useState(false);
 
   // Fetch proof data from Firebase
   useEffect(() => {
@@ -264,14 +271,36 @@ export default function ProofDetailPage() {
           
           console.log('ProofDetailPage: Final zipFileData', zipFileData ? { ...zipFileData, content: zipFileData.content ? 'present' : 'missing' } : null);
 
-          setProof({
+          const proofData = {
             ...foundProof,
             channelId: channelId,
             status: foundProof.status || 'pending',
             timestamp: foundProof.timestamp || foundProof.submittedAt || Date.now(),
             verifier: foundProof.verifiedBy || foundProof.verifier,
             zipFile: zipFileData,
-          });
+          };
+          
+          setProof(proofData);
+          
+          // Analyze proof files if ZIP content is available
+          if (zipFileData?.content) {
+            setIsAnalyzingProof(true);
+            try {
+              const { instance, snapshot, error } = await parseProofFromBase64Zip(zipFileData.content);
+              
+              if (error) {
+                console.error('Error parsing proof ZIP:', error);
+              } else if (instance && snapshot) {
+                const analysis = analyzeProof(instance, snapshot, decimals);
+                setProofAnalysis(analysis);
+                console.log('Proof analysis completed:', analysis);
+              }
+            } catch (error) {
+              console.error('Error analyzing proof:', error);
+            } finally {
+              setIsAnalyzingProof(false);
+            }
+          }
         }
       } catch (error) {
         console.error('Error fetching proof:', error);
@@ -281,7 +310,7 @@ export default function ProofDetailPage() {
     };
 
     fetchProof();
-  }, [channelId, proofId]);
+  }, [channelId, proofId, decimals]);
 
   // Fetch channel data and participants
   useEffect(() => {
@@ -396,21 +425,27 @@ export default function ProofDetailPage() {
               }
             }
 
+            // Get new balance from proof analysis if available
+            let newBalance: string | undefined = undefined;
+            let hasChange = false;
+            
+            if (proofAnalysis && proofAnalysis.balances[idx]) {
+              const proofBalance = proofAnalysis.balances[idx];
+              newBalance = parseFloat(formatUnits(BigInt(proofBalance.balance), decimals)).toFixed(2);
+              hasChange = newBalance !== currentBalance;
+            }
+
             return {
               address: participant,
               initialDeposit: initialDepositFormatted,
               currentBalance: currentBalance, // This is the "Before" balance from latest approved state
-              newBalance: undefined, // Will be set from proof file analysis later
+              newBalance: newBalance, // From proof file analysis
               symbol: symbol,
               decimals: decimals,
-              hasChange: false, // Will be determined when proof file is analyzed
+              hasChange: hasChange,
             };
           }
         );
-
-        // TODO: Analyze proof file to get new balances
-        // For now, we'll just show the addresses
-        // When proof analysis utility is added, update newBalance and hasChange here
 
         setParticipantBalances(balances);
       } catch (error) {
@@ -419,7 +454,7 @@ export default function ProofDetailPage() {
     };
 
     fetchBalances();
-  }, [publicClient, channel, channelId, decimals, symbol]);
+  }, [publicClient, channel, channelId, decimals, symbol, proofAnalysis]);
 
   if (isLoading || !proof) {
     return (
@@ -584,7 +619,7 @@ export default function ProofDetailPage() {
                               <span className="text-sm font-medium text-green-400">{participant.symbol}</span>
                             </div>
                             <div className="text-xl font-mono font-semibold text-green-400">
-                              {participant.newBalance || 'Analyzing...'}
+                              {isAnalyzingProof ? 'Analyzing...' : (participant.newBalance || 'N/A')}
                             </div>
                           </div>
                         </div>
