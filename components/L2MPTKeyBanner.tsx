@@ -1,62 +1,49 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAccount, useSignMessage } from 'wagmi';
 import { Key, Calculator, AlertCircle, Copy, CheckCircle2 } from 'lucide-react';
-import { ethers } from 'ethers';
-import { generateMptKeyFromWalletClient } from '@/lib/clientMptKeyUtils';
-
+import { L2_PRV_KEY_MESSAGE } from '@/lib/l2KeyMessage';
 interface L2MPTKeyBannerProps {
   className?: string;
 }
 
 interface ComputedKey {
   channelId: number;
-  tokenAddress: string;
+  slotIndex: number;
   mptKey: string;
 }
 
 export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [channelId, setChannelId] = useState<number>(1);
-  const [tokenAddress, setTokenAddress] = useState('0xa30fe40285B8f5c0457DbC3B7C8A280373c40044'); // TON token
-  const [privateKey, setPrivateKey] = useState<string>('');
+  const [slotIndex, setSlotIndex] = useState<number>(0);
   const [computedKeys, setComputedKeys] = useState<ComputedKey[]>([]);
   const [isComputing, setIsComputing] = useState(false);
   const [error, setError] = useState<string>('');
   const [copiedKey, setCopiedKey] = useState<string>('');
+  const { signMessageAsync } = useSignMessage();
+  const { address, isConnected } = useAccount();
 
   // Reset error when inputs change
   useEffect(() => {
     setError('');
-  }, [channelId, tokenAddress, privateKey]);
+  }, [channelId]);
 
-  // Generate MPT key directly on client-side
-  function generateMptKey(wallet: ethers.Wallet, participantName: string, channelId: number, tokenAddress: string, slot: number = 0) {
-    return generateMptKeyFromWalletClient(wallet, participantName, channelId, tokenAddress, slot);
+  "use client";
+  async function fetchMptKey(signature: `0x${string}`, slotIndex: number) {
+    const res = await fetch("/api/post-l2-mpt-key", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ signature, slotIndex }),
+    });
+    const { key } = await res.json();
+    return key;
   }
 
   const computeMPTKey = async () => {
-    if (!privateKey) {
-      setError('Please enter a private key');
-      return;
-    }
-
-    // Validate private key format
-    if (!privateKey.match(/^(0x)?[a-fA-F0-9]{64}$/)) {
-      setError('Invalid private key format. Must be 64 hex characters (with or without 0x prefix)');
-      return;
-    }
-
-    if (!privateKey) {
-      setError('Please enter your private key');
-      return;
-    }
-
-    // Normalize private key: add 0x prefix if missing
-    const normalizedPrivateKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
-
-    if (!normalizedPrivateKey.match(/^0x[a-fA-F0-9]{64}$/)) {
-      setError('Invalid private key format. Must be 64 hex characters (with or without 0x prefix)');
+    if (!isConnected || !address) {
+      setError('Please connect your wallet first');
       return;
     }
 
@@ -64,25 +51,13 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
     setError('');
 
     try {
-      // Ensure private key has 0x prefix
-      const normalizedPrivateKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
-      
-      // Create a wallet from the provided private key
-      const wallet = new ethers.Wallet(normalizedPrivateKey);
-      
-      
-
-      // Generate MPT key using the wallet (client-side)
-      const mptKey = generateMptKey(
-        wallet,
-        'Alice',
-        channelId,
-        tokenAddress
-      );
+      const message = L2_PRV_KEY_MESSAGE + `${channelId}`;
+      const signature = await signMessageAsync({message});
+      const mptKey = await fetchMptKey(signature, slotIndex);
 
       const newKey: ComputedKey = {
         channelId,
-        tokenAddress,
+        slotIndex,
         mptKey
       };
 
@@ -91,7 +66,11 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
       setError(''); // Clear any previous errors
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to compute MPT key');
+      if (err instanceof Error && err.message.includes('User rejected')) {
+        setError('Signature cancelled by user');
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to compute MPT key');
+      }
     } finally {
       setIsComputing(false);
     }
@@ -143,21 +122,6 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
           <div className="mt-6 space-y-4">
             {/* Input Form */}
             <div className="grid grid-cols-1 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Private Key
-                </label>
-                <input
-                  type="password"
-                  placeholder="Enter private key (64 hex characters, with or without 0x prefix)"
-                  value={privateKey}
-                  onChange={(e) => setPrivateKey(e.target.value)}
-                  className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
-                />
-                <p className="text-xs text-gray-400 mt-1">
-                  Enter your 64-character hexadecimal private key (with or without 0x prefix)
-                </p>
-              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -175,11 +139,11 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1">
-                    Token Address
+                    Slot Index
                   </label>
                   <select
-                    value={tokenAddress}
-                    onChange={(e) => setTokenAddress(e.target.value)}
+                    value={slotIndex}
+                    onChange={(e) => setSlotIndex(parseInt(e.target.value) || 0)}
                     className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
                   >
                     <option value="0xa30fe40285B8f5c0457DbC3B7C8A280373c40044">TON Token</option>

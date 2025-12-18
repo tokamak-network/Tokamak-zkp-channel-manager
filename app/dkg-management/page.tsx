@@ -7,9 +7,9 @@ import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Flame, Plus, Link2, ClipboardList, CheckCircle, X, Trash2, PenTool, Upload, Download, RefreshCw, FileText } from 'lucide-react';
+import { Flame, Plus, Link2, ClipboardList, CheckCircle, X, Trash2, PenTool, Upload, Download, RefreshCw, FileText, Server } from 'lucide-react';
 import { initWasm } from '@/lib/frost-wasm';
-import { DKG_CONFIG, getDKGServerUrl, shouldAutoConnect, debugLog } from '@/lib/dkg-config';
+import { DKG_CONFIG, shouldAutoConnect, debugLog } from '@/lib/dkg-config';
 import { 
   get_signing_prerequisites,
   get_key_package_metadata,
@@ -34,6 +34,7 @@ import { DKGErrorDisplay } from '@/components/dkg/DKGErrorDisplay';
 import { DKGConsoleSettings } from '@/components/dkg/DKGConsoleSettings';
 import { DKGWasmStatus } from '@/components/dkg/DKGWasmStatus';
 import { DKGSessionInfo } from '@/components/dkg/DKGSessionInfo';
+import { DKGServerDeploymentGuide } from '@/components/dkg/DKGServerDeploymentGuide';
 
 // Import our custom hooks
 import { useDKGWebSocket } from '@/hooks/useDKGWebSocket';
@@ -73,7 +74,7 @@ export default function DKGManagementPage() {
   
   // UI state
   const [activeTab, setActiveTab] = useState('sessions');
-  const [serverUrl, setServerUrl] = useState(getDKGServerUrl()); // Use config
+  const [serverUrl, setServerUrl] = useState(''); // Empty by default, user must enter URL manually
   const [selectedSession, setSelectedSession] = useState<DKGSession | null>(null);
   const [showSessionDetails, setShowSessionDetails] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
@@ -1322,6 +1323,7 @@ export default function DKGManagementPage() {
             { id: 'create', label: 'Create DKG', icon: Plus },
             { id: 'join', label: 'Join DKG', icon: Link2 },
             { id: 'signing', label: 'Signing Sessions', icon: PenTool, badge: pendingSigningSessions.length },
+            { id: 'server', label: 'Server Deployment', icon: Server },
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -1799,6 +1801,12 @@ export default function DKGManagementPage() {
             </Card>
 
           </div>
+        )}
+
+        {activeTab === 'server' && (
+          <DKGServerDeploymentGuide 
+            onSuccessMessage={setSuccessMessage}
+          />
         )}
 
         {/* Modals */}

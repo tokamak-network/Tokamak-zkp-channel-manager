@@ -40,8 +40,7 @@
     "snarkjs": "^0.7.5",
     "tailwind-merge": "^2.0.0",
     "viem": "^1.21.4",
-    "wagmi": "^1.4.13",
-    "@tokamak-zk-evm/mpt-key-utils": "file:Tokamak-Zk-EVM/packages/frontend/synthesizer/examples/L2StateChannel/utils/mpt-key-util.ts"
+    "wagmi": "^1.4.13"
   },
   "devDependencies": {
     "@types/crypto-js": "^4.2.2",
