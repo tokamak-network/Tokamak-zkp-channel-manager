@@ -13,7 +13,7 @@ import { generateMptKeyFromWallet } from '@/Tokamak-Zk-EVM/packages/frontend/syn
 
 
 export function generateMptKey(wallet: ethers.Wallet, participantName: string, channelId: number, tokenAddress: string, slot?: number): string {
-  return generateMptKeyFromWallet(wallet, participantName, channelId, tokenAddress, slot);
+  return generateMptKeyFromWallet(wallet as any, participantName, channelId, tokenAddress, slot);
 }
 
 //hash function for L2MPT key generation
