@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Configure for Cloudflare Workers
+  // Configure for Cloudflare Pages
   output: 'export',
   trailingSlash: true,
   images: {

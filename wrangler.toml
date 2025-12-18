@@ -1,5 +1,11 @@
-name = "channel-manager"
-compatibility_date = "2024-01-01"
+name = "tokamak-zkp-channel-manager"
+compatibility_date = "2024-12-01"
+pages_build_output_dir = "out"
+
 # Pages configuration
 [env.production]
 compatibility_flags = ["nodejs_compat"]
+
+# Environment variables (add your specific variables here)
+[vars]
+# Add any environment variables your app needs

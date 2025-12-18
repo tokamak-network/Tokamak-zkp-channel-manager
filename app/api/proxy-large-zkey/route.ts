@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const runtime = 'edge';
+export const dynamic = 'force-static';
+
 const EXTERNAL_ZKEY_URLS = {
   '64': 'https://pub-30801471f84a46049e31eea6c3395e00.r2.dev/my-bucket/tokamak-zkp-channles/circuit_final_64.zkey',
   '128': 'https://pub-30801471f84a46049e31eea6c3395e00.r2.dev/my-bucket/tokamak-zkp-channles/circuit_final_128.zkey'

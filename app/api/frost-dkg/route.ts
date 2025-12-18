@@ -10,6 +10,9 @@ import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-static';
+
 interface FrostDKGRequest {
   action: 'round1' | 'round2' | 'finalize' | 'status';
   sessionId: string;
