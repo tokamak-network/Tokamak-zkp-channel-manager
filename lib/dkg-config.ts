@@ -5,8 +5,8 @@
 
 export const DKG_CONFIG = {
   // Server Configuration
-  SERVER_URL: process.env.NEXT_PUBLIC_DKG_SERVER_URL || 'ws://127.0.0.1:9000/ws',
-  AUTO_CONNECT: process.env.NEXT_PUBLIC_DKG_AUTO_CONNECT === 'true' || true, // Default: true
+  SERVER_URL: process.env.NEXT_PUBLIC_DKG_SERVER_URL || '',
+  AUTO_CONNECT: process.env.NEXT_PUBLIC_DKG_AUTO_CONNECT === 'true' || false, // Default: false
   CONNECTION_TIMEOUT: parseInt(process.env.NEXT_PUBLIC_DKG_CONNECTION_TIMEOUT || '5000'),
   
   // Session Management

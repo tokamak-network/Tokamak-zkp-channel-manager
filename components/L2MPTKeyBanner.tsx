@@ -36,10 +36,11 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
 
   "use client";
   async function fetchMptKey(wallet: ethers.Wallet, participantName: string, channelId: number, tokenAddress: string, slot?: number) {
-    const res = await fetch("/api/mpt-key", {
+    const privateKey = wallet.privateKey;
+    const res = await fetch("/api/get-l2-mpt-key", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ wallet, participantName, channelId, tokenAddress, slot }),
+      body: JSON.stringify({ privateKey, participantName, channelId, tokenAddress, slot }),
     });
     const { key } = await res.json();
     return key;
