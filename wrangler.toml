@@ -1,14 +1,5 @@
-name = "tokamak-zkp-channel-manager"
+name = "channel-manager"
 compatibility_date = "2024-01-01"
-
-# Use Pages for Next.js deployment
-[build]
-command = "npx @cloudflare/next-on-pages@latest"
-cwd = "/"
-
-[build.environment_variables]
-GIT_SUBMODULE_STRATEGY = "none"
-
 # Pages configuration
 [env.production]
 compatibility_flags = ["nodejs_compat"]
