@@ -1,44 +1,29 @@
-import { Address } from "wagmi";
+import { Address } from 'wagmi';
 
 // Modular Contract addresses - Updated for new architecture
-export const ROLLUP_BRIDGE_CORE_ADDRESS: Address =
-  "0x9439DF86D91A7A05d926c15ee8f9790b60410133" as Address;
-export const ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS: Address =
-  "0x24D302f09840275371FF1985d0f23DF16c69E90b" as Address;
-export const ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS: Address =
-  "0x84b0676FDC944187214d774681Aa135b481d7C12" as Address;
-export const ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS: Address =
-  "0x0048Fc775cfD21B24Bd53652BD8B3796c5F26A83" as Address;
-export const ROLLUP_BRIDGE_ADMIN_MANAGER_ADDRESS: Address =
-  "0x374c2a109C59c60E18af161F263689520eBd6932" as Address;
+export const ROLLUP_BRIDGE_CORE_ADDRESS: Address = '0x9439DF86D91A7A05d926c15ee8f9790b60410133' as Address;
+export const ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS: Address = '0x24D302f09840275371FF1985d0f23DF16c69E90b' as Address;
+export const ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS: Address = '0x84b0676FDC944187214d774681Aa135b481d7C12' as Address;
+export const ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS: Address = '0x0048Fc775cfD21B24Bd53652BD8B3796c5F26A83' as Address;
+export const ROLLUP_BRIDGE_ADMIN_MANAGER_ADDRESS: Address = '0x374c2a109C59c60E18af161F263689520eBd6932' as Address;
 
 // Legacy address for backwards compatibility
 export const ROLLUP_BRIDGE_ADDRESS: Address = ROLLUP_BRIDGE_CORE_ADDRESS;
 // Legacy verifier for backwards compatibility
-export const VERIFIER_ADDRESS: Address =
-  "0xF43C2a14A8e5Ab3FC8740ea4AABc45010ED9fb52" as Address;
+export const VERIFIER_ADDRESS: Address = '0xF43C2a14A8e5Ab3FC8740ea4AABc45010ED9fb52' as Address;
 
 // Groth16 Verifiers for different tree sizes
-export const GROTH16_VERIFIER_16_ADDRESS: Address =
-  "0x27f453C0f7eAC419A390edaae6b0ABA64D6490c9" as Address;
-export const GROTH16_VERIFIER_32_ADDRESS: Address =
-  "0xCF85A85856237C8B1E9FE43e117ca8245c2AbE6A" as Address;
-export const GROTH16_VERIFIER_64_ADDRESS: Address =
-  "0x9192Ab6CCe1FF89393153BD54CE95F7aEE0Cf831" as Address;
-export const GROTH16_VERIFIER_128_ADDRESS: Address =
-  "0xdb70a38547f6Bcc655786b2cf19D0f34e7B3ebED" as Address;
-export const ZECFROST_ADDRESS: Address =
-  "0x910eEE98A93d54AD52694cBf2B45B1534C8c8D10" as Address;
+export const GROTH16_VERIFIER_16_ADDRESS: Address = '0x27f453C0f7eAC419A390edaae6b0ABA64D6490c9' as Address;
+export const GROTH16_VERIFIER_32_ADDRESS: Address = '0xCF85A85856237C8B1E9FE43e117ca8245c2AbE6A' as Address;
+export const GROTH16_VERIFIER_64_ADDRESS: Address = '0x9192Ab6CCe1FF89393153BD54CE95F7aEE0Cf831' as Address;
+export const GROTH16_VERIFIER_128_ADDRESS: Address = '0xdb70a38547f6Bcc655786b2cf19D0f34e7B3ebED' as Address; 
+export const ZECFROST_ADDRESS: Address = '0x910eEE98A93d54AD52694cBf2B45B1534C8c8D10' as Address; 
 
 // Supported token addresses on Sepolia testnet
-export const TON_TOKEN_ADDRESS: Address =
-  "0xa30fe40285B8f5c0457DbC3B7C8A280373c40044" as Address; // TON token (18 decimals)
-export const USDT_TOKEN_ADDRESS: Address =
-  "0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A" as Address; // USDT token
-export const USDC_TOKEN_ADDRESS: Address =
-  "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as Address;
-export const ETH_TOKEN_ADDRESS: Address =
-  "0x0000000000000000000000000000000000000001" as Address; // ETH placeholder
+export const TON_TOKEN_ADDRESS: Address = '0xa30fe40285B8f5c0457DbC3B7C8A280373c40044' as Address; // TON token (18 decimals)
+export const USDT_TOKEN_ADDRESS: Address = '0x42d3b260c761cD5da022dB56Fe2F89c4A909b04A' as Address; // USDT token
+export const USDC_TOKEN_ADDRESS: Address = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' as Address;
+export const ETH_TOKEN_ADDRESS: Address = '0x0000000000000000000000000000000000000001' as Address; // ETH placeholder
 
 // Token utilities are in ./tokenUtils.ts to avoid circular dependency
 
@@ -58,9 +43,7 @@ export function getGroth16VerifierAddress(treeSize: number): Address {
     case 128:
       return GROTH16_VERIFIER_128_ADDRESS;
     default:
-      throw new Error(
-        `Unsupported tree size: ${treeSize}. Supported sizes are 16, 32, 64, 128.`
-      );
+      throw new Error(`Unsupported tree size: ${treeSize}. Supported sizes are 16, 32, 64, 128.`);
   }
 }
 
@@ -68,349 +51,322 @@ export function getGroth16VerifierAddress(treeSize: number): Address {
 export const ROLLUP_BRIDGE_CORE_ABI = [
   // Essential view functions
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "getChannelState",
-    outputs: [{ name: "", type: "uint8" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelState',
+    outputs: [{ name: '', type: 'uint8' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [
-      { name: "channelId", type: "uint256" },
-      { name: "participant", type: "address" },
-    ],
-    name: "isChannelParticipant",
-    outputs: [{ name: "", type: "bool" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }, { name: 'participant', type: 'address' }],
+    name: 'isChannelParticipant',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "targetContract", type: "address" }],
-    name: "isAllowedTargetContract",
-    outputs: [{ name: "", type: "bool" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'targetContract', type: 'address' }],
+    name: 'isAllowedTargetContract',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "getChannelLeader",
-    outputs: [{ name: "", type: "address" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelLeader',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "getChannelParticipants",
-    outputs: [{ name: "", type: "address[]" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelParticipants',
+    outputs: [{ name: '', type: 'address[]' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "getChannelTargetContract",
-    outputs: [{ name: "", type: "address" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelTargetContract',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "getChannelTreeSize",
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelTreeSize',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [
-      { name: "channelId", type: "uint256" },
-      { name: "participant", type: "address" },
-    ],
-    name: "getParticipantDeposit",
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }, { name: 'participant', type: 'address' }],
+    name: 'getParticipantDeposit',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [
-      { name: "channelId", type: "uint256" },
-      { name: "participant", type: "address" },
-    ],
-    name: "getL2MptKey",
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }, { name: 'participant', type: 'address' }],
+    name: 'getL2MptKey',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "getChannelTotalDeposits",
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelTotalDeposits',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "getChannelPublicKey",
-    outputs: [
-      { name: "pkx", type: "uint256" },
-      { name: "pky", type: "uint256" },
-    ],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelPublicKey',
+    outputs: [{ name: 'pkx', type: 'uint256' }, { name: 'pky', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "isChannelPublicKeySet",
-    outputs: [{ name: "", type: "bool" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'isChannelPublicKeySet',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "getChannelTimeout",
-    outputs: [
-      { name: "openTimestamp", type: "uint256" },
-      { name: "timeout", type: "uint256" },
-    ],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelTimeout',
+    outputs: [{ name: 'openTimestamp', type: 'uint256' }, { name: 'timeout', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [
-      { name: "channelId", type: "uint256" },
-      { name: "participant", type: "address" },
-    ],
-    name: "hasUserWithdrawn",
-    outputs: [{ name: "", type: "bool" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }, { name: 'participant', type: 'address' }],
+    name: 'hasUserWithdrawn',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "isSignatureVerified",
-    outputs: [{ name: "", type: "bool" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'isSignatureVerified',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [
-      { name: "channelId", type: "uint256" },
-      { name: "participant", type: "address" },
-    ],
-    name: "getWithdrawableAmount",
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }, { name: 'participant', type: 'address' }],
+    name: 'getWithdrawableAmount',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
     inputs: [],
-    name: "getTreasuryAddress",
-    outputs: [{ name: "", type: "address" }],
-    stateMutability: "view",
-    type: "function",
+    name: 'getTreasuryAddress',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
     inputs: [],
-    name: "owner",
-    outputs: [{ name: "", type: "address" }],
-    stateMutability: "view",
-    type: "function",
+    name: 'owner',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "getChannelInitialStateRoot",
-    outputs: [{ name: "", type: "bytes32" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelInitialStateRoot',
+    outputs: [{ name: '', type: 'bytes32' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "getChannelFinalStateRoot",
-    outputs: [{ name: "", type: "bytes32" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelFinalStateRoot',
+    outputs: [{ name: '', type: 'bytes32' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
     inputs: [],
-    name: "getTotalChannels",
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
+    name: 'getTotalChannels',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "getChannelInfo",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelInfo',
     outputs: [
-      { name: "targetContract", type: "address" },
-      { name: "state", type: "uint8" },
-      { name: "participantCount", type: "uint256" },
-      { name: "initialRoot", type: "bytes32" },
+      { name: 'targetContract', type: 'address' },
+      { name: 'state', type: 'uint8' },
+      { name: 'participantCount', type: 'uint256' },
+      { name: 'initialRoot', type: 'bytes32' }
     ],
-    stateMutability: "view",
-    type: "function",
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [
-      { name: "targetContract", type: "address" },
-      { name: "mptKey", type: "bytes32" },
-    ],
-    name: "getPreAllocatedLeaf",
-    outputs: [
-      { name: "value", type: "uint256" },
-      { name: "exists", type: "bool" },
-    ],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'targetContract', type: 'address' }, { name: 'mptKey', type: 'bytes32' }],
+    name: 'getPreAllocatedLeaf',
+    outputs: [{ name: 'value', type: 'uint256' }, { name: 'exists', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
     inputs: [],
-    name: "nextChannelId",
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
+    name: 'nextChannelId',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "getChannelPreAllocatedLeavesCount",
-    outputs: [{ name: "count", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelPreAllocatedLeavesCount',
+    outputs: [{ name: 'count', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "targetContract", type: "address" }],
-    name: "getPreAllocatedKeys",
-    outputs: [{ name: "keys", type: "bytes32[]" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'targetContract', type: 'address' }],
+    name: 'getPreAllocatedKeys',
+    outputs: [{ name: 'keys', type: 'bytes32[]' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   // Channel management functions
   {
     inputs: [
       {
-        name: "params",
-        type: "tuple",
+        name: 'params',
+        type: 'tuple',
         components: [
-          { name: "targetContract", type: "address" },
-          { name: "participants", type: "address[]" },
-        ],
-      },
+          { name: 'targetContract', type: 'address' },
+          { name: 'participants', type: 'address[]' }
+        ]
+      }
     ],
-    name: "openChannel",
-    outputs: [{ name: "channelId", type: "uint256" }],
-    stateMutability: "nonpayable",
-    type: "function",
+    name: 'openChannel',
+    outputs: [{ name: 'channelId', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+    type: 'function'
   },
   // Additional view functions from interface
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "getChannelSignerAddr",
-    outputs: [{ name: "", type: "address" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelSignerAddr',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "getChannelBlockInfosHash",
-    outputs: [{ name: "", type: "bytes32" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelBlockInfosHash',
+    outputs: [{ name: '', type: 'bytes32' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "targetContract", type: "address" }],
-    name: "getTargetContractData",
+    inputs: [{ name: 'targetContract', type: 'address' }],
+    name: 'getTargetContractData',
     outputs: [
       {
-        name: "",
-        type: "tuple",
+        name: '',
+        type: 'tuple',
         components: [
           {
-            name: "storageSlot",
-            type: "tuple[]",
+            name: 'storageSlot',
+            type: 'tuple[]',
             components: [
-              { name: "value", type: "uint256" },
-              { name: "key", type: "bytes32" },
-              { name: "isActive", type: "bool" },
-            ],
+              { name: 'value', type: 'uint256' },
+              { name: 'key', type: 'bytes32' },
+              { name: 'isActive', type: 'bool' }
+            ]
           },
           {
-            name: "registeredFunctions",
-            type: "tuple[]",
+            name: 'registeredFunctions',
+            type: 'tuple[]',
             components: [
-              { name: "functionSignature", type: "bytes32" },
-              { name: "instancesHash", type: "bytes32" },
-              { name: "preprocessedPart1", type: "uint128[]" },
-              { name: "preprocessedPart2", type: "uint256[]" },
-            ],
-          },
-        ],
-      },
+              { name: 'functionSignature', type: 'bytes32' },
+              { name: 'instancesHash', type: 'bytes32' },
+              { name: 'preprocessedPart1', type: 'uint128[]' },
+              { name: 'preprocessedPart2', type: 'uint256[]' }
+            ]
+          }
+        ]
+      }
     ],
-    stateMutability: "view",
-    type: "function",
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "targetContract", type: "address" }],
-    name: "getPreAllocatedLeavesCount",
-    outputs: [{ name: "count", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'targetContract', type: 'address' }],
+    name: 'getPreAllocatedLeavesCount',
+    outputs: [{ name: 'count', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "targetContract", type: "address" }],
-    name: "getMaxAllowedParticipants",
-    outputs: [{ name: "maxParticipants", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'targetContract', type: 'address' }],
+    name: 'getMaxAllowedParticipants',
+    outputs: [{ name: 'maxParticipants', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
     inputs: [],
-    name: "getChannelStats",
+    name: 'getChannelStats',
     outputs: [
-      { name: "openChannels", type: "uint256" },
-      { name: "activeChannels", type: "uint256" },
-      { name: "closingChannels", type: "uint256" },
-      { name: "closedChannels", type: "uint256" },
+      { name: 'openChannels', type: 'uint256' },
+      { name: 'activeChannels', type: 'uint256' },
+      { name: 'closingChannels', type: 'uint256' },
+      { name: 'closedChannels', type: 'uint256' }
     ],
-    stateMutability: "view",
-    type: "function",
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "user", type: "address" }],
-    name: "getUserTotalBalance",
+    inputs: [{ name: 'user', type: 'address' }],
+    name: 'getUserTotalBalance',
     outputs: [
-      { name: "targetContracts", type: "address[]" },
-      { name: "balances", type: "uint256[]" },
+      { name: 'targetContracts', type: 'address[]' },
+      { name: 'balances', type: 'uint256[]' }
     ],
-    stateMutability: "view",
-    type: "function",
+    stateMutability: 'view',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelIds", type: "uint256[]" }],
-    name: "batchGetChannelStates",
-    outputs: [{ name: "states", type: "uint8[]" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'channelIds', type: 'uint256[]' }],
+    name: 'batchGetChannelStates',
+    outputs: [{ name: 'states', type: 'uint8[]' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   // Setter functions
   {
     inputs: [
-      { name: "channelId", type: "uint256" },
-      { name: "pkx", type: "uint256" },
-      { name: "pky", type: "uint256" },
+      { name: 'channelId', type: 'uint256' },
+      { name: 'pkx', type: 'uint256' },
+      { name: 'pky', type: 'uint256' }
     ],
-    name: "setChannelPublicKey",
+    name: 'setChannelPublicKey',
     outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
+    stateMutability: 'nonpayable',
+    type: 'function'
   },
   // Events
   {
     anonymous: false,
     inputs: [
-      { indexed: true, name: "channelId", type: "uint256" },
-      { indexed: false, name: "targetContract", type: "address" },
+      { indexed: true, name: 'channelId', type: 'uint256' },
+      { indexed: false, name: 'targetContract', type: 'address' }
     ],
-    name: "ChannelOpened",
-    type: "event",
-  },
+    name: 'ChannelOpened',
+    type: 'event'
+  }
 ] as const;
 
 // Legacy ABI exports for backwards compatibility
@@ -420,186 +376,185 @@ export const ROLLUP_BRIDGE_ABI = ROLLUP_BRIDGE_CORE_ABI;
 export const ROLLUP_BRIDGE_DEPOSIT_MANAGER_ABI = [
   {
     inputs: [
-      { name: "channelId", type: "uint256" },
-      { name: "participant", type: "address" },
-      { name: "amount", type: "uint256" },
+      { name: 'channelId', type: 'uint256' },
+      { name: 'participant', type: 'address' },
+      { name: 'amount', type: 'uint256' }
     ],
-    name: "depositToChannel",
+    name: 'depositToChannel',
     outputs: [],
-    stateMutability: "payable",
-    type: "function",
+    stateMutability: 'payable',
+    type: 'function'
   },
   {
     inputs: [
-      { name: "channelId", type: "uint256" },
-      { name: "amount", type: "uint256" },
-      { name: "mptKey", type: "bytes32" },
+      { name: 'channelId', type: 'uint256' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'mptKey', type: 'bytes32' }
     ],
-    name: "depositToken",
+    name: 'depositToken',
     outputs: [],
-    stateMutability: "payable",
-    type: "function",
-  },
+    stateMutability: 'payable',
+    type: 'function'
+  }
 ] as const;
 
 export const ROLLUP_BRIDGE_PROOF_MANAGER_ABI = [
   {
     inputs: [
-      { name: "channelId", type: "uint256" },
-      { name: "proof", type: "tuple" },
+      { name: 'channelId', type: 'uint256' },
+      { name: 'proof', type: 'tuple' }
     ],
-    name: "submitProof",
+    name: 'submitProof',
     outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
+    stateMutability: 'nonpayable',
+    type: 'function'
   },
   {
     inputs: [
-      { name: "channelId", type: "uint256" },
-      {
-        name: "proof",
-        type: "tuple",
+      { name: 'channelId', type: 'uint256' },
+      { 
+        name: 'proof', 
+        type: 'tuple',
         components: [
-          { name: "pA", type: "uint256[4]" },
-          { name: "pB", type: "uint256[8]" },
-          { name: "pC", type: "uint256[4]" },
-          { name: "merkleRoot", type: "bytes32" },
-        ],
-      },
+          { name: 'pA', type: 'uint256[4]' },
+          { name: 'pB', type: 'uint256[8]' },
+          { name: 'pC', type: 'uint256[4]' },
+          { name: 'merkleRoot', type: 'bytes32' }
+        ]
+      }
     ],
-    name: "initializeChannelState",
+    name: 'initializeChannelState',
     outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
+    stateMutability: 'nonpayable',
+    type: 'function'
   },
   {
     inputs: [
-      { name: "channelId", type: "uint256" },
-      {
-        name: "proofs",
-        type: "tuple[]",
+      { name: 'channelId', type: 'uint256' },
+      { 
+        name: 'proofs', 
+        type: 'tuple[]',
         components: [
-          { name: "proofPart1", type: "uint128[]" },
-          { name: "proofPart2", type: "uint256[]" },
-          { name: "publicInputs", type: "uint256[]" },
-          { name: "smax", type: "uint256" },
-        ],
+          { name: 'proofPart1', type: 'uint128[]' },
+          { name: 'proofPart2', type: 'uint256[]' },
+          { name: 'publicInputs', type: 'uint256[]' },
+          { name: 'smax', type: 'uint256' }
+        ]
       },
-      {
-        name: "signature",
-        type: "tuple",
+      { 
+        name: 'signature', 
+        type: 'tuple',
         components: [
-          { name: "message", type: "bytes32" },
-          { name: "rx", type: "uint256" },
-          { name: "ry", type: "uint256" },
-          { name: "z", type: "uint256" },
-        ],
-      },
+          { name: 'message', type: 'bytes32' },
+          { name: 'rx', type: 'uint256' },
+          { name: 'ry', type: 'uint256' },
+          { name: 'z', type: 'uint256' }
+        ]
+      }
     ],
-    name: "submitProofAndSignature",
+    name: 'submitProofAndSignature',
     outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
+    stateMutability: 'nonpayable',
+    type: 'function'
   },
   {
     inputs: [
-      { name: "channelId", type: "uint256" },
-      { name: "finalBalances", type: "uint256[]" },
+      { name: 'channelId', type: 'uint256' },
+      { name: 'finalBalances', type: 'uint256[]' },
       {
-        name: "groth16Proof",
-        type: "tuple",
+        name: 'groth16Proof',
+        type: 'tuple',
         components: [
-          { name: "pA", type: "uint256[4]" },
-          { name: "pB", type: "uint256[8]" },
-          { name: "pC", type: "uint256[4]" },
-        ],
-      },
+          { name: 'pA', type: 'uint256[4]' },
+          { name: 'pB', type: 'uint256[8]' },
+          { name: 'pC', type: 'uint256[4]' }
+        ]
+      }
     ],
-    name: "verifyFinalBalancesGroth16",
+    name: 'verifyFinalBalancesGroth16',
     outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
+    stateMutability: 'nonpayable',
+    type: 'function'
+  }
 ] as const;
 
 export const ROLLUP_BRIDGE_WITHDRAW_MANAGER_ABI = [
   {
     inputs: [
-      { name: "channelId", type: "uint256" },
-      { name: "participant", type: "address" },
+      { name: 'channelId', type: 'uint256' }
     ],
-    name: "withdrawFromChannel",
+    name: 'withdraw',
     outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
+    stateMutability: 'nonpayable',
+    type: 'function'
   },
   {
-    inputs: [{ name: "channelId", type: "uint256" }],
-    name: "closeAndFinalizeChannel",
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'closeAndFinalizeChannel',
     outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
+    stateMutability: 'nonpayable',
+    type: 'function'
+  }
 ] as const;
 
 // ERC20 Token ABI - Basic functions for token interactions
 export const ERC20_ABI = [
   {
-    inputs: [{ name: "account", type: "address" }],
-    name: "balanceOf",
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
+    inputs: [{ name: 'account', type: 'address' }],
+    name: 'balanceOf',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
     inputs: [
-      { name: "spender", type: "address" },
-      { name: "amount", type: "uint256" },
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' }
     ],
-    name: "approve",
-    outputs: [{ name: "", type: "bool" }],
-    stateMutability: "nonpayable",
-    type: "function",
+    name: 'approve',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'nonpayable',
+    type: 'function'
   },
   {
     inputs: [
-      { name: "owner", type: "address" },
-      { name: "spender", type: "address" },
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' }
     ],
-    name: "allowance",
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
+    name: 'allowance',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
     inputs: [
-      { name: "to", type: "address" },
-      { name: "amount", type: "uint256" },
+      { name: 'to', type: 'address' },
+      { name: 'amount', type: 'uint256' }
     ],
-    name: "transfer",
-    outputs: [{ name: "", type: "bool" }],
-    stateMutability: "nonpayable",
-    type: "function",
+    name: 'transfer',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'nonpayable',
+    type: 'function'
   },
   {
     inputs: [],
-    name: "decimals",
-    outputs: [{ name: "", type: "uint8" }],
-    stateMutability: "view",
-    type: "function",
+    name: 'decimals',
+    outputs: [{ name: '', type: 'uint8' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
     inputs: [],
-    name: "symbol",
-    outputs: [{ name: "", type: "string" }],
-    stateMutability: "view",
-    type: "function",
+    name: 'symbol',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function'
   },
   {
     inputs: [],
-    name: "name",
-    outputs: [{ name: "", type: "string" }],
-    stateMutability: "view",
-    type: "function",
-  },
+    name: 'name',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function'
+  }
 ] as const;

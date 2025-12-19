@@ -1,320 +1,156 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAccount, useContractRead, useContractWrite, usePrepareContractWrite, useWaitForTransaction, useContractReads } from 'wagmi';
-import { readContract } from 'wagmi/actions';
-import { formatUnits, parseUnits } from 'viem';
+import { useAccount, useContractRead, useContractWrite, useWaitForTransaction } from 'wagmi';
+import { formatUnits } from 'viem';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { 
-  ROLLUP_BRIDGE_CORE_ADDRESS, 
-  ROLLUP_BRIDGE_CORE_ABI,
   ROLLUP_BRIDGE_ADDRESS,
-  ROLLUP_BRIDGE_ABI 
+  ROLLUP_BRIDGE_ABI,
+  ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS,
+  ROLLUP_BRIDGE_WITHDRAW_MANAGER_ABI
 } from '@/lib/contracts';
 import { ClientOnly } from '@/components/ClientOnly';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Sidebar } from '@/components/Sidebar';
-import { ChannelState } from '@/lib/types';
-import { canWithdraw } from '@/lib/utils';
-import { generateWithdrawalProof, WithdrawalProofData } from '@/lib/merkleProofGenerator';
-import { ArrowUpCircle, Inbox, Clock, CheckCircle2, AlertCircle, Info } from 'lucide-react';
-
-interface WithdrawableChannel {
-  channelId: bigint;
-  targetContract: string;
-  state: ChannelState;
-  isETH: boolean;
-  symbol: string;
-  decimals: number;
-  userDeposit: bigint;
-  hasWithdrawn: boolean;
-}
+import { ArrowUpCircle, CheckCircle2, AlertCircle, Info, Settings } from 'lucide-react';
 
 export default function WithdrawTokensPage() {
-  const router = useRouter();
   const { address, isConnected } = useAccount();
   
   // Form state
-  const [selectedChannel, setSelectedChannel] = useState<WithdrawableChannel | null>(null);
-  const [claimedBalance, setClaimedBalance] = useState('');
+  const [selectedChannelId, setSelectedChannelId] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [generatedProof, setGeneratedProof] = useState<WithdrawalProofData | null>(null);
-  const [isGeneratingProof, setIsGeneratingProof] = useState(false);
   const [proofError, setProofError] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
-  // Get total number of channels
-  const { data: totalChannels } = useContractRead({
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // Parse channel ID
+  const parsedChannelId = selectedChannelId ? parseInt(selectedChannelId) : null;
+  const isValidChannelId = parsedChannelId !== null && !isNaN(parsedChannelId) && parsedChannelId >= 0;
+
+  // Get channel information for the selected channel
+  const { data: channelState } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'nextChannelId',
-    enabled: isConnected,
+    functionName: 'getChannelState',
+    args: isValidChannelId ? [BigInt(parsedChannelId)] : undefined,
+    enabled: isMounted && isConnected && isValidChannelId,
   });
 
-  const channelCount = totalChannels ? Number(totalChannels) : 0;
-  const maxChannelsToCheck = Math.min(channelCount, 20); // Reasonable limit
-
-  // We need to get channel stats first to know which contracts are ERC20 tokens
-  const { data: channelStatsData } = useContractReads({
-    contracts: Array.from({ length: maxChannelsToCheck }, (_, i) => ({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
-      functionName: 'getChannelStats',
-      args: [BigInt(i)],
-    })),
-    enabled: isConnected && channelCount > 0,
+  const { data: channelParticipants } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelParticipants',
+    args: isValidChannelId ? [BigInt(parsedChannelId)] : undefined,
+    enabled: isMounted && isConnected && isValidChannelId,
   });
 
-  // Create contract calls and mapping
-  const channelContracts: any[] = [];
-  const contractCallMapping: Array<{ channelId: number; type: string }> = []; // Track what each contract call represents
-  
-  // For each channel, build contracts and track their mapping
-  for (let i = 0; i < maxChannelsToCheck; i++) {
-    const channelId = BigInt(i);
-    const channelStats = channelStatsData?.[i]?.result as readonly [bigint, `0x${string}`, number, bigint, bigint, `0x${string}`] | undefined;
-    const targetContract = channelStats?.[1];
-    const isETH = !targetContract || targetContract === '0x0000000000000000000000000000000000000000';
-    
-    // Channel stats
-    channelContracts.push({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
-      functionName: 'getChannelStats',
-      args: [channelId],
-    });
-    contractCallMapping.push({ channelId: i, type: 'stats' });
-    
-    // Channel roots
-    channelContracts.push({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
-      functionName: 'getChannelRoots',
-      args: [channelId],
-    });
-    contractCallMapping.push({ channelId: i, type: 'roots' });
-    
-    // Channel participants
-    channelContracts.push({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
-      functionName: 'getChannelParticipants',
-      args: [channelId],
-    });
-    contractCallMapping.push({ channelId: i, type: 'participants' });
-    
-    // Token info (for ERC20 tokens only)
-    if (!isETH && targetContract) {
-      // Token decimals
-      channelContracts.push({
-        address: targetContract as `0x${string}`,
-        abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view' as const, type: 'function' as const, inputs: [] }],
-        functionName: 'decimals',
-      });
-      contractCallMapping.push({ channelId: i, type: 'decimals' });
-      
-      // Token symbol
-      channelContracts.push({
-        address: targetContract as `0x${string}`,
-        abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view' as const, type: 'function' as const, inputs: [] }],
-        functionName: 'symbol',
-      });
-      contractCallMapping.push({ channelId: i, type: 'symbol' });
-    }
-    
-    // User-specific data (if address exists)
-    if (address) {
-      // User deposit
-      channelContracts.push({
-        address: ROLLUP_BRIDGE_ADDRESS,
-        abi: ROLLUP_BRIDGE_ABI,
-        functionName: 'getParticipantDeposit',
-        args: [channelId, address],
-      });
-      contractCallMapping.push({ channelId: i, type: 'userDeposit' });
-      
-      // L2 address
-      channelContracts.push({
-        address: ROLLUP_BRIDGE_ADDRESS,
-        abi: ROLLUP_BRIDGE_ABI,
-        functionName: 'getL2PublicKey',
-        args: [channelId, address],
-      });
-      contractCallMapping.push({ channelId: i, type: 'l2Address' });
-      
-      // Withdrawal status
-      channelContracts.push({
-        address: ROLLUP_BRIDGE_ADDRESS,
-        abi: ROLLUP_BRIDGE_ABI,
-        functionName: 'hasWithdrawn',
-        args: [channelId, address],
-      });
-      contractCallMapping.push({ channelId: i, type: 'hasWithdrawn' });
-    }
-    
-    // Participant roots
-    channelContracts.push({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
-      functionName: 'getChannelParticipantRoots',
-      args: [channelId],
-    });
-    contractCallMapping.push({ channelId: i, type: 'participantRoots' });
-  }
-
-  const { data: channelData, isLoading: channelDataLoading } = useContractReads({
-    contracts: channelContracts,
-    enabled: isConnected && channelCount > 0,
+  const { data: targetContract } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getChannelTargetContract',
+    args: isValidChannelId ? [BigInt(parsedChannelId)] : undefined,
+    enabled: isMounted && isConnected && isValidChannelId,
   });
 
-  // Parse channel data into structured format
-  const [withdrawableChannels, setWithdrawableChannels] = useState<WithdrawableChannel[]>([]);
-  const [channelTokenData, setChannelTokenData] = useState<Map<number, { symbol: string; decimals: number }>>(new Map());
-  
-  useEffect(() => {
-    const parseChannelData = async () => {
-      if (!channelData || !address) {
-        setWithdrawableChannels([]);
-        return;
-      }
+  const { data: userDeposit } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'getParticipantDeposit',
+    args: isValidChannelId && address ? [BigInt(parsedChannelId), address] : undefined,
+    enabled: isMounted && isConnected && isValidChannelId && !!address,
+  });
 
-      const newWithdrawableChannels: WithdrawableChannel[] = [];
-      const newTokenData = new Map<number, { symbol: string; decimals: number }>();
+  const { data: hasWithdrawn } = useContractRead({
+    address: ROLLUP_BRIDGE_ADDRESS,
+    abi: ROLLUP_BRIDGE_ABI,
+    functionName: 'hasUserWithdrawn',
+    args: isValidChannelId && address ? [BigInt(parsedChannelId), address] : undefined,
+    enabled: isMounted && isConnected && isValidChannelId && !!address,
+  });
 
-      // Build channel data map from contract results using mapping
-      const channelDataMap = new Map<number, {
-        stats?: readonly [bigint, `0x${string}`, number, bigint, bigint, `0x${string}`];
-        roots?: readonly [string, string];
-        participants?: readonly string[];
-        decimals?: number;
-        symbol?: string;
-        userDeposit?: bigint;
-        l2Address?: string;
-        hasWithdrawn?: boolean;
-        participantRoots?: readonly string[];
-      }>();
 
-      // Parse contract results using the mapping
-      contractCallMapping.forEach((mapping, index) => {
-        const { channelId, type } = mapping;
-        const result = channelData[index]?.result;
-        
-        if (!channelDataMap.has(channelId)) {
-          channelDataMap.set(channelId, {});
-        }
-        
-        const channelInfo = channelDataMap.get(channelId)!;
-        
-        switch (type) {
-          case 'stats':
-            channelInfo.stats = result as readonly [bigint, `0x${string}`, number, bigint, bigint, `0x${string}`];
-            break;
-          case 'roots':
-            channelInfo.roots = result as readonly [string, string];
-            break;
-          case 'participants':
-            channelInfo.participants = result as readonly string[];
-            break;
-          case 'decimals':
-            channelInfo.decimals = result as number;
-            break;
-          case 'symbol':
-            channelInfo.symbol = result as string;
-            break;
-          case 'userDeposit':
-            channelInfo.userDeposit = result as bigint;
-            break;
-          case 'l2Address':
-            channelInfo.l2Address = result as string;
-            break;
-          case 'hasWithdrawn':
-            channelInfo.hasWithdrawn = result as boolean;
-            break;
-          case 'participantRoots':
-            channelInfo.participantRoots = result as readonly string[];
-            break;
-        }
-      });
+  // Get token information for ERC20 tokens
+  const isETH = !targetContract || targetContract === '0x0000000000000000000000000000000000000000';
 
-      // Process each channel
-      for (let i = 0; i < maxChannelsToCheck; i++) {
-        const channelInfo = channelDataMap.get(i);
-        if (!channelInfo) continue;
-        
-        const { stats: channelStats, participants, decimals: tokenDecimals, symbol: tokenSymbol, userDeposit, hasWithdrawn } = channelInfo;
-        
-        // Check if this channel is withdrawable (closed state = 5, user is participant, hasn't withdrawn)
-        if (
-          channelStats &&
-          channelStats[2] === 5 && // Closed state
-          participants &&
-          participants.includes(address) &&
-          !hasWithdrawn
-        ) {
-          const isETH = !channelStats[1] || channelStats[1] === '0x0000000000000000000000000000000000000000';
-          
-          // Get token info
-          let symbol: string;
-          let decimals: number;
-          
-          if (isETH) {
-            symbol = 'ETH';
-            decimals = 18;
-          } else {
-            // Use the fetched token data
-            symbol = typeof tokenSymbol === 'string' ? tokenSymbol : 'TOKEN';
-            decimals = typeof tokenDecimals === 'number' ? tokenDecimals : 18;
-          }
-          
-          newWithdrawableChannels.push({
-            channelId: BigInt(i),
-            targetContract: channelStats[1],
-            state: channelStats[2] as ChannelState,
-            isETH,
-            symbol,
-            decimals,
-            userDeposit: userDeposit || BigInt(0),
-            hasWithdrawn: hasWithdrawn || false,
-          });
-        }
-      }
-      
-      setWithdrawableChannels(newWithdrawableChannels);
-    };
-
-    parseChannelData();
-  }, [channelData, address, maxChannelsToCheck, channelTokenData]);
-
-  // Helper function to get channel data by ID
-  const getChannelDataById = (channelId: bigint) => {
-    if (!channelData || !address) return null;
+  // Check if user can withdraw from this channel
+  const canUserWithdraw = () => {
+    if (channelState === undefined || !channelParticipants || !address) return false;
     
-    const itemsPerChannel = 7;
-    const channelIndex = Number(channelId);
-    const baseIndex = channelIndex * itemsPerChannel;
+    const state = Number(channelState);
+    const isParticipant = (channelParticipants as string[]).includes(address);
+    const hasNotWithdrawn = !hasWithdrawn;
     
-    return {
-      stats: channelData[baseIndex]?.result as readonly [bigint, `0x${string}`, number, bigint, bigint, `0x${string}`] | undefined,
-      roots: channelData[baseIndex + 1]?.result as readonly [string, string] | undefined,
-      participants: channelData[baseIndex + 2]?.result as readonly string[] | undefined,
-      userDeposit: channelData[baseIndex + 3]?.result as bigint | undefined,
-      l2Address: channelData[baseIndex + 4]?.result as string | undefined,
-      hasWithdrawn: channelData[baseIndex + 5]?.result as boolean | undefined,
-      participantRoots: channelData[baseIndex + 6]?.result as readonly string[] | undefined,
-    };
+    return state === 4 && isParticipant && hasNotWithdrawn; // State 4 = Closed
   };
 
-  // TODO: withdrawAfterClose function not available in current contract ABI
-  // Prepare withdraw transaction
-  const withdrawConfig = {
+  const { data: withdrawableAmount } = useContractRead({
     address: ROLLUP_BRIDGE_ADDRESS,
     abi: ROLLUP_BRIDGE_ABI,
-    functionName: 'openChannel',
-    enabled: false, // Disabled since withdrawAfterClose not available
-  } as const;
+    functionName: 'getWithdrawableAmount',
+    args: isValidChannelId && address ? [BigInt(parsedChannelId), address] : undefined,
+    enabled: isMounted && isConnected && isValidChannelId && !!address && canUserWithdraw(),
+  });
 
-  const { write: withdrawTokens, isLoading: isWithdrawing, data: withdrawData } = useContractWrite(withdrawConfig);
+  const { data: tokenDecimals } = useContractRead({
+    address: targetContract,
+    abi: [{ name: 'decimals', outputs: [{ type: 'uint8' }], stateMutability: 'view' as const, type: 'function' as const, inputs: [] }],
+    functionName: 'decimals',
+    enabled: isMounted && isConnected && !isETH && !!targetContract,
+  });
+
+  const { data: tokenSymbol } = useContractRead({
+    address: targetContract,
+    abi: [{ name: 'symbol', outputs: [{ type: 'string' }], stateMutability: 'view' as const, type: 'function' as const, inputs: [] }],
+    functionName: 'symbol',
+    enabled: isMounted && isConnected && !isETH && !!targetContract,
+  });
+
+  // Helper functions
+  const getChannelStateName = (state: number) => {
+    switch (state) {
+      case 0: return 'None';
+      case 1: return 'Initialized';
+      case 2: return 'Open';
+      case 3: return 'Closing';
+      case 4: return 'Closed';
+      default: return 'Unknown';
+    }
+  };
+
+  const getChannelStateColor = (state: number) => {
+    switch (state) {
+      case 0: return 'text-gray-500';
+      case 1: return 'text-blue-400';
+      case 2: return 'text-green-400';
+      case 3: return 'text-orange-400';
+      case 4: return 'text-yellow-400';
+      default: return 'text-gray-500';
+    }
+  };
+
+  // Get token display information
+  const getTokenInfo = () => {
+    if (isETH) {
+      return { symbol: 'ETH', decimals: 18 };
+    } else {
+      return {
+        symbol: typeof tokenSymbol === 'string' ? tokenSymbol : 'TOKEN',
+        decimals: typeof tokenDecimals === 'number' ? tokenDecimals : 18
+      };
+    }
+  };
+
+  // Prepare withdraw transaction
+  const { write: withdrawTokens, isLoading: isWithdrawing, data: withdrawData } = useContractWrite({
+    address: ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS,
+    abi: ROLLUP_BRIDGE_WITHDRAW_MANAGER_ABI,
+    functionName: 'withdraw',
+  });
 
   // Wait for withdraw transaction
   const { isLoading: isWaitingWithdraw, isSuccess: withdrawSuccess } = useWaitForTransaction({
@@ -322,246 +158,56 @@ export default function WithdrawTokensPage() {
     enabled: !!withdrawData?.hash,
   });
 
-  const handleChannelSelect = (channel: WithdrawableChannel) => {
-    setSelectedChannel(channel);
-    setClaimedBalance('');
-    setGeneratedProof(null);
+  const handleChannelChange = (channelId: string) => {
+    setSelectedChannelId(channelId);
     setProofError(null);
   };
 
-  const handleGenerateProof = async () => {
-    if (!selectedChannel || !claimedBalance || !address) return;
-    
-    setIsGeneratingProof(true);
-    setProofError(null);
-    setGeneratedProof(null);
-    
-    try {
-      // Debug: Check what the actual channel state is
-      console.log('=== DEBUG: Channel State ===');
-      console.log('Channel ID:', selectedChannel.channelId.toString());
-      
-      // Get channel data dynamically
-      const channelInfo = getChannelDataById(selectedChannel.channelId);
-      if (!channelInfo) {
-        throw new Error('Failed to fetch channel data. Please try again.');
-      }
-      
-      const { roots: channelRoots, participants, l2Address, participantRoots } = channelInfo;
-      
-      if (channelRoots) {
-        console.log('Channel roots:', channelRoots);
-        console.log('Initial Root:', channelRoots[0]);
-        console.log('Final State Root:', channelRoots[1]);
-      }
-      
-      console.log('DEBUG: Channel roots for channel', selectedChannel.channelId.toString(), ':', channelRoots);
-      console.log('DEBUG: Initial root:', channelRoots?.[0]);
-      console.log('DEBUG: Final root:', channelRoots?.[1]);
-      
-      if (!channelRoots) {
-        throw new Error('Failed to fetch channel roots from contract. Please try again.');
-      }
-      
-      const zeroHash = '0x0000000000000000000000000000000000000000000000000000000000000000';
-      const finalStateRoot = channelRoots[1];
-      
-      if (!finalStateRoot || finalStateRoot === zeroHash || finalStateRoot === '0x' || finalStateRoot.length < 66) {
-        console.log('DEBUG: Final state root is invalid:', finalStateRoot);
-        throw new Error('Channel has not gone through submitAggregatedProof yet. Final state root is not set. Please complete the proof submission workflow first.');
-      }
-      
-      console.log('Channel has valid final state root, proceeding with withdrawal proof generation...');
-      
-      // Get the L2 address for this L1 address - validate it's a proper hex address
-      let userL2Address = l2Address;
-      
-      console.log('Raw L2 address from channelInfo:', l2Address);
-      
-      // Validate that the L2 address is actually a valid Ethereum address, not a token symbol
-      const isValidL2Address = userL2Address && 
-                               typeof userL2Address === 'string' && 
-                               userL2Address.startsWith('0x') && 
-                               userL2Address.length === 42 &&
-                               userL2Address !== '0x0000000000000000000000000000000000000000';
-      
-      if (!isValidL2Address) {
-        console.log(`Invalid L2 address (${userL2Address}), fetching from contract...`);
-        
-        // TODO: getL2PublicKey function not available in current contract ABI
-        // Using fallback method to derive L2 address from L1 address
-        console.warn('getL2PublicKey not available, using derived address');
-        
-        // Derive L2 address from L1 address
-        const addressNum = BigInt(address);
-        const channelOffset = BigInt(selectedChannel.channelId.toString()) + BigInt(1000000);
-        const maxAddress = BigInt("0xffffffffffffffffffffffffffffffffffffffff"); // 2^160 - 1
-        const derivedL2 = (addressNum + channelOffset) % (maxAddress + BigInt(1));
-        userL2Address = `0x${derivedL2.toString(16).padStart(40, '0')}`;
-        console.log(`Using derived L2 address: ${userL2Address} for L1: ${address} in channel ${selectedChannel.channelId}`);
-      } else {
-        console.log('Using valid L2 address from channelInfo:', userL2Address);
-      }
-      
-      // Final validation - ensure we have a valid L2 address
-      if (!userL2Address || typeof userL2Address !== 'string') {
-        throw new Error('Failed to obtain valid L2 address for withdrawal proof generation');
-      }
-      
-      console.log('Final userL2Address for proof generation:', userL2Address);
-      
-      // Get real participant data from dynamic channel data
-      if (!participants || participants.length === 0) {
-        throw new Error('No participants found for this channel');
-      }
-      
-      // Build participant data with actual L2 addresses and deposit balances
-      const participantsData: Array<{ l2Address: string; balance: string }> = [];
-      
-      for (const participant of participants) {
-        // Validate that participant is actually an Ethereum address, not a token symbol
-        const isValidAddress = typeof participant === 'string' && 
-                              participant.startsWith('0x') && 
-                              participant.length === 42;
-        
-        if (!isValidAddress) {
-          console.warn(`Skipping invalid participant address: ${participant}`);
-          continue; // Skip non-address entries
-        }
-        
-        // Get L2 address for each participant
-        let participantL2Address = userL2Address; // Default to user's if this is the user
-        if (participant.toLowerCase() !== address.toLowerCase()) {
-          // TODO: getL2PublicKey function not available in current contract ABI
-          // Using fallback method to derive L2 address from L1 address
-          console.warn(`getL2PublicKey not available, using derived address for participant ${participant}`);
-          
-          // Derive L2 address for other participants
-          const participantAddressNum = BigInt(participant);
-          const channelOffset = BigInt(selectedChannel.channelId.toString()) + BigInt(2000000);
-          const maxAddress = BigInt("0xffffffffffffffffffffffffffffffffffffffff");
-          const derivedL2 = (participantAddressNum + channelOffset) % (maxAddress + BigInt(1));
-          participantL2Address = `0x${derivedL2.toString(16).padStart(40, '0')}`;
-        }
-        
-        // Get deposit balance for each participant
-        let participantBalance = '0';
-        if (participant.toLowerCase() === address.toLowerCase()) {
-          participantBalance = (channelInfo.userDeposit || BigInt(0)).toString();
-        } else {
-          // For other participants, use a default balance
-          // Use a reasonable default (1 token with proper decimals)
-          const defaultDecimals = selectedChannel.decimals > 18 ? 18 : selectedChannel.decimals;
-          participantBalance = parseUnits('1.0', defaultDecimals).toString();
-        }
-        
-        participantsData.push({
-          l2Address: participantL2Address,
-          balance: participantBalance
-        });
-      }
-      
-      if (participantsData.length === 0) {
-        throw new Error('No valid participants found after filtering. Check if participant data contains proper Ethereum addresses.');
-      }
-      
-      // Fetch participant roots directly from the contract using getChannelParticipantRoots
-      console.log('Fetching participant roots from contract for channel:', selectedChannel.channelId.toString());
-      
-      // TODO: getChannelParticipantRoots function not available in current contract ABI
-      // Using empty array as fallback
-      console.warn('getChannelParticipantRoots not available, using empty array');
-      const participantRootsForChannel: string[] = [];
-      
-      if (participantRootsForChannel.length === 0) {
-        throw new Error('Participant roots not available for this channel. Make sure aggregated proof has been submitted.');
-      }
-      
-      console.log('Fetched participant roots from contract:', participantRootsForChannel);
-
-      // Generate withdrawal proof using L2 address and final state root
-      const proof = await generateWithdrawalProof(
-        selectedChannel.channelId.toString(),
-        userL2Address,
-        parseUnits(claimedBalance, selectedChannel.decimals).toString(),
-        participantsData,
-        channelRoots[1], // final state root from the contract
-        participantRootsForChannel // participant roots from the contract
-      );
-      
-      setGeneratedProof(proof);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      setProofError(errorMessage);
-      
-      // Check if it's a wrong amount error
-      if (errorMessage.includes('claimed balance is incorrect') || errorMessage.includes('verification')) {
-        setProofError('Wrong amount: The claimed balance does not match the expected withdrawal amount. Please check your input.');
-      }
-    } finally {
-      setIsGeneratingProof(false);
-    }
-  };
-
+  // Simple withdraw function - no complex proof generation needed
   const handleWithdraw = async () => {
-    if (!withdrawTokens || !selectedChannel || !generatedProof) return;
+    if (!withdrawTokens || !isValidChannelId || !address) return;
     
     setIsSubmitting(true);
     try {
-      await withdrawTokens();
+      console.log('Withdrawing from channel:', parsedChannelId, 'for address:', address);
+      
+      withdrawTokens({
+        args: [BigInt(parsedChannelId)]
+      });
     } catch (error) {
       console.error('Withdraw error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      
-      // Check if it's a revert with "wrong amount" 
-      if (errorMessage.includes('wrong amount') || errorMessage.includes('Wrong amount')) {
-        setProofError('Wrong amount: The contract rejected the withdrawal. Please verify the claimed balance is correct.');
-      }
+      setProofError(`Withdrawal failed: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const isFormValid = selectedChannel && 
-                     claimedBalance && 
-                     generatedProof && 
-                     !selectedChannel.hasWithdrawn;
 
-  if (!isConnected) {
+  const isFormValid = isValidChannelId && 
+                     canUserWithdraw() &&
+                     withdrawableAmount &&
+                     Number(withdrawableAmount) > 0;
+
+  if (!isMounted) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-        <ClientOnly>
-          <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
-        </ClientOnly>
-        <div className={`${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'} transition-all duration-300`}>
-          <div className="flex items-center justify-center min-h-screen">
-            <div className="text-center">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Connect Your Wallet</h1>
-              <p className="text-gray-600 dark:text-gray-300 mb-6">You need to connect your wallet to withdraw tokens</p>
-              <ClientOnly>
-                <ConnectButton />
-              </ClientOnly>
-            </div>
-          </div>
+      <div className="min-h-screen bg-[#0a1930] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#4fc3f7] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-white">Loading...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Sidebar */}
-      <ClientOnly>
-        <Sidebar isConnected={isConnected} onCollapse={setSidebarCollapsed} />
-      </ClientOnly>
+    <ClientOnly>
+      <div className="min-h-screen space-background">
+        <Sidebar isConnected={isConnected} onCollapse={() => {}} />
 
-      {/* Main Content Area */}
-      <div className="ml-0 lg:ml-72 transition-all duration-300 min-h-screen space-background flex flex-col">
-
-        <ClientOnly>
-          <div className="px-4 py-8 lg:px-8 flex-1">
-            <div className="max-w-5xl mx-auto space-y-6">
-              
+        <div className="ml-0 lg:ml-72 transition-all duration-300 min-h-screen space-background flex flex-col">
+          <main className="px-4 py-8 lg:px-8 flex-1">
+            <div className="max-w-5xl mx-auto">
               {/* Page Header */}
               <div className="mb-8">
                 <div className="flex items-center gap-3 mb-2">
@@ -571,233 +217,182 @@ export default function WithdrawTokensPage() {
                   <h1 className="text-3xl font-bold text-white">Withdraw Tokens</h1>
                 </div>
                 <p className="text-gray-300 ml-13">
-                  Withdraw your tokens from closed channels. Merkle proofs are generated automatically.
+                  Withdraw your tokens from closed channels. Enter a channel ID to check withdrawal eligibility.
                 </p>
               </div>
 
-              {/* Info Banner */}
-              <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-4 mb-6">
-              <div className="flex items-start">
-                <div className="flex-shrink-0">
-                  <Info className="w-5 h-5 text-[#4fc3f7]" />
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-[#4fc3f7]">
-                    Simplified Withdrawal Process
-                  </h3>
-                  <div className="mt-2 text-sm text-gray-300">
-                    <ul className="list-disc list-inside space-y-1">
-                      <li>Channel must be in "Closed" state</li>
-                      <li>You must have participated in the channel</li>
-                      <li>You can only withdraw once per channel</li>
-                    </ul>
+              {!isConnected ? (
+                <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 text-center shadow-lg shadow-[#4fc3f7]/20">
+                  <div className="h-16 w-16 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 flex items-center justify-center mx-auto mb-4">
+                    <ArrowUpCircle className="w-8 h-8 text-[#4fc3f7]" />
                   </div>
+                  <h3 className="text-xl font-semibold text-white mb-2">Connect Your Wallet</h3>
+                  <p className="text-gray-300 mb-6">Please connect your wallet to withdraw tokens</p>
+                  <ConnectButton />
                 </div>
-              </div>
-            </div>
-
-            {/* Withdrawable Channels */}
-            {withdrawableChannels.length > 0 ? (
-              <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 shadow-lg shadow-[#4fc3f7]/20">
-                <h2 className="text-lg font-semibold text-white mb-4">
-                  Available Withdrawals
-                </h2>
-                
-                <div className="grid gap-4 mb-6">
-                  {withdrawableChannels.map((channel) => (
-                    <div
-                      key={channel.channelId.toString()}
-                      className={`border p-4 cursor-pointer transition-colors ${
-                        selectedChannel?.channelId === channel.channelId
-                          ? 'border-[#4fc3f7] bg-[#4fc3f7]/10'
-                          : 'border-[#4fc3f7]/30 hover:border-[#4fc3f7]'
-                      } ${
-                        channel.hasWithdrawn
-                          ? 'opacity-50 cursor-not-allowed'
-                          : ''
-                      }`}
-                      onClick={() => !channel.hasWithdrawn && handleChannelSelect(channel)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <div className="flex-shrink-0">
-                            <div className={`w-3 h-3 ${
-                              channel.hasWithdrawn 
-                                ? 'bg-gray-500' 
-                                : selectedChannel?.channelId === channel.channelId 
-                                ? 'bg-[#4fc3f7]' 
-                                : 'bg-green-500'
-                            }`} />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-white">
-                                Channel #{channel.channelId.toString()}
-                              </span>
-                              <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/50">
-                                Closed
-                              </span>
-                              {channel.hasWithdrawn && (
-                                <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-gray-500/20 text-gray-400 border border-gray-500/50">
-                                  Already Withdrawn
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-sm text-gray-400">
-                              Target: {channel.isETH ? 'ETH (Native)' : channel.targetContract}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-medium text-white">
-                            {formatUnits(channel.userDeposit, channel.decimals)} {channel.symbol}
-                          </div>
-                          <div className="text-sm text-gray-400">
-                            Your Deposit
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Withdraw Form */}
-                {selectedChannel && !selectedChannel.hasWithdrawn && (
-                  <div className="border-t border-[#4fc3f7]/30 pt-6">
-                    <h3 className="text-lg font-medium text-white mb-4">
-                      Withdrawal Details for Channel #{selectedChannel.channelId.toString()}
+              ) : (
+                <div className="space-y-6">
+                  {/* Channel ID Input Section */}
+                  <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-6 shadow-lg shadow-[#4fc3f7]/20">
+                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                      <Settings className="w-5 h-5 text-[#4fc3f7]" />
+                      Select Channel to Withdraw From
                     </h3>
                     
-                    <div className="space-y-6">
+                    <div className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-300 mb-2">
-                          Claimed Balance
+                          Channel ID
                         </label>
                         <input
                           type="number"
-                          step="any"
-                          min="0"
-                          value={claimedBalance}
-                          onChange={(e) => setClaimedBalance(e.target.value)}
-                          placeholder="0.0"
-                          className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] focus:border-[#4fc3f7]"
+                          value={selectedChannelId}
+                          onChange={(e) => handleChannelChange(e.target.value)}
+                          placeholder="Enter channel ID..."
+                          className="w-full px-4 py-3 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-lg text-white placeholder-gray-400 focus:border-[#4fc3f7] focus:ring-1 focus:ring-[#4fc3f7] transition-colors"
                         />
-                        <p className="text-sm text-gray-400 mt-1">
-                          Amount you're claiming to withdraw ({selectedChannel.symbol})
-                        </p>
                       </div>
+                    </div>
+                  </div>
 
-                      {/* Generate Proof Button */}
-                      <div className="flex justify-center">
-                        <button
-                          onClick={handleGenerateProof}
-                          disabled={!claimedBalance || isGeneratingProof}
-                          className="px-6 py-2 bg-[#4fc3f7] text-white hover:bg-[#029bee] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] transition-colors duration-200 flex items-center gap-2"
-                        >
-                          {isGeneratingProof && <LoadingSpinner size="sm" />}
-                          {isGeneratingProof ? 'Generating Proof...' : 'Generate Withdrawal Proof'}
-                        </button>
-                      </div>
-
-                      {/* Proof Error Display */}
-                      {proofError && (
-                        <div className="p-4 bg-red-500/10 border border-red-500/50">
-                          <div className="flex items-start">
-                            <AlertCircle className="w-5 h-5 text-red-400 mr-3 flex-shrink-0" />
-                            <div>
-                              <h4 className="font-medium text-red-400">
-                                Proof Generation Failed
-                              </h4>
-                              <p className="text-sm text-red-300/90 mt-1">
-                                {proofError}
-                              </p>
-                            </div>
+                  {/* Channel Information */}
+                  {isValidChannelId && channelState !== undefined && (
+                    <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-6 shadow-lg shadow-[#4fc3f7]/20">
+                      <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <Info className="w-5 h-5 text-[#4fc3f7]" />
+                        Channel {parsedChannelId} - {getChannelStateName(Number(channelState))}
+                      </h3>
+                      
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                        <div className="text-center p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/30">
+                          <div className="text-sm text-gray-400">Status</div>
+                          <div className={`text-xl font-bold ${getChannelStateColor(Number(channelState))}`}>
+                            {getChannelStateName(Number(channelState))}
                           </div>
                         </div>
-                      )}
+                        <div className="text-center p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/30">
+                          <div className="text-sm text-gray-400">Participants</div>
+                          <div className="text-xl font-bold text-white">{channelParticipants?.length || 0}</div>
+                        </div>
+                        <div className="text-center p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/30">
+                          <div className="text-sm text-gray-400">Your Deposit</div>
+                          <div className="text-xl font-bold text-white">
+                            {userDeposit ? formatUnits(userDeposit, getTokenInfo().decimals) : '0'} {getTokenInfo().symbol}
+                          </div>
+                        </div>
+                        <div className="text-center p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/30">
+                          <div className="text-sm text-gray-400">Withdrawn</div>
+                          <div className={`text-xl font-bold ${hasWithdrawn ? 'text-red-400' : 'text-green-400'}`}>
+                            {hasWithdrawn ? 'Yes' : 'No'}
+                          </div>
+                        </div>
+                      </div>
 
-                      {/* Generated Proof Display */}
-                      {generatedProof && (
-                        <div className="p-4 bg-green-500/10 border border-green-500/50">
-                          <div className="flex items-start">
-                            <CheckCircle2 className="w-5 h-5 text-green-400 mr-3 flex-shrink-0" />
-                            <div className="flex-1">
-                              <h4 className="font-medium text-green-400">
-                                Withdrawal Proof Generated Successfully!
-                              </h4>
-                              <div className="text-sm text-green-300/90 mt-2 space-y-1">
-                                <p><strong>Leaf Index:</strong> {generatedProof.leafIndex}</p>
-                                <p><strong>Claimed Balance:</strong> {formatUnits(BigInt(generatedProof.claimedBalance), selectedChannel.decimals)} {selectedChannel.symbol}</p>
-                                <p><strong>Merkle Proof Elements:</strong> {generatedProof.merkleProof.length}</p>
+                      {/* Status Messages */}
+                      {!canUserWithdraw() && (
+                        <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                          <div className="flex items-start gap-3">
+                            <AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-yellow-300 text-sm font-medium">Cannot Withdraw</p>
+                              <div className="text-yellow-400 text-sm mt-1">
+                                {Number(channelState) !== 4 && <span>Channel must be in "Closed" state. </span>}
+                                {!(channelParticipants as string[])?.includes(address!) && <span>You must be a participant in this channel. </span>}
+                                {hasWithdrawn && <span>You have already withdrawn from this channel.</span>}
                               </div>
                             </div>
                           </div>
                         </div>
                       )}
+                    </div>
+                  )}
 
-                      {/* Withdraw Button */}
-                      <div className="flex justify-end">
-                        <button
-                          onClick={handleWithdraw}
-                          disabled={!isFormValid || isWithdrawing || isWaitingWithdraw || isSubmitting}
-                          className="px-6 py-2 bg-[#4fc3f7] text-white hover:bg-[#029bee] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] transition-colors duration-200 flex items-center gap-2"
-                        >
-                          {(isWithdrawing || isWaitingWithdraw || isSubmitting) && (
-                            <LoadingSpinner size="sm" />
+                  {/* Withdraw Form */}
+                  {canUserWithdraw() && (
+                    <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/20">
+                      <div className="p-6 border-b border-[#4fc3f7]/30">
+                        <h3 className="text-xl font-semibold text-white mb-2">
+                          Withdrawal Details for Channel #{parsedChannelId}
+                        </h3>
+                        <p className="text-gray-400">Review your withdrawable amount and complete the withdrawal</p>
+                      </div>
+                      
+                      <div className="p-6 space-y-6">
+                        {/* Withdrawable Amount Display */}
+                        <div className="p-4 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 rounded-lg">
+                          <h3 className="text-lg font-semibold text-white mb-2">Available to Withdraw</h3>
+                          {withdrawableAmount ? (
+                            <div className="text-2xl font-bold text-[#4fc3f7]">
+                              {formatUnits(withdrawableAmount, getTokenInfo().decimals)} {getTokenInfo().symbol}
+                            </div>
+                          ) : (
+                            <div className="text-gray-400">Loading withdrawable amount...</div>
                           )}
-                          {isWithdrawing || isSubmitting
-                            ? 'Submitting...'
-                            : isWaitingWithdraw
-                            ? 'Confirming...'
-                            : 'Withdraw Tokens'
-                          }
-                        </button>
+                          <p className="text-sm text-gray-400 mt-1">
+                            Full amount will be withdrawn automatically
+                          </p>
+                        </div>
+
+                        {/* Error Display */}
+                        {proofError && (
+                          <div className="p-4 bg-red-500/10 border border-red-500/50">
+                            <div className="flex items-start">
+                              <AlertCircle className="w-5 h-5 text-red-400 mr-3 flex-shrink-0" />
+                              <div>
+                                <h4 className="font-medium text-red-400">
+                                  Withdrawal Error
+                                </h4>
+                                <p className="text-sm text-red-300/90 mt-1">
+                                  {proofError}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Withdraw Button */}
+                        <div className="flex justify-end">
+                          <button
+                            onClick={handleWithdraw}
+                            disabled={!isFormValid || isWithdrawing || isWaitingWithdraw || isSubmitting}
+                            className="px-6 py-2 bg-[#4fc3f7] text-white hover:bg-[#029bee] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] transition-colors duration-200 flex items-center gap-2"
+                          >
+                            {(isWithdrawing || isWaitingWithdraw || isSubmitting) && (
+                              <LoadingSpinner size="sm" />
+                            )}
+                            {isWithdrawing || isSubmitting
+                              ? 'Submitting...'
+                              : isWaitingWithdraw
+                              ? 'Confirming...'
+                              : 'Withdraw Tokens'
+                            }
+                          </button>
+                        </div>
+
+                        {withdrawSuccess && (
+                          <div className="mt-4 p-4 bg-green-500/10 border border-green-500/50">
+                            <div className="flex items-start">
+                              <CheckCircle2 className="w-5 h-5 text-green-400 mr-3 flex-shrink-0" />
+                              <div>
+                                <h4 className="font-medium text-green-400">
+                                  Withdrawal Successful!
+                                </h4>
+                                <p className="text-sm text-green-300/90 mt-1">
+                                  Your tokens have been successfully withdrawn from Channel #{parsedChannelId}.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
-
-                    {withdrawSuccess && (
-                      <div className="mt-4 p-4 bg-green-500/10 border border-green-500/50">
-                        <div className="flex items-start">
-                          <CheckCircle2 className="w-5 h-5 text-green-400 mr-3 flex-shrink-0" />
-                          <div>
-                            <h4 className="font-medium text-green-400">
-                              Withdrawal Successful!
-                            </h4>
-                            <p className="text-sm text-green-300/90 mt-1">
-                              Your tokens have been successfully withdrawn from Channel #{selectedChannel.channelId.toString()}.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-8 text-center shadow-lg shadow-[#4fc3f7]/20">
-                <div className="h-16 w-16 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 flex items-center justify-center mx-auto mb-4">
-                  <Inbox className="w-8 h-8 text-[#4fc3f7]" />
+                  )}
                 </div>
-                <h2 className="text-xl font-semibold text-white mb-2">
-                  No Withdrawals Available
-                </h2>
-                <p className="text-gray-300 mb-6">
-                  You don't have any tokens to withdraw from closed channels at the moment.
-                </p>
-                <div className="text-sm text-gray-300">
-                  <p>Withdrawals are only available when:</p>
-                  <ul className="list-disc list-inside mt-2 space-y-1">
-                    <li>You participated in a channel that has been closed</li>
-                    <li>You haven't already withdrawn your tokens</li>
-                    <li>The channel leader has provided withdrawal proofs</li>
-                  </ul>
-                </div>
-              </div>
-            )}
+              )}
             </div>
-          </div>
-        </ClientOnly>
+          </main>
+        </div>
       </div>
-    </div>
+    </ClientOnly>
   );
 }

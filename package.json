@@ -4,12 +4,16 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && npx @cloudflare/next-on-pages@latest",
     "start": "next start",
     "lint": "next lint",
-    "clean": "rm -rf .next node_modules/.cache"
+    "clean": "rm -rf .next node_modules/.cache",
+    "preview": "npx wrangler pages dev",
+    "deploy": "npm run build && npx wrangler pages deploy .vercel/output/static"
   },
   "dependencies": {
+    "@ethereumjs/util": "^10.1.0",
+    "@noble/curves": "^1.9.0",
     "@radix-ui/react-dialog": "^1.0.5",
     "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-portal": "^1.0.4",
@@ -26,13 +30,13 @@
     "crypto-js": "^4.2.0",
     "date-fns": "^2.30.0",
     "elliptic": "^6.6.1",
-    "ethers": "^6.8.1",
-    "firebase": "^12.6.0",
+    "ethereum-cryptography": "^3.2.0",
+    "ethers": "^6.14.3",
     "js-sha256": "^0.11.1",
     "js-sha3": "^0.9.3",
-    "jszip": "^3.10.1",
     "lucide-react": "^0.292.0",
     "next": "^15.5.7",
+    "poseidon-bls12381": "^1.0.0",
     "react": "^18",
     "react-dom": "^18",
     "snarkjs": "^0.7.5",
@@ -41,6 +45,7 @@
     "wagmi": "^1.4.13"
   },
   "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.16",
     "@types/crypto-js": "^4.2.2",
     "@types/elliptic": "^6.4.18",
     "@types/node": "^20.19.25",

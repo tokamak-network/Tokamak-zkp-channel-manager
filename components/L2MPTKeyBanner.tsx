@@ -1,0 +1,244 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useAccount, useSignMessage } from 'wagmi';
+import { Key, Calculator, AlertCircle, Copy, CheckCircle2 } from 'lucide-react';
+import { L2_PRV_KEY_MESSAGE } from '@/lib/l2KeyMessage';
+interface L2MPTKeyBannerProps {
+  className?: string;
+}
+
+interface ComputedKey {
+  channelId: number;
+  slotIndex: number;
+  mptKey: string;
+}
+
+export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [channelId, setChannelId] = useState<number>(1);
+  const [slotIndex, setSlotIndex] = useState<number>(0);
+  const [computedKeys, setComputedKeys] = useState<ComputedKey[]>([]);
+  const [isComputing, setIsComputing] = useState(false);
+  const [error, setError] = useState<string>('');
+  const [copiedKey, setCopiedKey] = useState<string>('');
+  const { signMessageAsync } = useSignMessage();
+  const { address, isConnected } = useAccount();
+
+  // Reset error when inputs change
+  useEffect(() => {
+    setError('');
+  }, [channelId]);
+
+  "use client";
+  async function fetchMptKey(signature: `0x${string}`, slotIndex: number) {
+    const res = await fetch("/api/post-l2-mpt-key", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ signature, slotIndex }),
+    });
+    const { key } = await res.json();
+    return key;
+  }
+
+  const computeMPTKey = async () => {
+    if (!isConnected || !address) {
+      setError('Please connect your wallet first');
+      return;
+    }
+
+    setIsComputing(true);
+    setError('');
+
+    try {
+      const message = L2_PRV_KEY_MESSAGE + `${channelId}`;
+      const signature = await signMessageAsync({message});
+      const mptKey = await fetchMptKey(signature, slotIndex);
+
+      const newKey: ComputedKey = {
+        channelId,
+        slotIndex,
+        mptKey
+      };
+
+      setComputedKeys(prev => [newKey, ...prev.slice(0, 4)]); // Keep only 5 most recent
+      
+      setError(''); // Clear any previous errors
+
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('User rejected')) {
+        setError('Signature cancelled by user');
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to compute MPT key');
+      }
+    } finally {
+      setIsComputing(false);
+    }
+  };
+
+  const copyToClipboard = async (key: string) => {
+    try {
+      await navigator.clipboard.writeText(key);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(''), 2000);
+    } catch (err) {
+      setError('Failed to copy to clipboard');
+    }
+  };
+
+  const removeKey = (index: number) => {
+    setComputedKeys(prev => prev.filter((_, i) => i !== index));
+  };
+
+
+  return (
+    <div className={`bg-gradient-to-r from-[#4fc3f7]/10 to-[#029bee]/10 border border-[#4fc3f7]/30 ${className || ''}`}>
+      <div className="p-4">
+        {/* Banner Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 flex items-center justify-center">
+              <Key className="w-5 h-5 text-[#4fc3f7]" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-white">L2 MPT Key Generator</h3>
+              <p className="text-sm text-gray-300">
+                Compute Merkle Patricia Tree keys for your deposits
+              </p>
+            </div>
+          </div>
+          
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="px-4 py-2 bg-[#4fc3f7] text-white hover:bg-[#029bee] transition-colors flex items-center gap-2"
+          >
+            <Calculator className="w-4 h-4" />
+            {isExpanded ? 'Hide' : 'Generate Keys'}
+          </button>
+        </div>
+
+        {/* Expanded Content */}
+        {isExpanded && (
+          <div className="mt-6 space-y-4">
+            {/* Input Form */}
+            <div className="grid grid-cols-1 gap-4">
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    Channel ID
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={channelId}
+                    onChange={(e) => setChannelId(parseInt(e.target.value) || 1)}
+                    className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                    Slot Index
+                  </label>
+                  <select
+                    value={slotIndex}
+                    onChange={(e) => setSlotIndex(parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
+                  >
+                    <option value="0xa30fe40285B8f5c0457DbC3B7C8A280373c40044">TON Token</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+        
+
+            {/* Generate Button */}
+            <div className="flex items-center gap-4">
+              <button
+                onClick={computeMPTKey}
+                disabled={isComputing}
+                className="px-6 py-3 bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+              >
+                <Calculator className="w-4 h-4" />
+                {isComputing ? 'Computing...' : 'Generate MPT Key'}
+              </button>
+
+              {error && (
+                <p className="text-red-400 text-sm flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  {error}
+                </p>
+              )}
+            </div>
+
+            {/* Generated Keys */}
+            {computedKeys.length > 0 && (
+              <div className="space-y-3">
+                <h4 className="text-lg font-semibold text-white">Generated Keys</h4>
+                <div className="space-y-2">
+                  {computedKeys.map((key, index) => (
+                    <div
+                      key={`${key.mptKey}-${index}`}
+                      className="bg-[#0a1930]/80 border border-[#4fc3f7]/30 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="px-2 py-1 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] text-xs">
+                              Channel {key.channelId}
+                            </span>
+                            <span className="px-2 py-1 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] text-xs">
+                              TON
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-300 mb-1">MPT Key:</p>
+                          <p className="font-mono text-xs text-white break-all bg-black/30 p-2 border border-[#4fc3f7]/20">
+                            {key.mptKey}
+                          </p>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => copyToClipboard(key.mptKey)}
+                            className="p-2 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/30 transition-colors"
+                            title="Copy to clipboard"
+                          >
+                            {copiedKey === key.mptKey ? (
+                              <CheckCircle2 className="w-4 h-4" />
+                            ) : (
+                              <Copy className="w-4 h-4" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => removeKey(index)}
+                            className="p-2 bg-red-500/20 border border-red-500/50 text-red-400 hover:bg-red-500/30 transition-colors"
+                            title="Remove"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Usage Instructions */}
+            <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-4">
+              <h4 className="font-semibold text-[#4fc3f7] mb-2">How to use generated keys:</h4>
+              <ul className="text-sm text-gray-300 space-y-1">
+                <li>• Keys are generated client-side using JubJub cryptography and Poseidon hash</li>
+                <li>• Copy the generated MPT key and paste it into the "L2 MPT Key" field when making deposits</li>
+                <li>• Ensure the channel ID matches your deposit parameters</li>
+                <li>• Each unique combination of wallet address, channel ID, and token generates a different key deterministically</li>
+                <li>• Your private key never leaves your browser - all computation is done locally</li>
+              </ul>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
