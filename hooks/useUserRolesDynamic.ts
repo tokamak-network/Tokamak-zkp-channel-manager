@@ -132,15 +132,6 @@ export function useUserRolesDynamic() {
       }
     }
 
-
-    console.log('useUserRolesDynamic FINAL RESULTS:');
-    console.log('  foundLeadership:', foundLeadership);
-    console.log('  foundParticipation:', foundParticipation);
-    console.log('  leaderChannels:', leaderChannels);
-    console.log('  participantChannels:', participantChannels);
-    console.log('  actualChannelCount:', actualChannelCount);
-    console.log('  channelStatsData:', statsData);
-
     setHasChannels(foundLeadership);
     setIsParticipant(foundParticipation && !foundLeadership);
     setTotalChannels(actualChannelCount);

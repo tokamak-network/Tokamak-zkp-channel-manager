@@ -3,8 +3,6 @@ import { createPublicClient, http } from 'viem';
 import { sepolia } from 'viem/chains';
 import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
 
-export const runtime = 'edge';
-export const dynamic = 'force-static';
 
 const publicClient = createPublicClient({
   chain: sepolia,
