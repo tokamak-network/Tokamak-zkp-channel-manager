@@ -502,7 +502,28 @@ function StateExplorerDetailView({
 
       // Set initial Merkle root (from first verified proof or use initial deposits state)
       if (verifiedProofsData) {
-        const firstProof = Object.values(verifiedProofsData)[0] as any;
+        // Find the first verified proof (lowest sequenceNumber)
+        const verifiedProofsArray = Object.entries(verifiedProofsData).map(
+          ([key, value]: [string, any]) => ({
+            key,
+            ...value,
+          })
+        );
+
+        const firstProof = verifiedProofsArray.reduce(
+          (earliest: any, current: any) => {
+            if (
+              !earliest ||
+              (current.sequenceNumber &&
+                current.sequenceNumber < earliest.sequenceNumber)
+            ) {
+              return current;
+            }
+            return earliest;
+          },
+          null
+        );
+
         if (firstProof?.zipFile?.content) {
           try {
             const { parseProofFromBase64Zip, analyzeProof } = await import(

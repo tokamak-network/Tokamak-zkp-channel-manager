@@ -407,7 +407,49 @@ export default function ProofDetailPage() {
 
         const initialDeposits = await Promise.all(depositPromises);
 
-        // Get latest snapshot
+        // Get previous proof's resulting state if this is not the first proof
+        let previousProofBalances: any[] = [];
+        const currentSequenceNumber = proof?.sequenceNumber || proof?.id || 0;
+        
+        if (currentSequenceNumber > 1) {
+          try {
+            // Get all verified proofs
+            const verifiedProofs = await getData<any>(`channels/${channelId}/verifiedProofs`);
+            if (verifiedProofs) {
+              const proofsArray = Array.isArray(verifiedProofs)
+                ? verifiedProofs
+                : Object.entries(verifiedProofs).map(([key, value]: [string, any]) => ({
+                    proofId: key,
+                    ...value,
+                  }));
+
+              // Find the previous proof (sequenceNumber - 1)
+              const previousProof = proofsArray.find(
+                (p: any) => (p.sequenceNumber || 0) === currentSequenceNumber - 1
+              );
+
+              if (previousProof?.zipFile?.content) {
+                try {
+                  const { parseProofFromBase64Zip, analyzeProof } = await import(
+                    "@/lib/proofAnalyzer"
+                  );
+                  const parsed = await parseProofFromBase64Zip(previousProof.zipFile.content);
+                  
+                  if (parsed.instance && parsed.snapshot) {
+                    const previousAnalysis = analyzeProof(parsed.instance, parsed.snapshot, decimals);
+                    previousProofBalances = previousAnalysis.balances;
+                  }
+                } catch (parseErr) {
+                  console.warn("Failed to parse previous proof:", parseErr);
+                }
+              }
+            }
+          } catch (err) {
+            console.warn("Failed to fetch previous proof:", err);
+          }
+        }
+
+        // Get latest snapshot (fallback if no previous proof)
         const latestSnapshot = await getLatestSnapshot(channelId);
 
         const balances: ParticipantBalance[] = channel.participants.map(
@@ -415,8 +457,15 @@ export default function ProofDetailPage() {
             const initialDeposit = (initialDeposits[idx] as bigint) || BigInt(0);
             const initialDepositFormatted = parseFloat(formatUnits(initialDeposit, decimals)).toFixed(2);
 
+            // Use previous proof's resulting balance as current balance if available
             let currentBalance = initialDepositFormatted;
-            if (latestSnapshot?.userBalances) {
+            
+            if (previousProofBalances.length > idx && previousProofBalances[idx]) {
+              // Use previous proof's resulting state
+              const prevBalance = previousProofBalances[idx];
+              currentBalance = parseFloat(formatUnits(BigInt(prevBalance.balance), decimals)).toFixed(2);
+            } else if (latestSnapshot?.userBalances) {
+              // Fallback to latest snapshot
               const userBalance = latestSnapshot.userBalances.find(
                 (ub: any) => ub.userAddressL1?.toLowerCase() === participant.toLowerCase()
               );
@@ -438,8 +487,8 @@ export default function ProofDetailPage() {
             return {
               address: participant,
               initialDeposit: initialDepositFormatted,
-              currentBalance: currentBalance, // This is the "Before" balance from latest approved state
-              newBalance: newBalance, // From proof file analysis
+              currentBalance: currentBalance, // This is the "Before" balance (from previous proof's resulting state)
+              newBalance: newBalance, // From proof file analysis (current proof's resulting state)
               symbol: symbol,
               decimals: decimals,
               hasChange: hasChange,
@@ -454,7 +503,7 @@ export default function ProofDetailPage() {
     };
 
     fetchBalances();
-  }, [publicClient, channel, channelId, decimals, symbol, proofAnalysis]);
+  }, [publicClient, channel, channelId, decimals, symbol, proofAnalysis, proof]);
 
   if (isLoading || !proof) {
     return (

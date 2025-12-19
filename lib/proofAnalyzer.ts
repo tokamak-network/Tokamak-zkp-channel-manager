@@ -57,8 +57,10 @@ function combine16ByteChunks(lower: string, upper: string): string {
  * Extract Merkle roots from instance.json
  * 
  * According to instance_description.json:
- * - a_pub_user[10-11]: Initial Merkle tree root (lower + upper 16 bytes)
- * - a_pub_user[12-13]: Resulting Merkle tree root (lower + upper 16 bytes)
+ * - a_pub_user[8]: Initial Merkle tree root hash (lower 16 bytes)
+ * - a_pub_user[9]: Initial Merkle tree root hash (upper 16 bytes)
+ * - a_pub_user[10]: Resulting Merkle tree root hash (lower 16 bytes)
+ * - a_pub_user[11]: Resulting Merkle tree root hash (upper 16 bytes)
  */
 export function extractMerkleRoots(instanceData: InstanceData): {
   initial: string;
@@ -66,11 +68,11 @@ export function extractMerkleRoots(instanceData: InstanceData): {
 } {
   const { a_pub_user } = instanceData;
   
-  // Initial root: indices 10 (lower) and 11 (upper)
-  const initialRoot = combine16ByteChunks(a_pub_user[10], a_pub_user[11]);
+  // Initial root: index 8 (lower) and 9 (upper)
+  const initialRoot = combine16ByteChunks(a_pub_user[8], a_pub_user[9]);
   
-  // Resulting root: indices 12 (lower) and 13 (upper)
-  const resultingRoot = combine16ByteChunks(a_pub_user[12], a_pub_user[13]);
+  // Resulting root: index 10 (lower) and 11 (upper)
+  const resultingRoot = combine16ByteChunks(a_pub_user[10], a_pub_user[11]);
   
   return {
     initial: initialRoot,
