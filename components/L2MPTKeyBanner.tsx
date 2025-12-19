@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAccount, useSignMessage } from 'wagmi';
-import { Key, Calculator, AlertCircle, Copy, CheckCircle2 } from 'lucide-react';
+import { Key, Calculator, AlertCircle, Copy, CheckCircle2, Download } from 'lucide-react';
 import { L2_PRV_KEY_MESSAGE } from '@/lib/l2KeyMessage';
 interface L2MPTKeyBannerProps {
   className?: string;
@@ -12,6 +12,8 @@ interface ComputedKey {
   channelId: number;
   slotIndex: number;
   mptKey: string;
+  privateKey?: string;
+  l2Address?: string;
 }
 
 export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
@@ -37,8 +39,8 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ signature, slotIndex }),
     });
-    const { key } = await res.json();
-    return key;
+    const data = await res.json();
+    return data;
   }
 
   const computeMPTKey = async () => {
@@ -53,12 +55,14 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
     try {
       const message = L2_PRV_KEY_MESSAGE + `${channelId}`;
       const signature = await signMessageAsync({message});
-      const mptKey = await fetchMptKey(signature, slotIndex);
+      const result = await fetchMptKey(signature, slotIndex);
 
       const newKey: ComputedKey = {
         channelId,
         slotIndex,
-        mptKey
+        mptKey: result.mptKey,
+        privateKey: result.privateKey,
+        l2Address: result.l2Address,
       };
 
       setComputedKeys(prev => [newKey, ...prev.slice(0, 4)]); // Keep only 5 most recent
@@ -88,6 +92,27 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
 
   const removeKey = (index: number) => {
     setComputedKeys(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const downloadKeyData = (key: ComputedKey) => {
+    const data = {
+      channelId: key.channelId,
+      slotIndex: key.slotIndex,
+      mptKey: key.mptKey,
+      privateKey: key.privateKey,
+      l2Address: key.l2Address,
+      generatedAt: new Date().toISOString(),
+    };
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `l2-keys-channel-${key.channelId}-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
 
@@ -202,7 +227,7 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
                           <button
                             onClick={() => copyToClipboard(key.mptKey)}
                             className="p-2 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/30 transition-colors"
-                            title="Copy to clipboard"
+                            title="Copy MPT Key to clipboard"
                           >
                             {copiedKey === key.mptKey ? (
                               <CheckCircle2 className="w-4 h-4" />
@@ -210,6 +235,15 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
                               <Copy className="w-4 h-4" />
                             )}
                           </button>
+                          {key.privateKey && key.l2Address && (
+                            <button
+                              onClick={() => downloadKeyData(key)}
+                              className="p-2 bg-green-500/20 border border-green-500/50 text-green-400 hover:bg-green-500/30 transition-colors"
+                              title="Download private key and L2 address"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                          )}
                           <button
                             onClick={() => removeKey(index)}
                             className="p-2 bg-red-500/20 border border-red-500/50 text-red-400 hover:bg-red-500/30 transition-colors"
