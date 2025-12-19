@@ -3,6 +3,8 @@ import { createPublicClient, http } from 'viem';
 import { sepolia } from 'viem/chains';
 import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
 
+export const dynamic = 'force-static';
+
 const publicClient = createPublicClient({
   chain: sepolia,
   transport: http('https://eth-sepolia.g.alchemy.com/v2/N-Gnpjy1WvCfokwj6fiOfuAVL_At6IvE')

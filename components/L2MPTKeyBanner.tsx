@@ -30,16 +30,14 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
     setError('');
   }, [channelId]);
 
-  "use client";
-  async function fetchMptKey(signature: `0x${string}`, slotIndex: number) {
-    const res = await fetch("/api/post-l2-mpt-key", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ signature, slotIndex }),
-    });
-    const { key } = await res.json();
-    return key;
-  }
+  const computeMptKeyFromSignature = (signature: `0x${string}`, slotIndex: number): string => {
+    // Temporary implementation: generate a deterministic key from signature and slot
+    // This should be replaced with the actual L2 MPT key derivation when available for client-side
+    const hash = signature.slice(2); // Remove '0x'
+    const combined = hash + slotIndex.toString().padStart(8, '0');
+    const truncated = combined.slice(0, 64); // Take first 64 hex chars
+    return '0x' + truncated;
+  };
 
   const computeMPTKey = async () => {
     if (!isConnected || !address) {
@@ -53,7 +51,7 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
     try {
       const message = L2_PRV_KEY_MESSAGE + `${channelId}`;
       const signature = await signMessageAsync({message});
-      const mptKey = await fetchMptKey(signature, slotIndex);
+      const mptKey = computeMptKeyFromSignature(signature, slotIndex);
 
       const newKey: ComputedKey = {
         channelId,

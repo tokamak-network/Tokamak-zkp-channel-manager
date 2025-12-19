@@ -1,11 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Configure for Cloudflare Workers
-  output: 'export',
-  trailingSlash: true,
-  images: {
-    unoptimized: true
-  },
   webpack: (config, { isServer }) => {
     config.resolve.fallback = { fs: false, net: false, tls: false };
     config.externals.push('pino-pretty', 'lokijs', 'encoding');

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-static';
+
 const GITHUB_BASE_URL = 'https://github.com/mehdi-defiesta/channel-manager/releases/download/zkey-files';
 
 export async function GET(request: NextRequest) {

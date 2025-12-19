@@ -22,29 +22,29 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get participant deposit from contract
-    const deposit = await publicClient.readContract({
+    // Get L2 MPT key from contract
+    const l2MptKey = await publicClient.readContract({
       address: ROLLUP_BRIDGE_CORE_ADDRESS,
       abi: ROLLUP_BRIDGE_CORE_ABI,
-      functionName: 'getParticipantDeposit',
+      functionName: 'getL2MptKey',
       args: [BigInt(channelId), participant as `0x${string}`]
     });
 
     return NextResponse.json({
       success: true,
-      amount: deposit?.toString() || '0',
+      key: l2MptKey?.toString() || '0',
       participant,
       channelId
     });
 
   } catch (error) {
-    console.error('Error fetching participant deposit:', error);
+    console.error('Error fetching L2 MPT key:', error);
     
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
     return NextResponse.json(
       { 
-        error: 'Failed to fetch participant deposit',
+        error: 'Failed to fetch L2 MPT key',
         details: errorMessage
       },
       { status: 500 }
