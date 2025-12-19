@@ -236,6 +236,30 @@
   @apply bg-[#4fc3f7];
 }
 
+/* Thin scrollbar for state transitions and other compact areas */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(79, 195, 247, 0.3);
+  border-radius: 2px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(79, 195, 247, 0.5);
+}
+
+/* Firefox scrollbar support */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(79, 195, 247, 0.3) transparent;
+}
+
 /* Loading animations */
 .animate-pulse-slow {
   animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;

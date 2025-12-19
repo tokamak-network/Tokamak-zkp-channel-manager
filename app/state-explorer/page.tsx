@@ -59,6 +59,23 @@ interface ParticipantBalance {
   decimals: number;
 }
 
+interface StateTransition {
+  sequenceNumber: number;
+  proofId: string;
+  timestamp: number;
+  submitter: string;
+  merkleRoots: {
+    initial: string;
+    resulting: string;
+  };
+  balanceChanges: {
+    address: string;
+    before: string;
+    after: string;
+    change: string; // +/- amount
+  }[];
+}
+
 interface OnChainChannel {
   id: number;
   state: number; // 0: Pending, 1: Active, 2: Closed
@@ -367,6 +384,11 @@ function StateExplorerDetailView({
   const [proofs, setProofs] = useState<ProofData[]>([]);
   const [isLoadingBalances, setIsLoadingBalances] = useState(true);
   const [isLoadingProofs, setIsLoadingProofs] = useState(true);
+  const [initialMerkleRoot, setInitialMerkleRoot] = useState<string>("N/A");
+  const [currentMerkleRoot, setCurrentMerkleRoot] = useState<string>("N/A");
+  const [stateTransitions, setStateTransitions] = useState<StateTransition[]>([]);
+  const [isLoadingTransitions, setIsLoadingTransitions] = useState(false);
+  const [isTransitionsExpanded, setIsTransitionsExpanded] = useState(false);
   const publicClient = usePublicClient();
   const VISIBLE_PARTICIPANTS_COLLAPSED = 3;
 
@@ -412,75 +434,140 @@ function StateExplorerDetailView({
     enabled: channel.participants.length > 0,
   });
 
-  // Fetch current balances from latest state snapshot
-  useEffect(() => {
-    const fetchCurrentBalances = async () => {
-      if (!publicClient) return;
+  // Fetch current balances and Merkle roots from latest verified proof
+  const fetchCurrentBalances = useCallback(async () => {
+    if (!publicClient || !initialDeposits || channel.participants.length === 0)
+      return;
 
-      setIsLoadingBalances(true);
-      try {
-        // Get latest state snapshot from Firebase
-        const latestSnapshot = await getLatestSnapshot(channel.id.toString());
+    setIsLoadingBalances(true);
+    try {
+      // Get latest verified proof from Firebase
+      const verifiedProofsData = await getData(
+        `channels/${channel.id}/verifiedProofs`
+      );
 
-        const balances: ParticipantBalance[] = channel.participants.map(
-          (participant, idx) => {
-            const initialDeposit =
-              (initialDeposits?.[idx]?.result as bigint) || BigInt(0);
-            const initialDepositFormatted = formatUnits(
-              initialDeposit,
-              decimals
+      let latestProofBalances: any = null;
+      let latestAnalysis: any = null;
+
+      if (verifiedProofsData) {
+        // Find the latest verified proof (highest sequenceNumber)
+        const verifiedProofsArray = Object.entries(verifiedProofsData).map(
+          ([key, value]: [string, any]) => ({
+            key,
+            ...value,
+          })
+        );
+
+        const latestProof = verifiedProofsArray.reduce(
+          (latest: any, current: any) => {
+            if (
+              !latest ||
+              (current.sequenceNumber &&
+                current.sequenceNumber > latest.sequenceNumber)
+            ) {
+              return current;
+            }
+            return latest;
+          },
+          null
+        );
+
+        // If we have a latest proof with zipFile, parse it
+        if (latestProof?.zipFile?.content) {
+          try {
+            const { parseProofFromBase64Zip, analyzeProof } = await import(
+              "@/lib/proofAnalyzer"
+            );
+            const parsed = await parseProofFromBase64Zip(
+              latestProof.zipFile.content
             );
 
-            // Get current balance from latest snapshot
-            let currentBalance = initialDepositFormatted;
-            if (latestSnapshot?.userBalances) {
-              const userBalance = latestSnapshot.userBalances.find(
-                (ub: any) =>
-                  ub.userAddressL1?.toLowerCase() === participant.toLowerCase()
+            if (parsed.instance && parsed.snapshot) {
+              const analysis = analyzeProof(
+                parsed.instance,
+                parsed.snapshot,
+                decimals
               );
-              if (userBalance?.amount) {
-                currentBalance = formatUnits(
-                  BigInt(userBalance.amount),
-                  decimals
-                );
-              }
+              latestProofBalances = analysis.balances;
+              latestAnalysis = analysis;
+              
+              // Set current Merkle root from the latest proof
+              setCurrentMerkleRoot(analysis.merkleRoots.resulting);
             }
-
-            return {
-              address: participant,
-              initialDeposit: initialDepositFormatted,
-              currentBalance: currentBalance,
-              symbol: symbol,
-              decimals: decimals,
-            };
+          } catch (parseError) {
+            console.error("Error parsing latest verified proof:", parseError);
           }
-        );
-
-        setParticipantBalances(balances);
-      } catch (error) {
-        console.error("Error fetching current balances:", error);
-        // Fallback to initial deposits only
-        const balances: ParticipantBalance[] = channel.participants.map(
-          (participant, idx) => {
-            const initialDeposit =
-              (initialDeposits?.[idx]?.result as bigint) || BigInt(0);
-            return {
-              address: participant,
-              initialDeposit: formatUnits(initialDeposit, decimals),
-              currentBalance: formatUnits(initialDeposit, decimals),
-              symbol: symbol,
-              decimals: decimals,
-            };
-          }
-        );
-        setParticipantBalances(balances);
-      } finally {
-        setIsLoadingBalances(false);
+        }
       }
-    };
 
-    if (initialDeposits && channel.participants.length > 0) {
-      fetchCurrentBalances();
+      // Set initial Merkle root (from first verified proof or use initial deposits state)
+      if (verifiedProofsData) {
+        const firstProof = Object.values(verifiedProofsData)[0] as any;
+        if (firstProof?.zipFile?.content) {
+          try {
+            const { parseProofFromBase64Zip, analyzeProof } = await import(
+              "@/lib/proofAnalyzer"
+            );
+            const parsed = await parseProofFromBase64Zip(
+              firstProof.zipFile.content
+            );
+            
+            if (parsed.instance && parsed.snapshot) {
+              const analysis = analyzeProof(
+                parsed.instance,
+                parsed.snapshot,
+                decimals
+              );
+              setInitialMerkleRoot(analysis.merkleRoots.initial);
+            }
+          } catch (parseError) {
+            console.error("Error parsing first proof:", parseError);
+          }
+        }
+      }
+
+      const balances: ParticipantBalance[] = channel.participants.map(
+        (participant, idx) => {
+          const initialDeposit =
+            (initialDeposits?.[idx]?.result as bigint) || BigInt(0);
+          const initialDepositFormatted = formatUnits(initialDeposit, decimals);
+
+          // Get current balance from latest verified proof, if available
+          let currentBalance = initialDepositFormatted;
+          if (latestProofBalances && latestProofBalances[idx]) {
+            currentBalance = latestProofBalances[idx].balanceFormatted;
+          }
+
+          return {
+            address: participant,
+            initialDeposit: initialDepositFormatted,
+            currentBalance: currentBalance,
+            symbol: symbol,
+            decimals: decimals,
+          };
+        }
+      );
+
+      setParticipantBalances(balances);
+    } catch (error) {
+      console.error("Error fetching current balances:", error);
+      // Fallback to initial deposits only
+      const balances: ParticipantBalance[] = channel.participants.map(
+        (participant, idx) => {
+          const initialDeposit =
+            (initialDeposits?.[idx]?.result as bigint) || BigInt(0);
+          return {
+            address: participant,
+            initialDeposit: formatUnits(initialDeposit, decimals),
+            currentBalance: formatUnits(initialDeposit, decimals),
+            symbol: symbol,
+            decimals: decimals,
+          };
+        }
+      );
+      setParticipantBalances(balances);
+    } finally {
+      setIsLoadingBalances(false);
     }
   }, [
     initialDeposits,
@@ -491,7 +578,110 @@ function StateExplorerDetailView({
     symbol,
   ]);
 
+  // Fetch state transitions from verified proofs
+  const fetchStateTransitions = useCallback(async () => {
+    setIsLoadingTransitions(true);
+    try {
+      const verifiedProofsData = await getData(
+        `channels/${channel.id}/verifiedProofs`
+      );
+
+      if (!verifiedProofsData) {
+        setStateTransitions([]);
+        return;
+      }
+
+      const { parseProofFromBase64Zip, analyzeProof } = await import(
+        "@/lib/proofAnalyzer"
+      );
+
+      // Convert to array and sort by sequence number
+      const verifiedProofsArray = Object.entries(verifiedProofsData)
+        .map(([key, value]: [string, any]) => ({
+          key,
+          ...value,
+        }))
+        .sort((a: any, b: any) => a.sequenceNumber - b.sequenceNumber);
+
+      const transitions: StateTransition[] = [];
+      let previousBalances: any[] = [];
+
+      for (const proof of verifiedProofsArray) {
+        if (!proof.zipFile?.content) continue;
+
+        try {
+          const parsed = await parseProofFromBase64Zip(proof.zipFile.content);
+
+          if (parsed.instance && parsed.snapshot) {
+            const analysis = analyzeProof(
+              parsed.instance,
+              parsed.snapshot,
+              decimals
+            );
+
+            // Calculate balance changes
+            const balanceChanges = analysis.balances.map((bal: any, idx: number) => {
+              const beforeBalance = previousBalances[idx]?.balanceFormatted || 
+                participantBalances[idx]?.initialDeposit || "0.00";
+              const afterBalance = bal.balanceFormatted;
+              const change = (
+                parseFloat(afterBalance) - parseFloat(beforeBalance)
+              ).toFixed(2);
+
+              return {
+                address: channel.participants[idx],
+                before: beforeBalance,
+                after: afterBalance,
+                change: parseFloat(change) >= 0 ? `+${change}` : change,
+              };
+            });
+
+            transitions.push({
+              sequenceNumber: proof.sequenceNumber || 0,
+              proofId: proof.proofId || proof.key,
+              timestamp: proof.timestamp || proof.submittedAt || Date.now(),
+              submitter: proof.submitter || "Unknown",
+              merkleRoots: analysis.merkleRoots,
+              balanceChanges,
+            });
+
+            // Update previous balances for next iteration
+            previousBalances = analysis.balances;
+          }
+        } catch (parseError) {
+          console.error(
+            `Error parsing proof ${proof.key}:`,
+            parseError
+          );
+        }
+      }
+
+      setStateTransitions(transitions);
+    } catch (error) {
+      console.error("Error fetching state transitions:", error);
+    } finally {
+      setIsLoadingTransitions(false);
+    }
+  }, [channel.id, channel.participants, decimals, participantBalances]);
+
+  // Fetch current balances on mount and when dependencies change
+  useEffect(() => {
+    if (initialDeposits && channel.participants.length > 0) {
+      fetchCurrentBalances();
+    }
+  }, [fetchCurrentBalances, initialDeposits, channel.participants.length]);
+
+  // Fetch state transitions when verified proofs are available
+  useEffect(() => {
+    if (channel.id && participantBalances.length > 0) {
+      fetchStateTransitions();
+    }
+  }, [fetchStateTransitions, channel.id, participantBalances.length]);
+
   const [isVerifying, setIsVerifying] = useState<string | null>(null);
+  const [selectedProofForApproval, setSelectedProofForApproval] = useState<
+    string | null
+  >(null);
 
   // Handle proof verification
   const handleVerifyProof = async (proof: ProofData) => {
@@ -564,7 +754,7 @@ function StateExplorerDetailView({
         }
       }
 
-      // Refresh proofs list
+      // Refresh proofs list and balances
       const fetchProofs = async () => {
         try {
           const [verifiedProofs, submittedProofs, rejectedProofs] =
@@ -646,6 +836,9 @@ function StateExplorerDetailView({
       };
 
       await fetchProofs();
+
+      // Refresh balances to reflect the latest verified proof
+      await fetchCurrentBalances();
     } catch (error) {
       console.error("Error verifying proof:", error);
       alert(
@@ -923,10 +1116,23 @@ function StateExplorerDetailView({
               <div className="px-4 pb-4 space-y-6">
                 {/* Initial Deposits Section */}
                 <div>
-                  <h4 className="text-xs font-semibold text-gray-300 mb-3 flex items-center gap-2">
-                    <div className="w-1 h-1 bg-[#4fc3f7] rounded-full" />
-                    Initial Deposits (Channel Creation)
-                  </h4>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-xs font-semibold text-gray-300 flex items-center gap-2">
+                      <div className="w-1 h-1 bg-[#4fc3f7] rounded-full" />
+                      Initial Deposits (Channel Creation)
+                    </h4>
+                    {initialMerkleRoot !== "N/A" && (
+                      <div className="flex items-center gap-2 bg-[#0a1930]/70 border border-[#4fc3f7]/20 px-3 py-1 rounded">
+                        <Hash className="w-3 h-3 text-[#4fc3f7]" />
+                        <span className="text-[10px] text-gray-400">
+                          Initial Root:
+                        </span>
+                        <span className="font-mono text-[10px] text-[#4fc3f7]">
+                          {initialMerkleRoot.slice(0, 8)}...{initialMerkleRoot.slice(-6)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                   {isLoadingBalances ? (
                     <div className="text-center py-4">
                       <LoadingSpinner size="sm" />
@@ -977,10 +1183,23 @@ function StateExplorerDetailView({
 
                 {/* Current State Balances Section */}
                 <div>
-                  <h4 className="text-xs font-semibold text-gray-300 mb-3 flex items-center gap-2">
-                    <div className="w-1 h-1 bg-green-500 rounded-full" />
-                    Current State Balances (Latest Approved State)
-                  </h4>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-xs font-semibold text-gray-300 flex items-center gap-2">
+                      <div className="w-1 h-1 bg-green-500 rounded-full" />
+                      Current State Balances (Latest Approved State)
+                    </h4>
+                    {currentMerkleRoot !== "N/A" && (
+                      <div className="flex items-center gap-2 bg-[#0a1930]/70 border border-green-500/20 px-3 py-1 rounded">
+                        <Hash className="w-3 h-3 text-green-400" />
+                        <span className="text-[10px] text-gray-400">
+                          Current Root:
+                        </span>
+                        <span className="font-mono text-[10px] text-green-400">
+                          {currentMerkleRoot.slice(0, 8)}...{currentMerkleRoot.slice(-6)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                   {isLoadingBalances ? (
                     <div className="text-center py-4">
                       <LoadingSpinner size="sm" />
@@ -1172,6 +1391,331 @@ function StateExplorerDetailView({
                 </span>
               </button>
             </div>
+
+            {/* State Transition Timeline */}
+            {stateTransitions.length > 0 && (
+              <div className="mb-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7]/50 shadow-lg overflow-hidden">
+                {/* Collapsible Header */}
+                <button
+                  onClick={() => setIsTransitionsExpanded(!isTransitionsExpanded)}
+                  className="w-full flex items-center justify-between p-4 hover:bg-[#4fc3f7]/5 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="bg-[#4fc3f7] p-1.5 rounded">
+                      <Layers className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="text-left">
+                      <h3 className="text-sm font-semibold text-white">
+                        State Transition History
+                      </h3>
+                      <p className="text-xs text-gray-400">
+                        {stateTransitions.length} state{stateTransitions.length > 1 ? 's' : ''} recorded
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    {/* Quick Summary */}
+                    <div className="hidden md:flex items-center gap-2 text-xs">
+                      <span className="bg-[#4fc3f7]/20 text-[#4fc3f7] px-2 py-0.5 rounded font-medium">
+                        {stateTransitions.length} STATES
+                      </span>
+                      {stateTransitions.length > 0 && (
+                        <span className="text-gray-400">
+                          Latest: #{stateTransitions[stateTransitions.length - 1]?.sequenceNumber}
+                        </span>
+                      )}
+                    </div>
+                    {/* Expand/Collapse Icon */}
+                    <div className="text-[#4fc3f7]">
+                      {isTransitionsExpanded ? (
+                        <ChevronUp className="w-5 h-5" />
+                      ) : (
+                        <ChevronDown className="w-5 h-5" />
+                      )}
+                    </div>
+                  </div>
+                </button>
+
+                {/* Expandable Content */}
+                <div
+                  className={`transition-all duration-300 ease-in-out ${
+                    isTransitionsExpanded
+                      ? "max-h-[600px] opacity-100"
+                      : "max-h-0 opacity-0"
+                  } overflow-hidden`}
+                >
+                  <div className="px-4 pb-4">
+                    <p className="text-gray-400 text-sm mb-4">
+                      Track how participant balances have evolved through each approved state transition
+                    </p>
+
+                    {isLoadingTransitions ? (
+                      <div className="text-center py-8">
+                        <LoadingSpinner size="md" />
+                        <p className="text-gray-400 text-sm mt-4">Loading state history...</p>
+                      </div>
+                    ) : (
+                      <div 
+                        className={`space-y-4 ${
+                          stateTransitions.length > 3 ? 'max-h-[450px] overflow-y-auto pr-2 scrollbar-thin' : ''
+                        }`}
+                      >
+                        {stateTransitions.map((transition, idx) => (
+                          <div
+                            key={transition.proofId}
+                            className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 rounded-lg p-4 hover:border-[#4fc3f7]/50 transition-all"
+                          >
+                            {/* Transition Header */}
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="flex items-center gap-3">
+                                <div className="bg-[#4fc3f7]/20 px-3 py-1 rounded">
+                                  <span className="text-[#4fc3f7] font-bold text-sm">
+                                    #{transition.sequenceNumber}
+                                  </span>
+                                </div>
+                                <div>
+                                  <div className="text-white font-medium text-sm">
+                                    {transition.proofId}
+                                  </div>
+                                  <div className="text-gray-400 text-xs">
+                                    {new Date(transition.timestamp).toLocaleString()}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-gray-400 text-xs">Submitter</div>
+                                <div className="text-white font-mono text-xs">
+                                  {transition.submitter.slice(0, 6)}...{transition.submitter.slice(-4)}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Merkle Roots */}
+                            <div className="grid grid-cols-2 gap-3 mb-4 p-3 bg-[#1a2347]/50 rounded">
+                              <div>
+                                <div className="text-gray-400 text-[10px] mb-1 flex items-center gap-1">
+                                  <Hash className="w-3 h-3" />
+                                  Initial Root
+                                </div>
+                                <div className="text-[#4fc3f7] font-mono text-[10px]">
+                                  {transition.merkleRoots.initial.slice(0, 10)}...
+                                  {transition.merkleRoots.initial.slice(-8)}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-gray-400 text-[10px] mb-1 flex items-center gap-1">
+                                  <Hash className="w-3 h-3" />
+                                  Resulting Root
+                                </div>
+                                <div className="text-green-400 font-mono text-[10px]">
+                                  {transition.merkleRoots.resulting.slice(0, 10)}...
+                                  {transition.merkleRoots.resulting.slice(-8)}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Balance Changes */}
+                            <div>
+                              <div className="text-gray-400 text-xs mb-2 font-semibold">
+                                Balance Changes
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                {transition.balanceChanges.map((change, changeIdx) => {
+                                  const hasChange = parseFloat(change.change) !== 0;
+                                  const isIncrease = parseFloat(change.change) > 0;
+                                  
+                                  return (
+                                    <div
+                                      key={change.address}
+                                      className={`p-2 rounded text-xs ${
+                                        hasChange
+                                          ? isIncrease
+                                            ? "bg-green-500/10 border border-green-500/30"
+                                            : "bg-red-500/10 border border-red-500/30"
+                                          : "bg-[#1a2347]/30 border border-[#4fc3f7]/10"
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-1 mb-1">
+                                        <span className="bg-[#4fc3f7]/20 px-1 rounded text-[#4fc3f7] font-bold text-[9px]">
+                                          #{changeIdx + 1}
+                                        </span>
+                                        <span className="text-gray-300 font-mono text-[10px]">
+                                          {change.address.slice(0, 6)}...{change.address.slice(-4)}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center justify-between">
+                                        <div>
+                                          <span className="text-gray-400 text-[10px]">
+                                            {change.before} →{" "}
+                                          </span>
+                                          <span className="text-white font-medium text-[10px]">
+                                            {change.after}
+                                          </span>
+                                        </div>
+                                        {hasChange && (
+                                          <span
+                                            className={`font-bold text-[10px] ${
+                                              isIncrease ? "text-green-400" : "text-red-400"
+                                            }`}
+                                          >
+                                            {change.change} {symbol}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Scroll indicator when there are more than 3 transitions */}
+                    {stateTransitions.length > 3 && (
+                      <div className="mt-3 text-center text-xs text-gray-500">
+                        <span className="bg-[#1a2347]/50 px-3 py-1 rounded">
+                          Scroll to see all {stateTransitions.length} state transitions
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Preview when collapsed */}
+                {!isTransitionsExpanded && (
+                  <div className="px-4 pb-3 flex flex-wrap gap-2 text-xs">
+                    {stateTransitions.slice(-3).map((transition) => (
+                      <div
+                        key={transition.proofId}
+                        className="flex items-center gap-1.5 bg-[#0a1930]/50 border border-[#4fc3f7]/10 px-2 py-1 rounded"
+                      >
+                        <span className="bg-[#4fc3f7]/20 px-1 rounded text-[#4fc3f7] font-bold text-[9px]">
+                          #{transition.sequenceNumber}
+                        </span>
+                        <span className="text-gray-400 text-[10px]">
+                          {new Date(transition.timestamp).toLocaleDateString()}
+                        </span>
+                      </div>
+                    ))}
+                    {stateTransitions.length > 3 && (
+                      <div className="flex items-center text-gray-400">
+                        +{stateTransitions.length - 3} more
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Pending Proofs Approval Section (Leader Only) */}
+            {channel.isLeader &&
+              proofs.filter((p) => p.status === "pending").length > 0 && (
+                <div className="mb-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-amber-500/50 p-6 shadow-lg">
+                  <div className="flex items-center gap-3 mb-4">
+                    <AlertCircle className="w-5 h-5 text-amber-400" />
+                    <h3 className="text-lg font-semibold text-white">
+                      Pending Proofs Approval
+                    </h3>
+                    <span className="bg-amber-500/20 text-amber-400 text-xs px-2 py-0.5 rounded font-medium">
+                      LEADER ACTION REQUIRED
+                    </span>
+                  </div>
+                  <p className="text-gray-400 text-sm mb-4">
+                    Select one proof to approve. All other proofs in the same
+                    sequence will be automatically rejected.
+                  </p>
+
+                  <div className="space-y-3 mb-4">
+                    {proofs
+                      .filter((p) => p.status === "pending")
+                      .map((proof) => (
+                        <label
+                          key={proof.key || proof.id}
+                          className={`flex items-center gap-3 p-4 rounded-lg border cursor-pointer transition-all ${
+                            selectedProofForApproval === proof.key
+                              ? "bg-amber-500/10 border-amber-500/50"
+                              : "bg-[#0a1930]/50 border-[#4fc3f7]/30 hover:border-amber-500/30"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="proofApproval"
+                            value={proof.key as string}
+                            checked={selectedProofForApproval === proof.key}
+                            onChange={(e) =>
+                              setSelectedProofForApproval(e.target.value)
+                            }
+                            className="w-4 h-4 text-amber-500 focus:ring-amber-500 focus:ring-2"
+                          />
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-white font-medium">
+                                {proof.id || proof.proofId || proof.key}
+                              </span>
+                              <span className="text-xs text-gray-400">
+                                Sequence #{proof.sequenceNumber}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div>
+                                <span className="text-gray-400">
+                                  Submitted:{" "}
+                                </span>
+                                <span className="text-white">
+                                  {proof.timestamp
+                                    ? new Date(proof.timestamp).toLocaleString()
+                                    : "N/A"}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">
+                                  Submitter:{" "}
+                                </span>
+                                <span className="text-white font-mono text-xs">
+                                  {proof.submitter
+                                    ? `${proof.submitter.slice(
+                                        0,
+                                        6
+                                      )}...${proof.submitter.slice(-4)}`
+                                    : "Unknown"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      if (!selectedProofForApproval) return;
+                      const proofToApprove = proofs.find(
+                        (p) => p.key === selectedProofForApproval
+                      );
+                      if (proofToApprove) {
+                        await handleVerifyProof(proofToApprove);
+                        setSelectedProofForApproval(null);
+                      }
+                    }}
+                    disabled={!selectedProofForApproval || isVerifying !== null}
+                    className="w-full bg-gradient-to-r from-amber-500 to-amber-600 text-white py-3 rounded-lg font-semibold hover:from-amber-600 hover:to-amber-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isVerifying ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-5 h-5" />
+                        Approve Selected Proof
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
 
             {/* Proof Cards Grid */}
             {isLoadingProofs ? (
