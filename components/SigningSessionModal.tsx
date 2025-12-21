@@ -41,20 +41,27 @@ export function SigningSessionModal({
   const [previewHash, setPreviewHash] = useState('');
   const [rosterFromPackage, setRosterFromPackage] = useState<string[]>([]);
 
-  // Extract roster from key package when modal opens (same as DKG management)
+  // Extract roster from key package or imported session when modal opens
   useEffect(() => {
-    if (isOpen && keyPackageData?.keyPackageHex) {
-      try {
-        const metadata = JSON.parse(get_key_package_metadata(keyPackageData.keyPackageHex));
-        console.log('📦 Key package metadata:', metadata);
-        
-        // Extract roster as array of public keys (same as DKG management)
-        const pubkeys = Object.values(metadata.roster) as string[];
-        
-        console.log('📋 Roster public keys:', pubkeys);
-        setRosterFromPackage(pubkeys);
-      } catch (e) {
-        console.error('Failed to extract roster from key package:', e);
+    if (isOpen && keyPackageData) {
+      if (keyPackageData.keyPackageHex) {
+        // Real key package - extract roster from metadata
+        try {
+          const metadata = JSON.parse(get_key_package_metadata(keyPackageData.keyPackageHex));
+          console.log('📦 Key package metadata:', metadata);
+          
+          // Extract roster as array of public keys (same as DKG management)
+          const pubkeys = Object.values(metadata.roster) as string[];
+          
+          console.log('📋 Roster public keys:', pubkeys);
+          setRosterFromPackage(pubkeys);
+        } catch (e) {
+          console.error('Failed to extract roster from key package:', e);
+          setRosterFromPackage([]);
+        }
+      } else {
+        // Imported session - cannot extract roster without actual key package
+        console.log('📦 Imported session detected - no roster available without actual key package');
         setRosterFromPackage([]);
       }
     }
@@ -122,7 +129,11 @@ export function SigningSessionModal({
     }
 
     if (rosterFromPackage.length === 0) {
-      alert('No participants found in key package');
+      if (keyPackageData?.keyPackageHex) {
+        alert('No participants found in key package');
+      } else {
+        alert('Cannot create signing session from imported session data. You need an actual key package with participant public keys to create signing sessions.');
+      }
       return;
     }
 
@@ -278,11 +289,20 @@ export function SigningSessionModal({
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold mb-2">
                 <Users className="w-4 h-4 text-purple-400" />
-                Participants from Key Package
+                Participants {keyPackageData?.keyPackageHex ? 'from Key Package' : 'from Imported Session'}
               </label>
               <p className="text-xs text-gray-400 mb-3">
                 {rosterFromPackage.length} participant(s) found (Threshold: {keyPackageData?.threshold})
               </p>
+              {!keyPackageData?.keyPackageHex && (
+                <div className="mb-3 p-3 bg-red-900/20 border border-red-500/50 rounded-lg">
+                  <p className="text-xs text-red-300">
+                    ❌ <strong>Imported Session:</strong> Cannot create signing sessions from imported data. 
+                    You need an actual key package with participant public keys. 
+                    Imported sessions can only be used for reference.
+                  </p>
+                </div>
+              )}
               <div className="bg-purple-900/20 border border-purple-500/50 p-4">
                 <div className="space-y-2">
                   {rosterFromPackage.map((pubkey, index) => (
@@ -311,10 +331,14 @@ export function SigningSessionModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!isAuthenticated || !channelId || !finalStateRoot || !packedData}
+            disabled={!isAuthenticated || !channelId || !finalStateRoot || !packedData || !keyPackageData?.keyPackageHex}
             className="flex-1 px-6 py-3 bg-[#028bee] hover:bg-[#0277d4] disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold transition-all"
           >
-            {!isAuthenticated ? 'Not Authenticated' : 'Create Signing Session'}
+            {!isAuthenticated 
+              ? 'Not Authenticated' 
+              : !keyPackageData?.keyPackageHex 
+                ? 'Cannot Create from Imported Session'
+                : 'Create Signing Session'}
           </button>
         </div>
       </div>

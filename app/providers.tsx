@@ -9,7 +9,10 @@ import { mainnet, sepolia } from 'wagmi/chains';
 import { publicProvider } from 'wagmi/providers/public';
 import { jsonRpcProvider } from 'wagmi/providers/jsonRpc';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ThemeProvider } from '@/contexts/ThemeContext';
+import { ThemeProvider as OldThemeProvider } from '@/contexts/ThemeContext';
+import { ThemeProvider } from '@/components/ui/theme-toggle';
+import { ToastProvider } from '@/components/ui/toast';
+import { ErrorBoundary } from '@/components/ui/error-boundary';
 import ConsoleErrorFilter from '@/components/ConsoleErrorFilter';
 
 import '@rainbow-me/rainbowkit/styles.css';
@@ -76,10 +79,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
           showRecentTransactions={false}
           initialChain={sepolia}
         >
-          <ThemeProvider>
-            <ConsoleErrorFilter enabled={true} />
-            {children}
-          </ThemeProvider>
+          <ErrorBoundary>
+            <ThemeProvider>
+              <ToastProvider>
+                <OldThemeProvider>
+                  <ConsoleErrorFilter enabled={true} />
+                  {children}
+                </OldThemeProvider>
+              </ToastProvider>
+            </ThemeProvider>
+          </ErrorBoundary>
         </RainbowKitProvider>
       </WagmiConfig>
     </QueryClientProvider>
