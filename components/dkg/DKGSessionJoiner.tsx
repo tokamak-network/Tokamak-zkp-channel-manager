@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { XCircle, CheckCircle2, RefreshCw, AlertTriangle } from 'lucide-react';
+import { XCircle, CheckCircle2, RefreshCw, AlertTriangle, Link2 } from 'lucide-react';
 
 interface DKGSessionJoinerProps {
   connectionStatus: 'disconnected' | 'connecting' | 'connected';
@@ -93,14 +93,10 @@ export function DKGSessionJoiner({
               disabled={!sessionToJoin || isJoiningSession || !authState.isAuthenticated}
               className="min-w-[140px]"
             >
-              {isJoiningSession ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Joining...
-                </div>
-              ) : (
-                'Join Session'
-              )}
+              <div className="flex items-center gap-2">
+                <Link2 className="w-4 h-4" />
+                {isJoiningSession ? 'Joining...' : 'Join Session'}
+              </div>
             </Button>
           </div>
 

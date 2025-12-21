@@ -67,8 +67,8 @@ export function DKGQuickStart({
   const [currentStep, setCurrentStep] = useState(0);
   const [isWizardMode] = useState(true); // Always true - guide always shown
   const [quickSessionParams, setQuickSessionParams] = useState({
-    threshold: '2',
-    participants: '2'
+    threshold: '3',
+    participants: '5'
   });
   const [showRoasterBanner, setShowRoasterBanner] = useState(false);
   const [roasterAddresses, setRoasterAddresses] = useState('');
@@ -114,11 +114,30 @@ export function DKGQuickStart({
     const threshold = parseInt(quickSessionParams.threshold);
     const participantCount = parseInt(quickSessionParams.participants);
 
+    // Validate basic constraints
     if (threshold > participantCount) {
       showToast({
         type: 'error',
         title: 'Invalid Configuration',
         message: 'Threshold cannot be greater than number of participants'
+      });
+      return;
+    }
+
+    if (threshold < 2) {
+      showToast({
+        type: 'error',
+        title: 'Invalid Threshold',
+        message: 'Threshold must be at least 2 for security'
+      });
+      return;
+    }
+
+    if (participantCount > 127) {
+      showToast({
+        type: 'error',
+        title: 'Too Many Participants',
+        message: 'FROST protocol supports a maximum of 127 participants'
       });
       return;
     }
@@ -138,9 +157,19 @@ export function DKGQuickStart({
       showToast({
         type: 'error',
         title: 'Address Count Mismatch',
-        message: `Please provide exactly ${participantCount} roaster addresses (one per line)`
+        message: `Please provide exactly ${participantCount} roaster addresses (one per line). Currently provided: ${addressLines.length}`
       });
       return;
+    }
+
+    // Additional validation for large sessions
+    if (participantCount > 20) {
+      showToast({
+        type: 'warning',
+        title: 'Large Session Warning',
+        message: `Creating a session with ${participantCount} participants. This may take longer to complete.`,
+        duration: 6000
+      });
     }
 
     // Create participants array with provided addresses
@@ -214,7 +243,7 @@ export function DKGQuickStart({
                 
                 {/* Connecting Line */}
                 {index < steps.length - 1 && (
-                  <div className="absolute left-1/2 right-0 top-1/2 transform -translate-y-1/2 z-0">
+                  <div className="absolute left-1/2 top-1/2 transform -translate-y-1/2 z-0 w-full">
                     <div className={`
                       h-1 w-full transition-all duration-500 relative overflow-hidden
                       ${(isCompleted || (isActive && index === currentStep - 1)) ? 
@@ -418,31 +447,54 @@ export function DKGQuickStart({
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-xs text-gray-400">Threshold</label>
-                      <select
+                      <input
+                        type="number"
+                        min="2"
+                        max={quickSessionParams.participants}
                         value={quickSessionParams.threshold}
-                        onChange={(e) => setQuickSessionParams(prev => ({ ...prev, threshold: e.target.value }))}
-                        className="w-full px-2 py-1 bg-[#0a1930] border border-[#4fc3f7]/30 rounded text-white text-sm"
-                      >
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                      </select>
+                        onChange={(e) => {
+                          const value = Math.max(2, Math.min(parseInt(e.target.value) || 2, parseInt(quickSessionParams.participants)));
+                          setQuickSessionParams(prev => ({ ...prev, threshold: value.toString() }));
+                        }}
+                        className="w-full px-2 py-1 bg-[#0a1930] border border-[#4fc3f7]/30 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#4fc3f7]"
+                        placeholder="2"
+                      />
                     </div>
                     <div>
                       <label className="text-xs text-gray-400">Participants</label>
-                      <select
+                      <input
+                        type="number"
+                        min="2"
+                        max="127"
                         value={quickSessionParams.participants}
-                        onChange={(e) => setQuickSessionParams(prev => ({ ...prev, participants: e.target.value }))}
-                        className="w-full px-2 py-1 bg-[#0a1930] border border-[#4fc3f7]/30 rounded text-white text-sm"
-                      >
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                        <option value="6">6</option>
-                        <option value="7">7</option>
-                      </select>
+                        onChange={(e) => {
+                          const value = Math.max(2, Math.min(parseInt(e.target.value) || 2, 127));
+                          const newParams = { ...quickSessionParams, participants: value.toString() };
+                          // Adjust threshold if it's higher than participants
+                          if (parseInt(quickSessionParams.threshold) > value) {
+                            newParams.threshold = value.toString();
+                          }
+                          setQuickSessionParams(newParams);
+                        }}
+                        className="w-full px-2 py-1 bg-[#0a1930] border border-[#4fc3f7]/30 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#4fc3f7]"
+                        placeholder="2"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Configuration Info */}
+                  <div className="text-xs text-gray-400 bg-[#0a1930]/50 p-2 rounded border border-[#4fc3f7]/20">
+                    <div className="mb-1">
+                      📊 <strong>Configuration:</strong> {quickSessionParams.threshold}-of-{quickSessionParams.participants} threshold signature
+                    </div>
+                    <div className="text-gray-500">
+                      • Threshold: Minimum signatures required ({quickSessionParams.threshold})
+                    </div>
+                    <div className="text-gray-500">
+                      • Participants: Fixed number of participants ({quickSessionParams.participants})
+                    </div>
+                    <div className="text-gray-500">
+                      • FROST supports up to 127 participants
                     </div>
                   </div>
                   

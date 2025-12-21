@@ -13,7 +13,6 @@ import { ThemeProvider as OldThemeProvider } from '@/contexts/ThemeContext';
 import { ThemeProvider } from '@/components/ui/theme-toggle';
 import { ToastProvider } from '@/components/ui/toast';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
-import ConsoleErrorFilter from '@/components/ConsoleErrorFilter';
 
 import '@rainbow-me/rainbowkit/styles.css';
 
@@ -83,7 +82,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
             <ThemeProvider>
               <ToastProvider>
                 <OldThemeProvider>
-                  <ConsoleErrorFilter enabled={true} />
                   {children}
                 </OldThemeProvider>
               </ToastProvider>

@@ -40,7 +40,6 @@ import { DKGCommitmentModal } from '@/components/dkg/DKGCommitmentModal';
 import { DKGSessionDetails } from '@/components/dkg/DKGSessionDetails';
 import { DKGAutomationStatus } from '@/components/dkg/DKGAutomationStatus';
 import { DKGErrorDisplay } from '@/components/dkg/DKGErrorDisplay';
-import { DKGConsoleSettings } from '@/components/dkg/DKGConsoleSettings';
 import { DKGWasmStatus } from '@/components/dkg/DKGWasmStatus';
 import { DKGSessionInfo } from '@/components/dkg/DKGSessionInfo';
 import { DKGServerDeploymentGuide } from '@/components/dkg/DKGServerDeploymentGuide';
@@ -89,7 +88,6 @@ function DKGManagementPageInner() {
   const [showSessionDetails, setShowSessionDetails] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [newlyCreatedSession, setNewlyCreatedSession] = useState<DKGSession | null>(null);
-  const [showConsoleSettings, setShowConsoleSettings] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importedSessionData, setImportedSessionData] = useState('');
 
@@ -146,7 +144,6 @@ function DKGManagementPageInner() {
     isSubmittingRound1,
     isSubmittingRound2,
     isSubmittingFinalize,
-    wasmReady,
     showCommitmentModal,
     selectedSessionForCommitment,
     submitRound1,
@@ -786,6 +783,9 @@ function DKGManagementPageInner() {
         }
       }
       
+      // Extract participant public keys from the roster
+      const participantRoster = sessionToDownload.roster?.map(([participantId, identifier, publicKey]) => publicKey) || [];
+      
       // Create a downloadable key share with uncompressed coordinates
       const keyShare = {
         session_id: sessionToDownload.id,
@@ -797,6 +797,7 @@ function DKGManagementPageInner() {
         },
         my_role: sessionToDownload.myRole,
         participants: sessionToDownload.roster?.length || 0,
+        participant_roster: participantRoster,
         threshold: `${sessionToDownload.minSigners}-of-${sessionToDownload.maxSigners}`,
         created_at: sessionToDownload.createdAt.toISOString()
       };
@@ -805,13 +806,92 @@ function DKGManagementPageInner() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `dkg_key_${sessionToDownload.id.slice(0, 8)}.json`;
+      a.download = `dkg_session_${sessionToDownload.id.slice(0, 8)}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       
-      setSuccessMessage('Key share downloaded successfully with uncompressed coordinates!');
+      setSuccessMessage('DKG session metadata downloaded successfully!');
+    }
+  };
+
+  // New function to download individual key package for signing
+  const handleDownloadKeyPackage = (session?: DKGSession) => {
+    const sessionToDownload = session || selectedSession;
+    if (!sessionToDownload) return;
+
+    // Check if this user has a key package for this session
+    const storageKey = `dkg_key_package_${sessionToDownload.id}`;
+    const storedKeyPackage = localStorage.getItem(storageKey);
+    
+    if (!storedKeyPackage) {
+      setError('No individual key package found. You must have participated in this DKG ceremony to download your key package.');
+      return;
+    }
+
+    try {
+      const keyPackageData = JSON.parse(storedKeyPackage);
+      
+      if (!keyPackageData.key_package_hex) {
+        setError('Invalid key package data - missing key package hex');
+        return;
+      }
+
+      // Extract uncompressed coordinates if available
+      let uncompressedKey = null;
+      if (sessionToDownload.groupVerifyingKey) {
+        if (isCompressedKey(sessionToDownload.groupVerifyingKey)) {
+          const decompressed = decompressPublicKey(sessionToDownload.groupVerifyingKey);
+          if (decompressed) {
+            uncompressedKey = {
+              px: decompressed.px,
+              py: decompressed.py
+            };
+          }
+        } else if (sessionToDownload.groupVerifyingKey.startsWith('04')) {
+          // Already uncompressed, extract px and py
+          uncompressedKey = {
+            px: sessionToDownload.groupVerifyingKey.slice(2, 66),
+            py: sessionToDownload.groupVerifyingKey.slice(66)
+          };
+        }
+      }
+
+      // Create the individual key package file in the format expected by the signing page
+      // This matches the format from the FROST reference implementation
+      const keyPackageFile = {
+        key_type: 'secp256k1', // Our implementation uses secp256k1
+        encryptedKeyPackageHex: keyPackageData.key_package_hex, // The actual key package needed for signing
+        finalGroupKeyCompressed: sessionToDownload.groupVerifyingKey || keyPackageData.group_public_key_hex,
+        finalGroupKeyUncompressed: keyPackageData.group_public_key_uncompressed,
+        px: uncompressedKey?.px,
+        py: uncompressedKey?.py,
+        salt: '2026', // Default salt used in our system
+        session_id: sessionToDownload.id,
+        group_id: keyPackageData.group_id || sessionToDownload.groupId,
+        threshold: keyPackageData.threshold || sessionToDownload.minSigners,
+        total_participants: keyPackageData.total || sessionToDownload.maxSigners,
+        created_at: keyPackageData.timestamp || sessionToDownload.createdAt.toISOString()
+      };
+
+      const blob = new Blob([JSON.stringify(keyPackageFile, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      // Format: frost-key-{group_prefix}-{user_prefix}.json (matching the reference implementation)
+      const groupPrefix = (sessionToDownload.groupVerifyingKey || keyPackageData.group_public_key_hex || '0000').slice(0, 4);
+      const userPrefix = (authState.publicKeyHex || '0000').slice(0, 4);
+      a.download = `frost-key-${groupPrefix}-${userPrefix}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      setSuccessMessage('Individual key package downloaded! Use this file in the signing page to participate in threshold signing.');
+    } catch (error) {
+      console.error('Error downloading key package:', error);
+      setError('Failed to download key package: ' + (error as Error).message);
     }
   };
 
@@ -822,6 +902,14 @@ function DKGManagementPageInner() {
       // Validate required fields
       if (!sessionData.session_id || !sessionData.group_verifying_key_compressed) {
         throw new Error('Invalid session data: missing required fields');
+      }
+
+      // Convert participant_roster to roster format expected by DKGSession
+      const roster: Array<[number, string, string]> = [];
+      if (sessionData.participant_roster && Array.isArray(sessionData.participant_roster)) {
+        sessionData.participant_roster.forEach((pubkey: string, index: number) => {
+          roster.push([index + 1, `participant_${index + 1}`, pubkey]);
+        });
       }
 
       // Create a session object that matches our DKGSession interface
@@ -838,7 +926,7 @@ function DKGManagementPageInner() {
         myRole: sessionData.my_role || 'participant',
         description: 'Imported session',
         participants: [],
-        roster: [],
+        roster: roster,
         groupVerifyingKey: sessionData.group_verifying_key_compressed,
         automationMode: 'manual'
       };
@@ -1362,37 +1450,26 @@ function DKGManagementPageInner() {
   }
 
   return (
-    <Layout title="DKG Management">
-      <div className="max-w-7xl mx-auto space-y-6 p-4 lg:p-8">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-4 mb-2">
-              <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-                DKG Management
-                <Badge className="bg-gradient-to-r from-[#4fc3f7] to-[#028bee] text-white border-none">
-                  Enhanced
-                </Badge>
-              </h1>
+    <>
+      <Layout title="DKG Management">
+        <div className="max-w-7xl mx-auto space-y-6 p-4 lg:p-8">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-4 mb-2">
+                <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+                  DKG Management
+                </h1>
+              </div>
+              <p className="text-gray-300">
+                Simple, guided experience for threshold signature creation
+              </p>
             </div>
-            <p className="text-gray-300">
-              Simple, guided experience for threshold signature creation
-            </p>
+
           </div>
-          <div className="flex gap-2">
-            <Badge variant="outline">DKG Participant</Badge>
-            {allSessions.some(s => s.creator === address) && (
-              <Badge variant="default">Session Creator</Badge>
-            )}
-            {/* Console settings toggle (development or debug mode) */}
-            {(process.env.NODE_ENV === 'development' || showConsoleSettings) && (
-              <DKGConsoleSettings />
-            )}
-          </div>
-        </div>
 
         {/* WASM Status Indicator */}
-        <DKGWasmStatus isReady={wasmReady} />
+        <DKGWasmStatus />
 
         {/* Statistics */}
         <Card className="p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]">
@@ -1525,14 +1602,42 @@ function DKGManagementPageInner() {
               </div>
             </Card>
 
+            {/* Download Types Help */}
+            <Card className="p-4 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]/30">
+              <h3 className="text-lg font-medium text-white mb-3 flex items-center gap-2">
+                <Download className="w-5 h-5 text-[#4fc3f7]" />
+                Download Options
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center flex-shrink-0">
+                    <Download className="w-3 h-3 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-blue-400">Session Metadata</h4>
+                    <p className="text-gray-400 mt-1">Downloads session info for importing/sharing. Contains group public key and participant roster.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 bg-green-600 rounded flex items-center justify-center flex-shrink-0">
+                    <Download className="w-3 h-3 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-green-400">Key Package</h4>
+                    <p className="text-gray-400 mt-1">Downloads your individual key package for threshold signing. Only available if you participated in the DKG ceremony.</p>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
             <DKGSessionGrid
               sessions={allSessions}
               address={address}
               onJoinSession={handleJoinSession}
               onViewDetails={handleViewMore}
               onStartAutomation={startAutomatedCeremony}
-              onRefreshSession={handleRefreshSession}
               onDownloadKey={handleDownloadKeyShare}
+              onDownloadKeyPackage={handleDownloadKeyPackage}
               isJoiningSession={isJoiningSession}
               authState={authState}
               wsConnection={wsConnection}
@@ -1594,8 +1699,18 @@ function DKGManagementPageInner() {
             </div>
           </div>
         )}
-      </div>
-    </Layout>
+        </div>
+      </Layout>
+      
+      {/* Session Details Modal */}
+      {showSessionDetails && selectedSession && (
+        <DKGSessionDetails
+          session={selectedSession}
+          onClose={() => setShowSessionDetails(false)}
+          onDownloadKeyShare={handleDownloadKeyShare}
+        />
+      )}
+    </>
   );
 }
 

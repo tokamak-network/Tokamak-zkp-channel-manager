@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +8,7 @@ import {
   Clock, 
   Play, 
   Pause, 
-  CheckCircle, 
+  CheckCircle,
   AlertCircle, 
   RotateCcw,
   Eye,
@@ -17,9 +16,7 @@ import {
   Zap,
   Settings,
   MoreHorizontal,
-  Download,
-  Trash2,
-  RefreshCw
+  Download
 } from 'lucide-react';
 import { StatusLight } from '@/components/ui/status-indicator';
 import { CopyButton, CopyableText } from '@/components/ui/copy-button';
@@ -49,9 +46,8 @@ interface DKGSessionGridProps {
   onJoinSession: (sessionId: string) => void;
   onViewDetails: (session: DKGSession) => void;
   onStartAutomation: (sessionId: string) => void;
-  onRefreshSession: (sessionId: string) => void;
   onDownloadKey: (session: DKGSession) => void;
-  onDeleteSession?: (sessionId: string) => void;
+  onDownloadKeyPackage?: (session: DKGSession) => void;
   isJoiningSession: boolean;
   authState: any;
   wsConnection: WebSocket | null;
@@ -63,14 +59,12 @@ export function DKGSessionGrid({
   onJoinSession,
   onViewDetails,
   onStartAutomation,
-  onRefreshSession,
   onDownloadKey,
-  onDeleteSession,
+  onDownloadKeyPackage,
   isJoiningSession,
   authState,
   wsConnection
 }: DKGSessionGridProps) {
-  const [selectedSessions, setSelectedSessions] = useState<Set<string>>(new Set());
   const { showToast } = useToast();
 
   const getStatusColor = (status: string) => {
@@ -98,17 +92,10 @@ export function DKGSessionGrid({
   };
 
   const canJoinSession = (session: DKGSession) => {
-    // Check if user is in the session participants list (by public key)
-    const userPublicKey = authState.publicKeyHex;
-    const isInParticipantsList = userPublicKey && session.participants.some(
-      participant => participant.publicKey === userPublicKey
-    );
-    
+    // Show join button for waiting sessions that aren't full
     return session.status === 'waiting' && 
            session.currentParticipants < session.maxSigners &&
-           authState.isAuthenticated &&
-           isInParticipantsList && // Only show join if user is in the roaster
-           session.myRole !== 'participant'; // Don't show join if already joined
+           authState.isAuthenticated;
   };
 
   const canStartAutomation = (session: DKGSession) => {
@@ -121,44 +108,14 @@ export function DKGSessionGrid({
     return session.status === 'completed' && session.groupVerifyingKey;
   };
 
-  const toggleSessionSelection = (sessionId: string) => {
-    setSelectedSessions(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(sessionId)) {
-        newSet.delete(sessionId);
-      } else {
-        newSet.add(sessionId);
-      }
-      return newSet;
-    });
+  const canDownloadKeyPackage = (session: DKGSession) => {
+    // Check if user has a key package for this session (participated in DKG)
+    const storageKey = `dkg_key_package_${session.id}`;
+    const hasKeyPackage = localStorage.getItem(storageKey);
+    return session.status === 'completed' && hasKeyPackage;
   };
 
-  const handleBulkAction = (action: string) => {
-    if (selectedSessions.size === 0) {
-      showToast({
-        type: 'warning',
-        title: 'No sessions selected',
-        message: 'Please select sessions first'
-      });
-      return;
-    }
 
-    switch (action) {
-      case 'refresh':
-        selectedSessions.forEach(sessionId => onRefreshSession(sessionId));
-        showToast({
-          type: 'success',
-          title: `Refreshing ${selectedSessions.size} session(s)`
-        });
-        break;
-      case 'delete':
-        if (onDeleteSession && confirm(`Delete ${selectedSessions.size} selected session(s)?`)) {
-          selectedSessions.forEach(sessionId => onDeleteSession(sessionId));
-          setSelectedSessions(new Set());
-        }
-        break;
-    }
-  };
 
   if (sessions.length === 0) {
     return (
@@ -171,7 +128,7 @@ export function DKGSessionGrid({
           <p className="text-gray-400 mb-6">Create a new session or join an existing one to get started</p>
           <div className="flex items-center justify-center gap-4">
             <Button 
-              onClick={() => showToast({ type: 'info', title: 'Switch to Create tab to start a new session' })}
+              onClick={() => showToast({ type: 'info', title: 'Switch to Quick Start tab to create a new session' })}
               className="bg-[#028bee] hover:bg-[#0277d4]"
             >
               <Play className="w-4 h-4 mr-2" />
@@ -179,7 +136,7 @@ export function DKGSessionGrid({
             </Button>
             <Button 
               variant="outline"
-              onClick={() => showToast({ type: 'info', title: 'Switch to Join tab to find existing sessions' })}
+              onClick={() => showToast({ type: 'info', title: 'Switch to Quick Start tab to find and join existing sessions' })}
               className="border-[#4fc3f7]/30 hover:border-[#4fc3f7]"
             >
               <UserPlus className="w-4 h-4 mr-2" />
@@ -193,78 +150,19 @@ export function DKGSessionGrid({
 
   return (
     <div className="space-y-6">
-      {/* Bulk Actions */}
-      {selectedSessions.size > 0 && (
-        <Card className="p-4 bg-[#4fc3f7]/10 border-[#4fc3f7]/50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Badge className="bg-[#4fc3f7]/20 text-[#4fc3f7]">
-                {selectedSessions.size} selected
-              </Badge>
-              <span className="text-sm text-gray-300">
-                Choose an action for selected sessions
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleBulkAction('refresh')}
-                className="border-[#4fc3f7]/30"
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Refresh
-              </Button>
-              {onDeleteSession && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleBulkAction('delete')}
-                  className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedSessions(new Set())}
-                className="text-gray-400"
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </Card>
-      )}
 
       {/* Sessions Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
         {sessions.map((session) => {
           const StatusIcon = getStatusIcon(session.status);
           const statusColors = getStatusColor(session.status);
-          const isSelected = selectedSessions.has(session.id);
           const progress = session.maxSigners > 0 ? (session.currentParticipants / session.maxSigners) * 100 : 0;
 
           return (
             <Card
               key={session.id}
-              className={`
-                relative p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-[#4fc3f7]/20 cursor-pointer
-                ${isSelected ? 'border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/30' : 'border-[#4fc3f7]/30 hover:border-[#4fc3f7]/60'}
-              `}
-              onClick={() => toggleSessionSelection(session.id)}
+              className="relative p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-[#4fc3f7]/20 border-[#4fc3f7]/30 hover:border-[#4fc3f7]/60"
             >
-              {/* Selection Indicator */}
-              <div className="absolute top-4 right-4">
-                <div className={`
-                  w-5 h-5 rounded-full border-2 transition-all
-                  ${isSelected ? 'bg-[#4fc3f7] border-[#4fc3f7]' : 'border-gray-500'}
-                `}>
-                  {isSelected && <CheckCircle className="w-3 h-3 text-white m-0.5" />}
-                </div>
-              </div>
 
               {/* Header */}
               <div className="mb-4">
@@ -358,13 +256,38 @@ export function DKGSessionGrid({
                 )}
 
                 {canDownloadKey(session) && (
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      onClick={() => onDownloadKey(session)}
+                      className="bg-blue-600 hover:bg-blue-700"
+                      title="Download session metadata (for import/sharing)"
+                    >
+                      <Download className="w-4 h-4" />
+                    </Button>
+                    {canDownloadKeyPackage(session) && onDownloadKeyPackage && (
+                      <Button
+                        size="sm"
+                        onClick={() => onDownloadKeyPackage(session)}
+                        className="bg-green-600 hover:bg-green-700"
+                        title="Download your individual key package (for signing)"
+                      >
+                        <Download className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+                )}
+                
+                {/* Show only key package download if no session metadata download */}
+                {!canDownloadKey(session) && canDownloadKeyPackage(session) && onDownloadKeyPackage && (
                   <Button
                     size="sm"
-                    onClick={() => onDownloadKey(session)}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                    onClick={() => onDownloadKeyPackage(session)}
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    title="Download your individual key package (for signing)"
                   >
                     <Download className="w-4 h-4 mr-1" />
-                    Download
+                    Key Package
                   </Button>
                 )}
 
@@ -377,14 +300,6 @@ export function DKGSessionGrid({
                   <Eye className="w-4 h-4" />
                 </Button>
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onRefreshSession(session.id)}
-                  className="text-gray-400 hover:text-white"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </Button>
               </div>
 
               {/* Status Indicator at bottom */}
