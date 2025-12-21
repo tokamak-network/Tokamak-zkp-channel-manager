@@ -42,6 +42,7 @@ export function DKGSessionDetails({
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
   const [selectedChannelId, setSelectedChannelId] = useState(channelId || '');
+  const [validatedChannelId, setValidatedChannelId] = useState(channelId || '');
   const [isPostingKey, setIsPostingKey] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const { address } = useAccount();
@@ -55,8 +56,8 @@ export function DKGSessionDetails({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelLeader',
-    args: selectedChannelId ? [BigInt(selectedChannelId)] : undefined,
-    enabled: !!selectedChannelId && !!address,
+    args: validatedChannelId ? [BigInt(validatedChannelId)] : undefined,
+    enabled: !!validatedChannelId && !!address,
   });
   
   // Check if channel already has a public key set
@@ -64,8 +65,8 @@ export function DKGSessionDetails({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelPublicKey',
-    args: selectedChannelId ? [BigInt(selectedChannelId)] : undefined,
-    enabled: !!selectedChannelId,
+    args: validatedChannelId ? [BigInt(validatedChannelId)] : undefined,
+    enabled: !!validatedChannelId,
   });
   
   // Check channel state
@@ -73,8 +74,8 @@ export function DKGSessionDetails({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelState',
-    args: selectedChannelId ? [BigInt(selectedChannelId)] : undefined,
-    enabled: !!selectedChannelId,
+    args: validatedChannelId ? [BigInt(validatedChannelId)] : undefined,
+    enabled: !!validatedChannelId,
   });
   
   const isChannelLeader = channelLeader && address && channelLeader.toLowerCase() === address.toLowerCase();
@@ -110,12 +111,12 @@ export function DKGSessionDetails({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'setChannelPublicKey',
-    args: selectedChannelId && extractedKeys ? [
-      BigInt(selectedChannelId),
+    args: validatedChannelId && extractedKeys ? [
+      BigInt(validatedChannelId),
       extractedKeys.px,
       extractedKeys.py
     ] : undefined,
-    enabled: !!selectedChannelId && !!extractedKeys && isChannelLeader && !hasPublicKeySet && isChannelInitialized,
+    enabled: !!validatedChannelId && !!extractedKeys && isChannelLeader && !hasPublicKeySet && isChannelInitialized,
   });
   
   const { data: setKeyData, write: setChannelPublicKey } = useContractWrite(setKeyConfig);
@@ -132,6 +133,12 @@ export function DKGSessionDetails({
     }
   });
   
+  const handleValidateChannel = () => {
+    if (selectedChannelId && !isNaN(Number(selectedChannelId))) {
+      setValidatedChannelId(selectedChannelId);
+    }
+  };
+
   const handlePostKeyOnChain = async () => {
     if (setChannelPublicKey) {
       setIsPostingKey(true);
@@ -353,19 +360,30 @@ export function DKGSessionDetails({
                       Post Key On-Chain
                     </div>
                     
-                    {!selectedChannelId ? (
+                    {!validatedChannelId ? (
                       <div className="space-y-3">
                         <p className="text-xs text-gray-400">
                           Enter the channel ID to post this DKG public key on-chain:
                         </p>
                         <div className="flex gap-2">
                           <input
-                            type="text"
-                            placeholder="Enter channel ID"
+                            type="number"
+                            min="0"
+                            max="999999"
+                            step="1"
+                            placeholder="Enter channel ID (e.g., 10)"
                             value={selectedChannelId}
                             onChange={(e) => setSelectedChannelId(e.target.value)}
-                            className="flex-1 px-3 py-2 bg-black/40 border border-[#4fc3f7]/30 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#4fc3f7]/50"
+                            className="flex-1 px-3 py-2 bg-black/40 border border-[#4fc3f7]/30 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#4fc3f7]/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            onKeyDown={(e) => e.key === 'Enter' && handleValidateChannel()}
                           />
+                          <button
+                            onClick={handleValidateChannel}
+                            disabled={!selectedChannelId || isNaN(Number(selectedChannelId))}
+                            className="px-4 py-2 bg-[#4fc3f7] hover:bg-[#4fc3f7]/90 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium text-sm rounded transition-colors"
+                          >
+                            Validate
+                          </button>
                         </div>
                       </div>
                     ) : (
@@ -373,7 +391,7 @@ export function DKGSessionDetails({
                         <div className="text-xs space-y-1">
                           <div className="flex justify-between">
                             <span className="text-gray-400">Channel ID:</span>
-                            <span className="text-[#4fc3f7] font-mono">{selectedChannelId}</span>
+                            <span className="text-[#4fc3f7] font-mono">{validatedChannelId}</span>
                           </div>
                           {channelLeader && (
                             <div className="flex justify-between">
@@ -439,8 +457,11 @@ export function DKGSessionDetails({
                         )}
                         
                         <button
-                          onClick={() => setSelectedChannelId('')}
-                          className="w-full h-8 text-xs text-gray-400 hover:text-white transition-colors"
+                          onClick={() => {
+                            setSelectedChannelId('');
+                            setValidatedChannelId('');
+                          }}
+                          className="w-full px-4 py-2 bg-[#4fc3f7]/10 hover:bg-[#4fc3f7]/20 border border-[#4fc3f7]/30 hover:border-[#4fc3f7]/50 text-[#4fc3f7] hover:text-white text-sm font-medium rounded-md transition-all duration-200"
                         >
                           Change Channel ID
                         </button>

@@ -1,15 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAccount, useSignMessage } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Flame, Plus, Link2, ClipboardList, CheckCircle, X, Trash2, PenTool, Upload, Download, RefreshCw, FileText, Server } from 'lucide-react';
+import { Flame, Plus, Link2, ClipboardList, CheckCircle, X, Trash2, PenTool, Upload, Download, RefreshCw, FileText, Server, Zap, Settings, AlertCircle } from 'lucide-react';
 import { initWasm } from '@/lib/frost-wasm';
 import { DKG_CONFIG, shouldAutoConnect, debugLog } from '@/lib/dkg-config';
+
+// Enhanced UI components
+import { ThemeProvider } from '@/components/ui/theme-toggle';
+import { ToastProvider, useToast } from '@/components/ui/toast';
+import { ErrorBoundary } from '@/components/ui/error-boundary';
+import { LoadingSpinner, LoadingCard } from '@/components/ui/loading-spinner';
+import { RetryButton } from '@/components/ui/retry-button';
+import { DKGQuickStart } from '@/components/dkg/DKGQuickStart';
+import { DKGSessionGrid } from '@/components/dkg/DKGSessionGrid';
 import { 
   get_signing_prerequisites,
   get_key_package_metadata,
@@ -31,7 +40,6 @@ import { DKGCommitmentModal } from '@/components/dkg/DKGCommitmentModal';
 import { DKGSessionDetails } from '@/components/dkg/DKGSessionDetails';
 import { DKGAutomationStatus } from '@/components/dkg/DKGAutomationStatus';
 import { DKGErrorDisplay } from '@/components/dkg/DKGErrorDisplay';
-import { DKGConsoleSettings } from '@/components/dkg/DKGConsoleSettings';
 import { DKGWasmStatus } from '@/components/dkg/DKGWasmStatus';
 import { DKGSessionInfo } from '@/components/dkg/DKGSessionInfo';
 import { DKGServerDeploymentGuide } from '@/components/dkg/DKGServerDeploymentGuide';
@@ -68,18 +76,20 @@ interface DKGParticipant {
   publicKey: string;
 }
 
-export default function DKGManagementPage() {
+function DKGManagementPageInner() {
   const { address, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
+  const { showToast } = useToast();
   
   // UI state
-  const [activeTab, setActiveTab] = useState('sessions');
+  const [activeTab, setActiveTab] = useState('quick-start');
   const [serverUrl, setServerUrl] = useState(''); // Empty by default, user must enter URL manually
   const [selectedSession, setSelectedSession] = useState<DKGSession | null>(null);
   const [showSessionDetails, setShowSessionDetails] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [newlyCreatedSession, setNewlyCreatedSession] = useState<DKGSession | null>(null);
-  const [showConsoleSettings, setShowConsoleSettings] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importedSessionData, setImportedSessionData] = useState('');
 
   // Signing state
   const [keyPackage, setKeyPackage] = useState('');
@@ -134,7 +144,6 @@ export default function DKGManagementPage() {
     isSubmittingRound1,
     isSubmittingRound2,
     isSubmittingFinalize,
-    wasmReady,
     showCommitmentModal,
     selectedSessionForCommitment,
     submitRound1,
@@ -146,7 +155,7 @@ export default function DKGManagementPage() {
     handleRound2All,
   } = useDKGRounds(wsConnection, authState, frostIdMap, setSuccessMessage, setError);
 
-  // Initialize WASM module on mount
+  // Initialize WASM module on mount and load imported sessions
   useEffect(() => {
     debugLog('Initializing FROST WASM module...');
     initWasm()
@@ -154,10 +163,18 @@ export default function DKGManagementPage() {
         debugLog('FROST WASM module initialized successfully');
         // Load available key packages from localStorage
         loadAvailableKeyPackages();
+        // Load imported sessions
+        loadImportedSessions();
       })
       .catch(err => {
         console.error('❌ Failed to initialize FROST WASM:', err);
         setError('Failed to initialize cryptographic module. Please refresh the page.');
+        showToast({
+          type: 'error',
+          title: 'WASM initialization failed',
+          message: 'Please refresh the page and try again',
+          action: { label: 'Refresh', onClick: () => window.location.reload() }
+        });
       });
   }, []);
 
@@ -166,9 +183,24 @@ export default function DKGManagementPage() {
     console.log('🧹 Validating and cleaning localStorage data...');
     const keysToRemove: string[] = [];
     
+    // Define which keys contain JSON data vs plain strings
+    const jsonKeys = ['dkg_key_package_', 'dkg_imported_session_'];
+    const plainStringKeys = ['dkg_last_wallet_address', 'dkg_last_public_key', 'dkg_last_private_key'];
+    
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key?.startsWith('dkg_')) {
+        // Skip plain string keys - these don't need JSON validation
+        if (plainStringKeys.includes(key)) {
+          continue;
+        }
+        
+        // Only validate JSON for keys that should contain JSON
+        const isJsonKey = jsonKeys.some(prefix => key.startsWith(prefix));
+        if (!isJsonKey) {
+          continue; // Skip unknown dkg_ keys
+        }
+        
         try {
           const data = JSON.parse(localStorage.getItem(key) || '{}');
           
@@ -189,7 +221,16 @@ export default function DKGManagementPage() {
             }
           }
           
-          // Check for stale data (older than 24 hours)
+          // Validate imported session structure
+          if (key.startsWith('dkg_imported_session_')) {
+            if (!data.id || !data.groupVerifyingKey) {
+              console.warn(`🗑️ Removing corrupted imported session: ${key}`, data);
+              keysToRemove.push(key);
+              continue;
+            }
+          }
+          
+          // Check for stale data (older than 24 hours) - only for entries with timestamp
           if (data.timestamp) {
             const age = Date.now() - new Date(data.timestamp).getTime();
             if (age > 24 * 60 * 60 * 1000) {
@@ -251,6 +292,58 @@ export default function DKGManagementPage() {
     ));
   };
 
+  // Load imported sessions from localStorage and merge with hook sessions
+  const [importedSessions, setImportedSessions] = useState<DKGSession[]>([]);
+  
+  const loadImportedSessions = () => {
+    const loadedImportedSessions: DKGSession[] = [];
+    
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('dkg_imported_session_')) {
+        try {
+          const data = JSON.parse(localStorage.getItem(key) || '{}');
+          
+          if (data.id && data.groupVerifyingKey) {
+            // Convert the stored data back to DKGSession format
+            const importedSession: DKGSession = {
+              ...data,
+              createdAt: new Date(data.createdAt),
+              status: 'completed', // Imported sessions are always marked as completed
+              myRole: data.myRole || 'participant'
+            };
+            
+            loadedImportedSessions.push(importedSession);
+          }
+        } catch (e) {
+          console.error('Failed to parse imported session:', key, e);
+          // Remove the corrupted entry
+          localStorage.removeItem(key);
+        }
+      }
+    }
+
+    if (loadedImportedSessions.length > 0) {
+      console.log(`📥 Loaded ${loadedImportedSessions.length} imported session(s)`);
+      setImportedSessions(loadedImportedSessions);
+    }
+  };
+
+  // Merge imported sessions with hook sessions for display
+  const allSessions = React.useMemo(() => {
+    // Combine sessions from hook and imported sessions, avoiding duplicates
+    const combined = [...sessions];
+    
+    importedSessions.forEach(importedSession => {
+      // Check if this session already exists (by ID)
+      if (!combined.find(s => s.id === importedSession.id)) {
+        combined.push(importedSession);
+      }
+    });
+    
+    return combined.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [sessions, importedSessions]);
+
   // Load key package metadata when selected
   useEffect(() => {
     if (keyPackage.trim() !== '' && authState.publicKeyHex) {
@@ -277,9 +370,17 @@ export default function DKGManagementPage() {
           pubkeys.unshift(authState.publicKeyHex);
         }
         setSigningRoster(pubkeys);
-        setSuccessMessage('✅ Key package loaded successfully!');
+        showToast({
+          type: 'success',
+          title: 'Key package loaded',
+          message: 'Package metadata extracted successfully'
+        });
       } catch (e: any) {
-        setError(`Invalid key package: ${e.message}`);
+        showToast({
+          type: 'error',
+          title: 'Invalid key package',
+          message: e.message
+        });
       }
     }
   }, [keyPackage, authState.publicKeyHex]);
@@ -659,54 +760,231 @@ export default function DKGManagementPage() {
     setShowSessionDetails(true);
   };
 
-  const handleDownloadKeyShare = () => {
-    if (selectedSession) {
+  const handleDownloadKeyShare = (session?: DKGSession) => {
+    const sessionToDownload = session || selectedSession;
+    if (sessionToDownload) {
       // Extract uncompressed coordinates if the key is compressed
       let uncompressedKey = null;
-      if (selectedSession.groupVerifyingKey) {
-        if (isCompressedKey(selectedSession.groupVerifyingKey)) {
-          const decompressed = decompressPublicKey(selectedSession.groupVerifyingKey);
+      if (sessionToDownload.groupVerifyingKey) {
+        if (isCompressedKey(sessionToDownload.groupVerifyingKey)) {
+          const decompressed = decompressPublicKey(sessionToDownload.groupVerifyingKey);
           if (decompressed) {
             uncompressedKey = {
               px: '0x' + decompressed.px,
               py: '0x' + decompressed.py
             };
           }
-        } else if (selectedSession.groupVerifyingKey.startsWith('04')) {
+        } else if (sessionToDownload.groupVerifyingKey.startsWith('04')) {
           // Already uncompressed, extract px and py
           uncompressedKey = {
-            px: '0x' + selectedSession.groupVerifyingKey.slice(2, 66),
-            py: '0x' + selectedSession.groupVerifyingKey.slice(66)
+            px: '0x' + sessionToDownload.groupVerifyingKey.slice(2, 66),
+            py: '0x' + sessionToDownload.groupVerifyingKey.slice(66)
           };
         }
       }
       
+      // Extract participant public keys from the roster
+      const participantRoster = sessionToDownload.roster?.map(([participantId, identifier, publicKey]) => publicKey) || [];
+      
       // Create a downloadable key share with uncompressed coordinates
       const keyShare = {
-        session_id: selectedSession.id,
-        group_verifying_key_compressed: selectedSession.groupVerifyingKey,
+        session_id: sessionToDownload.id,
+        group_verifying_key_compressed: sessionToDownload.groupVerifyingKey,
         group_verifying_key: uncompressedKey || {
           px: null,
           py: null,
           error: 'Could not decompress key'
         },
-        my_role: selectedSession.myRole,
-        participants: selectedSession.roster?.length || 0,
-        threshold: `${selectedSession.minSigners}-of-${selectedSession.maxSigners}`,
-        created_at: selectedSession.createdAt.toISOString()
+        my_role: sessionToDownload.myRole,
+        participants: sessionToDownload.roster?.length || 0,
+        participant_roster: participantRoster,
+        threshold: `${sessionToDownload.minSigners}-of-${sessionToDownload.maxSigners}`,
+        created_at: sessionToDownload.createdAt.toISOString()
       };
 
       const blob = new Blob([JSON.stringify(keyShare, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `dkg_key_${selectedSession.id.slice(0, 8)}.json`;
+      a.download = `dkg_session_${sessionToDownload.id.slice(0, 8)}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       
-      setSuccessMessage('Key share downloaded successfully with uncompressed coordinates!');
+      setSuccessMessage('DKG session metadata downloaded successfully!');
+    }
+  };
+
+  // New function to download individual key package for signing
+  const handleDownloadKeyPackage = (session?: DKGSession) => {
+    const sessionToDownload = session || selectedSession;
+    if (!sessionToDownload) return;
+
+    // Check if this user has a key package for this session
+    const storageKey = `dkg_key_package_${sessionToDownload.id}`;
+    const storedKeyPackage = localStorage.getItem(storageKey);
+    
+    if (!storedKeyPackage) {
+      setError('No individual key package found. You must have participated in this DKG ceremony to download your key package.');
+      return;
+    }
+
+    try {
+      const keyPackageData = JSON.parse(storedKeyPackage);
+      
+      if (!keyPackageData.key_package_hex) {
+        setError('Invalid key package data - missing key package hex');
+        return;
+      }
+
+      // Extract uncompressed coordinates if available
+      let uncompressedKey = null;
+      if (sessionToDownload.groupVerifyingKey) {
+        if (isCompressedKey(sessionToDownload.groupVerifyingKey)) {
+          const decompressed = decompressPublicKey(sessionToDownload.groupVerifyingKey);
+          if (decompressed) {
+            uncompressedKey = {
+              px: decompressed.px,
+              py: decompressed.py
+            };
+          }
+        } else if (sessionToDownload.groupVerifyingKey.startsWith('04')) {
+          // Already uncompressed, extract px and py
+          uncompressedKey = {
+            px: sessionToDownload.groupVerifyingKey.slice(2, 66),
+            py: sessionToDownload.groupVerifyingKey.slice(66)
+          };
+        }
+      }
+
+      // Create the individual key package file in the format expected by the signing page
+      // This matches the format from the FROST reference implementation
+      const keyPackageFile = {
+        key_type: 'secp256k1', // Our implementation uses secp256k1
+        encryptedKeyPackageHex: keyPackageData.key_package_hex, // The actual key package needed for signing
+        finalGroupKeyCompressed: sessionToDownload.groupVerifyingKey || keyPackageData.group_public_key_hex,
+        finalGroupKeyUncompressed: keyPackageData.group_public_key_uncompressed,
+        px: uncompressedKey?.px,
+        py: uncompressedKey?.py,
+        salt: '2026', // Default salt used in our system
+        session_id: sessionToDownload.id,
+        group_id: keyPackageData.group_id || sessionToDownload.groupId,
+        threshold: keyPackageData.threshold || sessionToDownload.minSigners,
+        total_participants: keyPackageData.total || sessionToDownload.maxSigners,
+        created_at: keyPackageData.timestamp || sessionToDownload.createdAt.toISOString()
+      };
+
+      const blob = new Blob([JSON.stringify(keyPackageFile, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      // Format: frost-key-{group_prefix}-{user_prefix}.json (matching the reference implementation)
+      const groupPrefix = (sessionToDownload.groupVerifyingKey || keyPackageData.group_public_key_hex || '0000').slice(0, 4);
+      const userPrefix = (authState.publicKeyHex || '0000').slice(0, 4);
+      a.download = `frost-key-${groupPrefix}-${userPrefix}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      setSuccessMessage('Individual key package downloaded! Use this file in the signing page to participate in threshold signing.');
+    } catch (error) {
+      console.error('Error downloading key package:', error);
+      setError('Failed to download key package: ' + (error as Error).message);
+    }
+  };
+
+  const handleImportSession = () => {
+    try {
+      const sessionData = JSON.parse(importedSessionData);
+      
+      // Validate required fields
+      if (!sessionData.session_id || !sessionData.group_verifying_key_compressed) {
+        throw new Error('Invalid session data: missing required fields');
+      }
+
+      // Convert participant_roster to roster format expected by DKGSession
+      const roster: Array<[number, string, string]> = [];
+      if (sessionData.participant_roster && Array.isArray(sessionData.participant_roster)) {
+        sessionData.participant_roster.forEach((pubkey: string, index: number) => {
+          roster.push([index + 1, `participant_${index + 1}`, pubkey]);
+        });
+      }
+
+      // Create a session object that matches our DKGSession interface
+      const importedSession: DKGSession = {
+        id: sessionData.session_id,
+        creator: 'imported',
+        minSigners: parseInt(sessionData.threshold?.split('-')[0]) || 0,
+        maxSigners: parseInt(sessionData.threshold?.split('-')[2]) || sessionData.participants || 0,
+        currentParticipants: sessionData.participants || 0,
+        status: 'completed',
+        groupId: sessionData.session_id, // Use session_id as groupId if not provided
+        topic: 'imported',
+        createdAt: sessionData.created_at ? new Date(sessionData.created_at) : new Date(),
+        myRole: sessionData.my_role || 'participant',
+        description: 'Imported session',
+        participants: [],
+        roster: roster,
+        groupVerifyingKey: sessionData.group_verifying_key_compressed,
+        automationMode: 'manual'
+      };
+
+      // Store in localStorage for persistence
+      const storageKey = `dkg_imported_session_${sessionData.session_id}`;
+      localStorage.setItem(storageKey, JSON.stringify({
+        ...importedSession,
+        imported: true,
+        importedAt: new Date().toISOString()
+      }));
+
+      // Also store the key package data for signing
+      if (sessionData.group_verifying_key || sessionData.group_verifying_key_compressed) {
+        const keyPackageStorageKey = `dkg_key_package_imported_${sessionData.session_id}`;
+        localStorage.setItem(keyPackageStorageKey, JSON.stringify({
+          session_id: sessionData.session_id,
+          group_id: sessionData.session_id,
+          threshold: importedSession.minSigners,
+          total: importedSession.maxSigners,
+          timestamp: new Date().toISOString(),
+          key_package_hex: '', // This would need to be provided separately for signing
+          group_public_key_hex: sessionData.group_verifying_key_compressed,
+          imported: true
+        }));
+      }
+
+      setSuccessMessage(`✅ Session imported successfully: ${sessionData.session_id.slice(0, 8)}...`);
+      setShowImportModal(false);
+      setImportedSessionData('');
+      
+      // Refresh the page to show the imported session
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+      
+    } catch (error) {
+      setError(`Failed to import session: ${error instanceof Error ? error.message : 'Invalid JSON format'}`);
+    }
+  };
+
+  const handleImportFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target?.result as string;
+        setImportedSessionData(content);
+        showToast({
+          type: 'success',
+          title: 'File loaded',
+          message: `${file.name} loaded successfully`
+        });
+      };
+      reader.onerror = () => {
+        setError('Failed to read file');
+      };
+      reader.readAsText(file);
     }
   };
 
@@ -1140,119 +1418,76 @@ export default function DKGManagementPage() {
     setSuccessMessage('✅ Signature downloaded successfully!');
   };
 
-  const handleClearAllData = () => {
-    // Confirm before clearing
-    const confirmed = window.confirm(
-      '⚠️ Clear All DKG Data?\n\n' +
-      'This will permanently delete:\n' +
-      '• All DKG sessions from localStorage\n' +
-      '• All joined session records\n' +
-      '• Wallet keypair cache\n' +
-      '• Cannot be undone!\n\n' +
-      'Are you sure you want to continue?'
-    );
-
-    if (confirmed) {
-      console.log('🗑️  Clearing all DKG data from localStorage...');
-      
-      // Clear DKG sessions and joined sessions
-      clearAllSessions();
-      
-      // Also clear any other DKG-related localStorage items
-      localStorage.removeItem('dkg_last_wallet_address');
-      localStorage.removeItem('dkg_last_public_key');
-      localStorage.removeItem('dkg_last_private_key');
-      
-      // Clear all key packages
-      Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('dkg_key_package_')) {
-          localStorage.removeItem(key);
-        }
-      });
-      
-      console.log('✅ All DKG localStorage data cleared');
-      
-      // Force reload to reset all state
-      window.location.reload();
-      
-      // Optionally refresh the page after a short delay
-      setTimeout(() => {
-        if (window.confirm('Data cleared! Would you like to refresh the page now?')) {
-          window.location.reload();
-        }
-      }, 1000);
-    }
-  };
 
   if (!isConnected) {
     return (
       <Layout title="DKG Management">
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-center">
-            <h3 className="text-lg font-semibold text-white mb-2">
-              Connect Your Wallet
-            </h3>
-            <p className="text-gray-300 mb-4">
-              You need to connect your wallet to participate in DKG ceremonies
-            </p>
-            <ConnectButton />
-          </div>
+          <Card className="p-8 max-w-md bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7] animate-fade-in">
+            <div className="text-center space-y-6">
+              <div className="w-16 h-16 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 rounded-full flex items-center justify-center mx-auto animate-bounce-in">
+                <Zap className="w-8 h-8 text-[#4fc3f7]" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold text-white mb-2">
+                  Connect Your Wallet
+                </h3>
+                <p className="text-gray-300 mb-4">
+                  Connect your wallet to participate in distributed key generation ceremonies
+                </p>
+              </div>
+              <ConnectButton />
+              <div className="text-xs text-gray-500 space-y-1">
+                <p>• Secure threshold signature creation</p>
+                <p>• No private keys stored on server</p>
+                <p>• Full decentralized ceremony</p>
+              </div>
+            </div>
+          </Card>
         </div>
       </Layout>
     );
   }
 
   return (
-    <Layout title="DKG Management">
-      <div className="max-w-7xl mx-auto space-y-6 p-4 lg:p-8">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-              DKG Management
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleClearAllData}
-                className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 border-red-300 dark:border-red-700 flex items-center gap-2"
-                title="Clear all DKG data from localStorage"
-              >
-                <Trash2 className="w-4 h-4" />
-                Clear All Data
-              </Button>
-            </h1>
-            <p className="text-gray-300 mt-1">
-              Distributed Key Generation for FROST Threshold Signatures
-            </p>
+    <>
+      <Layout title="DKG Management">
+        <div className="max-w-7xl mx-auto space-y-6 p-4 lg:p-8">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-4 mb-2">
+                <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+                  DKG Management
+                </h1>
+              </div>
+              <p className="text-gray-300">
+                Simple, guided experience for threshold signature creation
+              </p>
+            </div>
+
           </div>
-          <div className="flex gap-2">
-            <Badge variant="outline">DKG Participant</Badge>
-            {sessions.some(s => s.creator === address) && (
-              <Badge variant="default">Session Creator</Badge>
-            )}
-            {/* Console settings toggle (development or debug mode) */}
-            {(process.env.NODE_ENV === 'development' || showConsoleSettings) && (
-              <DKGConsoleSettings />
-            )}
-          </div>
-        </div>
 
         {/* WASM Status Indicator */}
-        <DKGWasmStatus isReady={wasmReady} />
+        <DKGWasmStatus />
 
         {/* Statistics */}
         <Card className="p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-300">
-              {sessions.length} DKG Session(s) • {sessions.filter(s => s.status === 'waiting').length} Active
+              {allSessions.length} DKG Session(s) • {allSessions.filter(s => s.status === 'waiting').length} Active
               <br />
-              Created: {sessions.filter(s => s.myRole === 'creator').length} • Joined: {sessions.filter(s => s.myRole === 'participant').length}
+              Created: {allSessions.filter(s => s.myRole === 'creator').length} • Joined: {allSessions.filter(s => s.myRole === 'participant').length}
             </div>
-            {sessions.length > 0 && (
+            {allSessions.length > 0 && (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={clearAllSessions}
+                onClick={() => {
+                  clearAllSessions();
+                  // Also clear imported sessions state
+                  setImportedSessions([]);
+                }}
                 className="text-red-400 hover:bg-red-900/20"
               >
                 Clear All Sessions
@@ -1282,24 +1517,6 @@ export default function DKGManagementPage() {
           />
         )}
 
-        {/* Global Messages */}
-        {successMessage && (
-          <Card className="p-4 bg-green-900/20 border-green-500/50">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-400" />
-              <span className="text-green-400 font-medium">Success:</span>
-              <p className="text-green-300 text-sm">{successMessage}</p>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setSuccessMessage('')}
-                className="ml-auto text-green-400 hover:bg-green-900/30"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          </Card>
-        )}
 
         {error && (
           <DKGErrorDisplay
@@ -1317,12 +1534,10 @@ export default function DKGManagementPage() {
         )}
 
         {/* Tab Navigation */}
-        <div className="flex space-x-1 bg-[#0a1930] border border-[#4fc3f7]/30 p-1">
+        <div className="flex space-x-1 bg-[#0a1930] border border-[#4fc3f7]/30 p-1 rounded-lg">
           {[
+            { id: 'quick-start', label: 'Quick Start', icon: Zap },
             { id: 'sessions', label: 'DKG Sessions', icon: ClipboardList },
-            { id: 'create', label: 'Create DKG', icon: Plus },
-            { id: 'join', label: 'Join DKG', icon: Link2 },
-            { id: 'signing', label: 'Signing Sessions', icon: PenTool, badge: pendingSigningSessions.length },
             { id: 'server', label: 'Server Deployment', icon: Server },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -1332,474 +1547,101 @@ export default function DKGManagementPage() {
                 variant={activeTab === tab.id ? 'default' : 'ghost'}
                 onClick={() => {
                   setActiveTab(tab.id);
-                  if (tab.id === 'signing') {
-                    loadAvailableKeyPackages();
-                    if (wsConnection && authState.isAuthenticated) {
-                      wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions', payload: null }));
-                    }
-                  }
                 }}
-                className="flex-1 justify-center text-sm relative"
+                className="flex-1 justify-center text-sm relative transition-all hover:scale-105"
               >
                 <Icon className="w-4 h-4 mr-2" />
                 {tab.label}
-                {tab.badge && tab.badge > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-[#028bee] text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5 shadow-lg shadow-[#028bee]/50 animate-pulse">
-                    {tab.badge}
-                  </span>
-                )}
               </Button>
             );
           })}
         </div>
 
         {/* Tab Content */}
-        {activeTab === 'sessions' && (
-          <div className="space-y-6">
-            <DKGSessionsList
-              sessions={sessions}
-              address={address}
-              activeTab={activeTab}
-              frostIdMap={frostIdMap}
-              joinedSessions={joinedSessions}
-              onSelectSession={(session) => {
-                setSelectedSession(session);
-                setShowSessionDetails(true);
-              }}
-              onViewMore={handleViewMore}
-              onRefreshSession={handleRefreshSession}
-              onSubmitRound1={undefined}  // Disabled: Now automatic via WebSocket
-              onSubmitRound2={undefined}  // Disabled: Now automatic via WebSocket
-              onSubmitFinalization={undefined}  // Disabled: Now automatic via WebSocket
-              onStartAutomatedCeremony={startAutomatedCeremony}
-              onJoinSession={handleJoinSession}
-              isSubmittingRound1={false}
-              isSubmittingRound2={false}
-              isSubmittingFinalize={false}
-              isJoiningSession={isJoiningSession}
-              authState={authState}
-              wsConnection={wsConnection}
-            />
-          </div>
-        )}
-
-        {activeTab === 'create' && (
-          <DKGSessionCreator
+        {activeTab === 'quick-start' && (
+          <DKGQuickStart
             connectionStatus={connectionStatus}
             authState={{
-              isAuthenticated: authState.isAuthenticated,
+              ...authState,
               publicKeyHex: authState.publicKeyHex ?? undefined
             }}
             isCreatingSession={isCreatingSession}
             onCreateSession={handleCreateSession}
-          />
-        )}
-
-        {activeTab === 'join' && (
-          <DKGSessionJoiner
-            connectionStatus={connectionStatus}
-            authState={authState}
-            isJoiningSession={isJoiningSession}
-            successMessage={successMessage}
-            error={error}
             onJoinSession={handleJoinSession}
-            onDismissSuccess={() => setSuccessMessage('')}
+            onConnectToServer={handleConnectToServer}
+            onAuthenticate={authenticate}
+            onGetPublicKey={getDeterministicPublicKey}
+            onSwitchToSessionsTab={() => setActiveTab('sessions')}
+            sessions={allSessions}
+            pendingSigningSessions={pendingSigningSessions}
+            isJoiningSession={isJoiningSession}
+            serverUrl={serverUrl}
+            setServerUrl={setServerUrl}
           />
         )}
 
-        {activeTab === 'signing' && (
+        {activeTab === 'sessions' && (
           <div className="space-y-6">
-            {/* Pending Signing Sessions */}
-            <Card className="p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]">
-              <div className="flex items-center justify-between mb-6">
+            {/* Import Session Button */}
+            <Card className="p-4 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]/30">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 flex items-center justify-center">
-                    <PenTool className="w-5 h-5 text-[#4fc3f7]" />
-                  </div>
+                  <Upload className="w-5 h-5 text-[#4fc3f7]" />
                   <div>
-                    <h3 className="text-lg font-semibold text-white">Pending Signing Sessions</h3>
-                    <p className="text-sm text-gray-400">
-                      {pendingSigningSessions.length > 0 
-                        ? `${pendingSigningSessions.length} session${pendingSigningSessions.length !== 1 ? 's' : ''} waiting for participants` 
-                        : 'No pending sessions'}
-                    </p>
+                    <h3 className="text-lg font-medium text-white">Import Session</h3>
+                    <p className="text-sm text-gray-400">Import a previously downloaded DKG session</p>
                   </div>
                 </div>
                 <Button
-                  onClick={() => {
-                    if (wsConnection) {
-                      wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions', payload: null }));
-                    }
-                  }}
-                  variant="outline"
-                  size="sm"
-                  disabled={!wsConnection}
-                  className="bg-[#028bee] hover:bg-[#0277d4] text-white border-[#028bee]"
+                  onClick={() => setShowImportModal(true)}
+                  className="bg-[#028bee] hover:bg-[#0277d4]"
                 >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Refresh
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import Session
                 </Button>
               </div>
-
-              {pendingSigningSessions.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 bg-[#4fc3f7]/10 border-2 border-dashed border-[#4fc3f7]/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <PenTool className="w-8 h-8 text-[#4fc3f7]/50" />
-                  </div>
-                  <p className="text-gray-300 mb-2 font-medium">No Signing Sessions Available</p>
-                  <p className="text-gray-400 text-sm">Create a new session or wait for others to announce one</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {pendingSigningSessions.map((session: any) => {
-                    // Try to match key packages - handle both hex and non-hex group IDs
-                    const matchingPkg = availableKeyPackages.find(pkg => {
-                      // Direct match
-                      if (pkg.groupId === session.group_id) return true;
-                      
-                      // If session.group_id is hex, try converting pkg.groupId to hex
-                      if (/^[0-9a-fA-F]+$/.test(session.group_id)) {
-                        const encoder = new TextEncoder();
-                        const bytes = encoder.encode(pkg.groupId);
-                        const pkgGroupIdHex = Array.from(bytes)
-                          .map(b => b.toString(16).padStart(2, '0'))
-                          .join('');
-                        return pkgGroupIdHex === session.group_id;
-                      }
-                      
-                      // If pkg.groupId is hex, try converting session.group_id to hex
-                      if (/^[0-9a-fA-F]+$/.test(pkg.groupId)) {
-                        const encoder = new TextEncoder();
-                        const bytes = encoder.encode(session.group_id);
-                        const sessionGroupIdHex = Array.from(bytes)
-                          .map(b => b.toString(16).padStart(2, '0'))
-                          .join('');
-                        return pkg.groupId === sessionGroupIdHex;
-                      }
-                      
-                      return false;
-                    });
-                    const hasKey = keyPackage || matchingPkg;
-                    const progress = (session.joined.length / session.participants.length) * 100;
-                    
-                    return (
-                      <Card key={session.session} className="p-5 bg-[#0a1930] border-[#4fc3f7]/30 hover:border-[#4fc3f7]/60 transition-all">
-                        <div className="space-y-4">
-                          {/* Header */}
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Badge className="bg-[#4fc3f7]/20 text-[#4fc3f7] border-[#4fc3f7]/30 text-xs">
-                                  Session
-                                </Badge>
-                                <p className="text-white font-mono text-sm">{session.session.slice(0, 18)}...</p>
-                              </div>
-                              <p className="text-gray-300 font-medium mb-1">Group: {session.group_id}</p>
-                              <div className="bg-[#0f1729]/50 border border-[#4fc3f7]/20 p-3 mt-2">
-                                <p className="text-xs text-gray-400 mb-1">Message to Sign:</p>
-                                <p className="text-white text-sm">{session.message}</p>
-                              </div>
-                            </div>
-                            {hasKey ? (
-                              <div className="ml-4 flex items-center gap-2 px-3 py-1.5 bg-green-500/20 border border-green-500/30 text-green-300 text-xs font-medium">
-                                <CheckCircle className="w-3.5 h-3.5" />
-                                Key Available
-                              </div>
-                            ) : (
-                              <div className="ml-4 flex items-center gap-2 px-3 py-1.5 bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-medium">
-                                <X className="w-3.5 h-3.5" />
-                                No Key
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Progress Bar */}
-                          <div>
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs text-gray-400">Participants</span>
-                              <span className="text-xs font-medium text-white">
-                                {session.joined.length}/{session.participants.length}
-                              </span>
-                            </div>
-                            <div className="w-full h-2 bg-[#0f1729] border border-[#4fc3f7]/20 overflow-hidden">
-                              <div 
-                                className="h-full bg-gradient-to-r from-[#4fc3f7] to-[#028bee] transition-all duration-300"
-                                style={{ width: `${progress}%` }}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Action Button */}
-                          {!hasKey ? (
-                            <Button
-                              disabled
-                              className="w-full bg-gray-600 cursor-not-allowed"
-                              size="sm"
-                            >
-                              No Key Package Available
-                            </Button>
-                          ) : (
-                            <Button
-                              onClick={() => {
-                                // Auto-load key package if needed, then join
-                                if (!keyPackage && matchingPkg) {
-                                  // Use the combined function that loads and joins atomically
-                                  handleLoadAndJoinSession(matchingPkg.id, session.session);
-                                } else {
-                                  handleJoinSigningSession(session.session);
-                                }
-                              }}
-                              disabled={joiningSigningSession !== null || !authState.isAuthenticated}
-                              className="w-full bg-[#028bee] hover:bg-[#0277d4]"
-                              size="sm"
-                            >
-                              {joiningSigningSession === session.session ? 'Joining...' : 'Join Session'}
-                            </Button>
-                          )}
-                        </div>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
             </Card>
 
-            {/* Signature Creator Section */}
-            <Card className="p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-purple-500/20 border border-purple-500/50 flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-purple-400" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-white">Channel State Signature Creator</h3>
-                  <p className="text-sm text-gray-400">Generate keccak256(abi.encodePacked(channelId, finalStateRoot)) for signing</p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Channel ID
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={channelId}
-                      onChange={(e) => setChannelId(e.target.value)}
-                      placeholder="Enter channel ID (e.g., 1)"
-                      className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-white placeholder-gray-500"
-                    />
+            {/* Download Types Help */}
+            <Card className="p-4 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]/30">
+              <h3 className="text-lg font-medium text-white mb-3 flex items-center gap-2">
+                <Download className="w-5 h-5 text-[#4fc3f7]" />
+                Download Options
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center flex-shrink-0">
+                    <Download className="w-3 h-3 text-white" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Final State Root
-                    </label>
-                    <input
-                      type="text"
-                      value={finalStateRoot}
-                      onChange={(e) => setFinalStateRoot(e.target.value)}
-                      placeholder="0x... (32 bytes hex)"
-                      className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-white placeholder-gray-500 font-mono text-sm"
-                    />
+                    <h4 className="font-medium text-blue-400">Session Metadata</h4>
+                    <p className="text-gray-400 mt-1">Downloads session info for importing/sharing. Contains group public key and participant roster.</p>
                   </div>
                 </div>
-
-                {/* Hash Preview */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Computed Hash (keccak256)
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={computedHash}
-                      readOnly
-                      placeholder="Hash will appear here when both fields are valid"
-                      className="w-full px-3 py-2 bg-[#0f1729] border border-[#4fc3f7]/50 rounded-md text-green-400 placeholder-gray-500 font-mono text-sm"
-                    />
-                    {computedHash && (
-                      <Button
-                        onClick={() => {
-                          navigator.clipboard.writeText(computedHash);
-                          setSuccessMessage('Hash copied to clipboard!');
-                        }}
-                        size="sm"
-                        variant="ghost"
-                        className="absolute right-2 top-1 h-8 px-2 text-green-400 hover:bg-green-500/20"
-                      >
-                        Copy
-                      </Button>
-                    )}
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 bg-green-600 rounded flex items-center justify-center flex-shrink-0">
+                    <Download className="w-3 h-3 text-white" />
                   </div>
-                  {computedHash && (
-                    <p className="text-xs text-gray-400 mt-1">
-                      ✅ This hash can be used as the message in the signing session below
-                    </p>
-                  )}
-                </div>
-
-                {/* Quick Set Button */}
-                {computedHash && packedData && (
-                  <Button
-                    onClick={() => {
-                      setMessageToSign(packedData);
-                      setSuccessMessage('Packed data set as message to sign!');
-                    }}
-                    className="w-full bg-purple-600 hover:bg-purple-700"
-                  >
-                    Use This Hash as Message to Sign
-                  </Button>
-                )}
-
-                {/* Help text */}
-                <div className="p-4 bg-blue-900/20 border border-blue-500/50 rounded-lg">
-                  <h4 className="text-sm font-semibold text-blue-300 mb-2">How to use:</h4>
-                  <ul className="text-xs text-blue-200/90 space-y-1">
-                    <li>• Enter the channel ID (number) and final state root (32-byte hex)</li>
-                    <li>• The app will compute keccak256(abi.encodePacked(channelId, finalStateRoot))</li>
-                    <li>• Use the computed hash as the message in the signing session below</li>
-                    <li>• This creates a signature that can be used for channel state verification</li>
-                  </ul>
+                  <div>
+                    <h4 className="font-medium text-green-400">Key Package</h4>
+                    <p className="text-gray-400 mt-1">Downloads your individual key package for threshold signing. Only available if you participated in the DKG ceremony.</p>
+                  </div>
                 </div>
               </div>
             </Card>
 
-            {/* Create New Signing Session Section */}
-            <Card className="p-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-[#028bee]/20 border border-[#028bee]/50 flex items-center justify-center">
-                  <Plus className="w-5 h-5 text-[#028bee]" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-white">Create New Signing Session</h3>
-                  <p className="text-sm text-gray-400">Select a key package and create a signing session</p>
-                </div>
-              </div>
-
-              {/* Key Package Selection */}
-              <div className="mb-6">
-                <h4 className="text-md font-semibold text-white mb-4">1. Select Key Package</h4>
-              
-              {availableKeyPackages.length === 0 ? (
-                  <div className="text-center py-8 border-2 border-dashed border-[#4fc3f7]/30">
-                  <PenTool className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-300 mb-2">No key packages found</p>
-                  <p className="text-gray-400 text-sm">Complete a DKG ceremony first to generate key packages</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="grid gap-2">
-                    {availableKeyPackages.map((pkg) => (
-                      <Card
-                        key={pkg.id}
-                        className={`p-4 cursor-pointer transition-all ${
-                          selectedKeyPackageId === pkg.id
-                            ? 'bg-[#4fc3f7]/20 border-[#4fc3f7]'
-                            : 'bg-[#0a1930] border-[#4fc3f7]/30 hover:border-[#4fc3f7]/50'
-                        }`}
-                        onClick={() => handleLoadKeyPackage(pkg.id)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-white font-medium">{pkg.groupId}</p>
-                            <p className="text-gray-400 text-sm">
-                              Threshold: {pkg.threshold || 0}-of-{pkg.total || 0} | 
-                              Created: {new Date(pkg.timestamp).toLocaleDateString()}
-                            </p>
-                          </div>
-                          {selectedKeyPackageId === pkg.id && (
-                            <CheckCircle className="w-5 h-5 text-[#4fc3f7]" />
-                          )}
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-
-                  <div className="border-t border-[#4fc3f7]/30 pt-4">
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Or upload key package file
-                    </label>
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={handleFileUpload}
-                      className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-white"
-                    />
-                  </div>
-                </div>
-              )}
-              </div>
-
-              {/* Create Signing Session Form */}
-            {keyPackage && (
-                <div className="border-t border-[#4fc3f7]/30 pt-6">
-                  <h4 className="text-md font-semibold text-white mb-4">2. Create Signing Session</h4>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Group ID (from DKG)
-                    </label>
-                    <input
-                      type="text"
-                      value={signingGroupId}
-                      disabled
-                      className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-gray-400"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Message to Sign
-                    </label>
-                    <input
-                      type="text"
-                      value={messageToSign}
-                      onChange={(e) => setMessageToSign(e.target.value)}
-                      placeholder="Enter message to sign..."
-                        className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-white placeholder-gray-500 font-mono text-sm"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Threshold
-                      </label>
-                      <input
-                        type="text"
-                        value={signingThreshold}
-                        disabled
-                        className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-gray-400"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Participants
-                      </label>
-                      <input
-                        type="text"
-                        value={signingRoster.length}
-                        disabled
-                        className="w-full px-3 py-2 bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md text-gray-400"
-                      />
-                    </div>
-                  </div>
-
-                  <Button
-                    onClick={handleAnnounceSigningSession}
-                    disabled={!connectionStatus || connectionStatus !== 'connected' || !authState.isAuthenticated || !messageHash}
-                      className="w-full bg-[#028bee] hover:bg-[#0277d4]"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Signing Session
-                  </Button>
-                </div>
-                </div>
-              )}
-            </Card>
-
+            <DKGSessionGrid
+              sessions={allSessions}
+              address={address}
+              onJoinSession={handleJoinSession}
+              onViewDetails={handleViewMore}
+              onStartAutomation={startAutomatedCeremony}
+              onDownloadKey={handleDownloadKeyShare}
+              onDownloadKeyPackage={handleDownloadKeyPackage}
+              isJoiningSession={isJoiningSession}
+              authState={authState}
+              wsConnection={wsConnection}
+            />
           </div>
         )}
 
@@ -1823,92 +1665,55 @@ export default function DKGManagementPage() {
           onSubmit={handleSubmitCommitment}
         />
 
-        {showSessionDetails && (
-          <DKGSessionDetails
-            session={selectedSession}
-            onClose={() => {
-              setShowSessionDetails(false);
-              setSelectedSession(null);
-            }}
-            onDownloadKeyShare={handleDownloadKeyShare}
-          />
-        )}
-
-
-        {/* Signature Success Modal */}
-        {showSignatureSuccessModal && finalSignature && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 animate-in fade-in duration-300">
-            {/* Backdrop with stronger blur */}
+        {/* Import Session Modal */}
+        {showImportModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
             <div 
-              className="absolute inset-0 bg-black/80 backdrop-blur-md" 
-              onClick={() => setShowSignatureSuccessModal(false)}
+              className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+              onClick={() => setShowImportModal(false)}
             />
-            
-            {/* Modal */}
-            <div className="relative z-[201] bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-2 border-[#4fc3f7] shadow-2xl shadow-[#4fc3f7]/50 w-full max-w-2xl rounded-lg animate-in zoom-in-95 slide-in-from-bottom-8 duration-500">
-              {/* Header */}
-              <div className="p-8 text-center border-b border-[#4fc3f7]/30">
-                <div className="inline-flex items-center justify-center w-20 h-20 mb-6 bg-[#4fc3f7]/20 border-2 border-[#4fc3f7] rounded-full animate-pulse">
-                  <CheckCircle className="w-12 h-12 text-[#4fc3f7]" />
-                </div>
-                <h2 className="text-4xl font-bold text-white mb-3">
-                  Signature Created Successfully
-                </h2>
-                <p className="text-lg text-gray-300">
-                  Your threshold signature has been generated and is ready to use
-                </p>
-              </div>
-
-              {/* Content */}
-              <div className="p-6 space-y-4">
-                {/* Signature Display */}
-                <div className="bg-[#0f1729]/50 p-4 rounded-lg border border-[#4fc3f7]/30">
-                  <label className="block text-sm font-medium text-[#4fc3f7] mb-2 flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    Final Signature (bincode hex)
-                  </label>
-                  <textarea
-                    readOnly
-                    value={finalSignature}
-                    rows={4}
-                    className="w-full px-4 py-3 bg-[#0a1930] border border-[#4fc3f7]/50 rounded-md text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] resize-none"
-                  />
-                </div>
-
-                {/* Action Buttons */}
-                <div className="space-y-3">
-                  {/* Download Button - Primary Action */}
-                  <Button 
-                    onClick={() => {
-                      handleDownloadSignature();
-                      setShowSignatureSuccessModal(false);
-                    }}
-                    className="w-full h-16 bg-[#028bee] hover:bg-[#0277d4] text-white font-bold text-lg shadow-lg hover:shadow-xl transition-all transform hover:scale-105"
-                  >
-                    <Download className="w-6 h-6 mr-3" />
-                    Download Signature JSON
-                  </Button>
-
-                  {/* Next Steps Info */}
-                  <div className="p-4 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 rounded-lg">
-                    <p className="text-sm text-gray-200 text-center font-medium">
-                      <strong className="text-[#4fc3f7]">Next Step:</strong> Use this signature file in the "Sign Proof" page to submit to the blockchain
-                    </p>
-                  </div>
-
-                  {/* Close Button */}
+            <div className="relative z-10 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-2 border-[#4fc3f7] rounded-lg shadow-2xl w-full max-w-2xl animate-in zoom-in-95 slide-in-from-bottom-8 duration-300">
+              <div className="p-6">
+                <h2 className="text-xl font-bold text-white mb-4">Import DKG Session</h2>
+                <textarea
+                  value={importedSessionData}
+                  onChange={(e) => setImportedSessionData(e.target.value)}
+                  placeholder="Paste your DKG session JSON data here..."
+                  className="w-full h-32 p-3 bg-gray-900 border border-gray-700 text-white"
+                />
+                <div className="flex gap-3 mt-4">
                   <button
-                    onClick={() => setShowSignatureSuccessModal(false)}
-                    className="w-full h-12 bg-transparent hover:bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 hover:border-[#4fc3f7] text-white font-medium rounded transition-all"
+                    onClick={() => setShowImportModal(false)}
+                    className="px-4 py-2 border border-gray-600 text-gray-300"
                   >
-                    Close
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleImportSession}
+                    className="px-4 py-2 bg-blue-600 text-white"
+                  >
+                    Import
                   </button>
                 </div>
               </div>
             </div>
           </div>
         )}
-      </div>
-    </Layout>
+        </div>
+      </Layout>
+      
+      {/* Session Details Modal */}
+      {showSessionDetails && selectedSession && (
+        <DKGSessionDetails
+          session={selectedSession}
+          onClose={() => setShowSessionDetails(false)}
+          onDownloadKeyShare={handleDownloadKeyShare}
+        />
+      )}
+    </>
   );
+}
+
+export default function DKGManagementPage() {
+  return <DKGManagementPageInner />;
 }

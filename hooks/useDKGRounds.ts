@@ -79,7 +79,6 @@ export function useDKGRounds(
     initWasm()
       .then(() => {
         setWasmReady(true);
-        console.log('✅ FROST WASM ready for DKG operations');
       })
       .catch(err => {
         console.error('❌ Failed to initialize FROST WASM:', err);
