@@ -37,8 +37,8 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ signature, slotIndex }),
     });
-    const { key } = await res.json();
-    return key;
+    const { mptKey } = await res.json();
+    return mptKey;
   }
 
   const computeMPTKey = async () => {
