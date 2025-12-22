@@ -199,9 +199,7 @@ export function TransactionBundleModal({
       } else {
         console.error("Failed to sign:", err);
         setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to sign with MetaMask"
+          err instanceof Error ? err.message : "Failed to sign with MetaMask"
         );
       }
       setIsSigned(false);
@@ -489,9 +487,8 @@ export function TransactionBundleModal({
             initializedTxHash: initializationTxHash,
             toAddress: toAddress.trim(),
             tokenAmount: tokenAmount.trim(),
-            // Private key will be added via MetaMask signing in the future
-            // For now, we include a placeholder
             signed: isSigned,
+            ...(signature && { signature }),
           };
           zip.file(
             "transaction-info.json",
@@ -537,6 +534,7 @@ export function TransactionBundleModal({
           toAddress: toAddress.trim(),
           tokenAmount: tokenAmount.trim(),
           signed: isSigned,
+          ...(signature && { signature }),
         };
         zip.file(
           "transaction-info.json",

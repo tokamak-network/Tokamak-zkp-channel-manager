@@ -12,6 +12,7 @@ interface ComputedKey {
   channelId: number;
   slotIndex: number;
   mptKey: string;
+  l2Address: string;
 }
 
 export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
@@ -22,6 +23,7 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
   const [isComputing, setIsComputing] = useState(false);
   const [error, setError] = useState<string>("");
   const [copiedKey, setCopiedKey] = useState<string>("");
+  const [copiedAddress, setCopiedAddress] = useState<string>("");
   const { signMessageAsync } = useSignMessage();
   const { address, isConnected } = useAccount();
 
@@ -30,15 +32,18 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
     setError("");
   }, [channelId]);
 
-  "use client";
+  ("use client");
   async function fetchMptKey(signature: `0x${string}`, slotIndex: number) {
     const res = await fetch("/api/post-l2-mpt-key", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ signature, slotIndex }),
     });
-    const { mptKey } = await res.json();
-    return mptKey;
+    const data = await res.json();
+    return {
+      mptKey: data.mptKey,
+      l2Address: data.l2Address,
+    };
   }
 
   const computeMPTKey = async () => {
@@ -52,13 +57,14 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
 
     try {
       const message = L2_PRV_KEY_MESSAGE + `${channelId}`;
-      const signature = await signMessageAsync({message});
-      const mptKey = await fetchMptKey(signature, slotIndex);
+      const signature = await signMessageAsync({ message });
+      const { mptKey, l2Address } = await fetchMptKey(signature, slotIndex);
 
       const newKey: ComputedKey = {
         channelId,
         slotIndex,
         mptKey,
+        l2Address,
       };
 
       setComputedKeys((prev) => [newKey, ...prev.slice(0, 4)]); // Keep only 5 most recent
@@ -84,6 +90,16 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
       setTimeout(() => setCopiedKey(""), 2000);
     } catch (err) {
       setError("Failed to copy to clipboard");
+    }
+  };
+
+  const copyAddressToClipboard = async (address: string) => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopiedAddress(address);
+      setTimeout(() => setCopiedAddress(""), 2000);
+    } catch (err) {
+      setError("Failed to copy address to clipboard");
     }
   };
 
@@ -204,24 +220,55 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
                               TON
                             </span>
                           </div>
-                          <p className="text-sm text-gray-300 mb-1">MPT Key:</p>
-                          <p className="font-mono text-xs text-white break-all bg-black/30 p-2 border border-[#4fc3f7]/20">
-                            {key.mptKey}
-                          </p>
+                          <div className="space-y-2">
+                            <div>
+                              <p className="text-sm text-gray-300 mb-1">
+                                L2 Address:
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="flex-1 font-mono text-xs text-white break-all bg-black/30 p-2 border border-[#4fc3f7]/20">
+                                  {key.l2Address}
+                                </p>
+                                <button
+                                  onClick={() =>
+                                    copyAddressToClipboard(key.l2Address)
+                                  }
+                                  className="p-2 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/30 transition-colors flex-shrink-0"
+                                  title="Copy L2 Address"
+                                >
+                                  {copiedAddress === key.l2Address ? (
+                                    <CheckCircle2 className="w-4 h-4" />
+                                  ) : (
+                                    <Copy className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-300 mb-1">
+                                MPT Key:
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="flex-1 font-mono text-xs text-white break-all bg-black/30 p-2 border border-[#4fc3f7]/20">
+                                  {key.mptKey}
+                                </p>
+                                <button
+                                  onClick={() => copyToClipboard(key.mptKey)}
+                                  className="p-2 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/30 transition-colors flex-shrink-0"
+                                  title="Copy MPT Key"
+                                >
+                                  {copiedKey === key.mptKey ? (
+                                    <CheckCircle2 className="w-4 h-4" />
+                                  ) : (
+                                    <Copy className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => copyToClipboard(key.mptKey)}
-                            className="p-2 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/30 transition-colors"
-                            title="Copy to clipboard"
-                          >
-                            {copiedKey === key.mptKey ? (
-                              <CheckCircle2 className="w-4 h-4" />
-                            ) : (
-                              <Copy className="w-4 h-4" />
-                            )}
-                          </button>
+                        <div className="flex items-start">
                           <button
                             onClick={() => removeKey(index)}
                             className="p-2 bg-red-500/20 border border-red-500/50 text-red-400 hover:bg-red-500/30 transition-colors"
