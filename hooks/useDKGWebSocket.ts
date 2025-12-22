@@ -102,13 +102,17 @@ export function useDKGWebSocket(
   }, []);
 
   const addJoinedSession = useCallback((sessionId: string) => {
+    console.log('🚨 addJoinedSession called for session:', sessionId);
+    console.trace('🔍 Call stack for addJoinedSession:');
     setJoinedSessions(prev => {
       const newSet = new Set(prev);
       newSet.add(sessionId);
       saveJoinedSessionsToStorage(newSet);
+      console.log('✅ Added session to joinedSessions:', sessionId);
       return newSet;
     });
   }, [saveJoinedSessionsToStorage]);
+
 
   // Load sessions and joined sessions from localStorage
   useEffect(() => {
@@ -140,13 +144,18 @@ export function useDKGWebSocket(
     if (savedJoinedSessions) {
       try {
         const parsedJoinedSessions = JSON.parse(savedJoinedSessions);
-        console.log('📦 Loaded joined sessions:', parsedJoinedSessions);
+        console.log('📦 Loading joined sessions from localStorage:', parsedJoinedSessions);
+        console.log('🚨 WARNING: These sessions were previously joined and will be restored.');
+        console.log('🔧 If auto-joining is occurring, check if these sessions should actually be joined.');
         setJoinedSessions(new Set(parsedJoinedSessions));
       } catch (error) {
         console.error('Error loading joined sessions from localStorage:', error);
         localStorage.removeItem('dkg-joined-sessions');
         setJoinedSessions(new Set());
       }
+    } else {
+      console.log('📦 No saved joined sessions found in localStorage');
+      setJoinedSessions(new Set());
     }
   }, []);
 
@@ -198,12 +207,9 @@ export function useDKGWebSocket(
         const isCreator = session.creator?.toLowerCase() === userAddress;
         const hasJoined = joinedSessions.has(session.id);
         
-        // Check if user's public key is in the participants roster
-        const isInRoster = session.participants?.some((p: any) => 
-          p.publicKey?.toLowerCase() === authState.publicKeyHex?.toLowerCase()
-        ) || false;
-        
-        const isParticipant = hasJoined || isInRoster;
+        // IMPORTANT: Only consider as participant if explicitly joined
+        // Being in the roster is NOT enough - they must click "Join Session"
+        const isParticipant = hasJoined; // Removed || isInRoster to prevent auto-joining
         const shouldHaveRole = isCreator || isParticipant;
         const currentRole = session.myRole;
         
@@ -212,7 +218,6 @@ export function useDKGWebSocket(
           address: String(address).slice(0, 10),
           isCreator,
           hasJoined,
-          isInRoster,
           isParticipant,
           currentRole,
           shouldHaveRole,
@@ -358,7 +363,7 @@ export function useDKGWebSocket(
           creator: address!,
           minSigners: paramsToUse?.minSigners || 2,
           maxSigners: paramsToUse?.maxSigners || 3,
-          currentParticipants: 1, // Creator is the first participant
+          currentParticipants: 0, // Creator must manually join like any other participant
           status: 'waiting',
           groupId: `group_${Date.now()}`,
           topic: `topic_${Date.now()}`,
@@ -384,10 +389,11 @@ export function useDKGWebSocket(
         setPendingSessionParams(null); // Clear pending params
         pendingSessionParamsRef.current = null; // Clear ref too
         
-        // Creator automatically joins their own session
-        addJoinedSession(newSession.id);
+        // IMPORTANT: Do NOT auto-join creator to their own session
+        // Creator must manually join like any other participant
+        // Removed: addJoinedSession(newSession.id);
         
-        console.log('✅ Session added and joined');
+        console.log('✅ Session created (creator must manually join if they want to participate)');
         
         if (setIsCreatingSession) setIsCreatingSession(false);
         if (setNewlyCreatedSession) setNewlyCreatedSession(newSession);
@@ -882,6 +888,14 @@ export function useDKGWebSocket(
                 maxSigners: serverSession.max_signers
               });
               
+              // 🚨 CRITICAL DEBUG: Check if server is auto-marking participants as joined
+              if (serverSession.joined && serverSession.joined.length > 0) {
+                console.log('🚨 SERVER REPORTS PARTICIPANTS AS JOINED:');
+                console.log('   Joined IDs:', serverSession.joined);
+                console.log('   Participant IDs:', serverSession.participants);
+                console.log('   This might be the auto-join bug - server should not have joined participants unless they explicitly joined!');
+              }
+              
               // IMPORTANT: Prioritize existing data from localStorage over server
               // The server (fserver) doesn't track:
               // - creator: not tracked by server
@@ -892,6 +906,7 @@ export function useDKGWebSocket(
                 creator: existingSession?.creator || serverSession.creator || 'unknown',
                 minSigners: serverSession.min_signers ?? existingSession?.minSigners ?? 0,
                 maxSigners: serverSession.max_signers ?? existingSession?.maxSigners ?? 0,
+                // Use server's participant count but log a warning if it seems suspicious
                 currentParticipants: serverSession.joined?.length || 0,
                 status: existingSession?.status || 'waiting' as const,
                 groupId: serverSession.group_id,
@@ -1846,16 +1861,18 @@ export function useDKGWebSocket(
     localStorage.removeItem('dkg-sessions');
     localStorage.removeItem('dkg-joined-sessions');
     
-    // Clear all key packages (these were persisting and causing stale groups to appear)
+    // Clear all key packages and imported sessions
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key?.startsWith('dkg_key_package_')) {
+      if (key?.startsWith('dkg_key_package_') || 
+          key?.startsWith('dkg_imported_session_') ||
+          key?.startsWith('dkg_key_package_imported_')) {
         keysToRemove.push(key);
       }
     }
     keysToRemove.forEach(key => localStorage.removeItem(key));
-    console.log(`🧹 Cleared ${keysToRemove.length} key packages from localStorage`);
+    console.log(`🧹 Cleared ${keysToRemove.length} DKG-related items from localStorage`);
     
     // Clear other DKG-related data
     localStorage.removeItem('dkg_last_wallet_address');

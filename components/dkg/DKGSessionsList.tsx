@@ -223,17 +223,10 @@ export function DKGSessionsList({
                 : 'bg-emerald-600 hover:bg-emerald-700 text-white'
             }`}
           >
-            {isJoiningSession ? (
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Joining...
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Link2 className="w-4 h-4" />
-                {isCreator ? 'Join Your Session' : 'Join This Session'}
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <Link2 className="w-4 h-4" />
+              {isJoiningSession ? 'Joining...' : (isCreator ? 'Join Your Session' : 'Join This Session')}
+            </div>
           </Button>
         );
       }
@@ -243,7 +236,7 @@ export function DKGSessionsList({
       if (session._isJoining) {
         return (
           <div className="w-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 font-semibold h-10 rounded-md flex items-center justify-center gap-2 border border-blue-300 dark:border-blue-700 animate-pulse">
-            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <Link2 className="w-4 h-4" />
             Joining Session...
           </div>
         );

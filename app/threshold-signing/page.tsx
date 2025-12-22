@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAccount } from 'wagmi';
 import { Layout } from '@/components/Layout';
-import { FileUp, Key, MessageSquare, CheckCircle, Clock, Users, Download, RefreshCw, X } from 'lucide-react';
+import { FileUp, MessageSquare, CheckCircle, Clock, Users, Download, RefreshCw, X } from 'lucide-react';
 import { 
   initWasm, 
   signRound1Commit, 
@@ -79,9 +79,9 @@ export default function ThresholdSigningPage() {
   
   // Key package management
   const [keyPackage, setKeyPackage] = useState('');
-  const [keyPackageFile, setKeyPackageFile] = useState<File | null>(null);
-  const [availableKeyPackages, setAvailableKeyPackages] = useState<Array<{id: string, groupId: string, keyPackageHex: string, threshold?: number, total?: number, groupPublicKeyHex?: string}>>([]);
+  const [availableKeyPackages, setAvailableKeyPackages] = useState<Array<{id: string, groupId: string, keyPackageHex: string, threshold?: number, total?: number, groupPublicKeyHex?: string, type?: string, imported?: boolean}>>([]);
   const [selectedKeyPackageId, setSelectedKeyPackageId] = useState('');
+  
   
   // Create session form
   const [messageToSign, setMessageToSign] = useState('');
@@ -129,6 +129,8 @@ export default function ThresholdSigningPage() {
     
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
+      
+      // Load actual key packages (for signing)
       if (key?.startsWith('dkg_key_package_')) {
         console.log('🔍 [DEBUG] Found key package:', key);
         try {
@@ -141,13 +143,12 @@ export default function ThresholdSigningPage() {
             total: data.total ?? 0,
             timestamp: data.timestamp,
             keyPackageHex: data.key_package_hex,
-            groupPublicKeyHex: data.group_public_key_hex
+            groupPublicKeyHex: data.group_public_key_hex,
+            type: 'key_package'
           };
           console.log('🔍 [DEBUG] Parsed key package:', {
             id: pkg.id,
-            groupId: pkg.groupId,  // Show full groupId for debugging
-            groupIdLength: pkg.groupId?.length,
-            groupIdIsHex: pkg.groupId ? /^[0-9a-fA-F]+$/.test(pkg.groupId) : false,
+            groupId: pkg.groupId,
             threshold: pkg.threshold,
             total: pkg.total,
             timestamp: pkg.timestamp
@@ -157,14 +158,22 @@ export default function ThresholdSigningPage() {
           console.error('Failed to parse key package:', key, e);
         }
       }
+      
     }
     
     const sortedPackages = packages.sort((a, b) => 
       new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
     
-    console.log('✅ [DEBUG] Loaded key packages:', sortedPackages.length, 'packages');
-    console.log('🔍 [DEBUG] Key package group IDs:', sortedPackages.map(pkg => pkg.groupId?.substring(0, 20) + '...'));
+    console.log('✅ [DEBUG] Loaded packages:', sortedPackages.length, 'total');
+    console.log('🔍 [DEBUG] Key packages:', sortedPackages.filter(p => p.type === 'key_package').length);
+    console.log('🔍 [DEBUG] All packages details:', sortedPackages.map(p => ({
+      type: p.type,
+      id: p.id,
+      groupId: p.groupId,
+      threshold: p.threshold,
+      total: p.total
+    })));
     
     setAvailableKeyPackages(sortedPackages);
   };
@@ -385,8 +394,11 @@ export default function ThresholdSigningPage() {
         console.log('🔍 [DEBUG] Payload structure:', {
           hasSessions: !!message.payload?.sessions,
           sessionsLength: message.payload?.sessions?.length,
-          isArray: Array.isArray(message.payload?.sessions)
+          isArray: Array.isArray(message.payload?.sessions),
+          fullPayload: message.payload
         });
+        console.log('🔍 [DEBUG] Current time:', new Date().toISOString());
+        console.log('🔍 [DEBUG] Message received after session creation');
         handlePendingSigningSessions(message.payload);
         break;
       case 'SignSessionAnnounced':
@@ -539,40 +551,90 @@ export default function ThresholdSigningPage() {
     setSigningSessions(sessions);
   };
 
-  // File upload handler
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+
+  // Handle key package file upload
+  const handleKeyPackageFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      setKeyPackageFile(file);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const text = e.target?.result as string;
-          const data = JSON.parse(text);
-          if (data.key_package_hex) {
-            setKeyPackage(data.key_package_hex);
-            
-            // Create a temporary package object and open modal
-            const tempPkg = {
-              id: `uploaded_${Date.now()}`,
-              groupId: data.group_id || 'uploaded-group',
-              threshold: data.threshold || 2,
-              total: data.total || 3,
-              keyPackageHex: data.key_package_hex,
-              groupPublicKeyHex: data.group_public_key_hex || ''
-            };
-            
-            handleOpenSigningModal(tempPkg);
-            setSuccessMessage(`✅ Loaded key package from ${file.name}`);
-          } else {
-            throw new Error('Invalid key package format');
-          }
-        } catch (error) {
-          setError('Failed to load key package file');
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const keyPackageData = JSON.parse(content);
+
+        console.log('📦 [DEBUG] Parsing uploaded key package file:', {
+          fileName: file.name,
+          fileSize: file.size,
+          hasEncryptedKeyPackage: !!keyPackageData.encryptedKeyPackageHex,
+          keyType: keyPackageData.key_type
+        });
+
+        // Validate the key package file structure
+        if (!keyPackageData.encryptedKeyPackageHex) {
+          throw new Error('Invalid key package file: missing encryptedKeyPackageHex');
         }
-      };
-      reader.readAsText(file);
-    }
+
+        if (!keyPackageData.finalGroupKeyCompressed) {
+          throw new Error('Invalid key package file: missing finalGroupKeyCompressed');
+        }
+
+        // Generate a unique storage key for this uploaded key package
+        const timestamp = Date.now();
+        const storageKey = `dkg_key_package_uploaded_${timestamp}`;
+
+        // Convert the uploaded file format to our internal storage format
+        const internalKeyPackage = {
+          session_id: keyPackageData.session_id || `uploaded_${timestamp}`,
+          key_package_hex: keyPackageData.encryptedKeyPackageHex, // The actual key package for signing
+          group_public_key_hex: keyPackageData.finalGroupKeyCompressed,
+          group_id: keyPackageData.group_id || `uploaded_group_${timestamp}`,
+          threshold: keyPackageData.threshold || 2,
+          total: keyPackageData.total_participants || 3,
+          timestamp: keyPackageData.created_at || new Date().toISOString(),
+          key_type: keyPackageData.key_type || 'secp256k1',
+          uploaded: true // Mark as uploaded
+        };
+
+        // Store in localStorage
+        localStorage.setItem(storageKey, JSON.stringify(internalKeyPackage));
+
+        console.log('✅ [DEBUG] Key package uploaded and stored:', {
+          storageKey,
+          groupId: internalKeyPackage.group_id,
+          threshold: internalKeyPackage.threshold,
+          sessionId: internalKeyPackage.session_id
+        });
+
+        // Reload available key packages to show the newly uploaded one
+        loadAvailableKeyPackages();
+
+        setSuccessMessage(`✅ Key package uploaded successfully! Group: ${internalKeyPackage.group_id}`);
+        
+        // Clear the file input
+        if (event.target) {
+          event.target.value = '';
+        }
+
+      } catch (error: any) {
+        console.error('❌ [DEBUG] Key package upload failed:', error);
+        setError(`Failed to upload key package: ${error.message}`);
+        
+        // Clear the file input on error
+        if (event.target) {
+          event.target.value = '';
+        }
+      }
+    };
+
+    reader.onerror = () => {
+      setError('Failed to read the uploaded file');
+      if (event.target) {
+        event.target.value = '';
+      }
+    };
+
+    reader.readAsText(file);
   };
 
   // Load key package from saved packages
@@ -607,9 +669,23 @@ export default function ThresholdSigningPage() {
     try {
       setJoiningSigningSession(sessionId);
       signingSessionIdRef.current = sessionId;
+      
+      console.log('🔍 Before getSigningPrerequisites:', {
+        sessionId: sessionId,
+        packageId: pkg.id,
+        packageGroupId: pkg.groupId,
+        keyPackageLength: pkg.keyPackageHex?.length || 0,
+        keyPackageExists: !!pkg.keyPackageHex,
+        keyPackagePreview: pkg.keyPackageHex?.substring(0, 40) + '...'
+      });
+      
+      if (!pkg.keyPackageHex || pkg.keyPackageHex.trim() === '') {
+        throw new Error('Key package is empty or missing');
+      }
+      
       const prereqs = getSigningPrerequisites(pkg.keyPackageHex);
       
-      console.log('🔍 Signing prerequisites:', {
+      console.log('🔍 Signing prerequisites generated:', {
         sessionId: sessionId,
         signerId: prereqs.signer_id_bincode_hex,
         verifyingShare: prereqs.verifying_share_bincode_hex?.substring(0, 20) + '...',
@@ -635,10 +711,17 @@ export default function ThresholdSigningPage() {
     }
   };
 
-  // Open modal with selected key package
+  // Open modal with selected key package or imported session
   const handleOpenSigningModal = (pkg: any) => {
     setSelectedKeyPackageForModal(pkg);
-    setKeyPackage(pkg.keyPackageHex);
+    
+    // Only set key package if it's an actual key package (not imported session)
+    if (pkg.type === 'key_package' && pkg.keyPackageHex) {
+      setKeyPackage(pkg.keyPackageHex);
+    } else {
+      setKeyPackage(''); // Clear for imported sessions
+    }
+    
     setSelectedKeyPackageId(pkg.id);
     setShowSigningModal(true);
   };
@@ -693,8 +776,34 @@ export default function ThresholdSigningPage() {
       console.log('✅ Signing session announced from modal');
       setSuccessMessage('Signing session created and announced');
       
+      // Request updated signing sessions list to show the newly created session
+      setTimeout(() => {
+        if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+          console.log('🔄 Requesting updated signing sessions list after session creation');
+          console.log('📊 Current state before request:', {
+            connectionStatus,
+            authStatus: authState.isAuthenticated,
+            currentSessionCount: signingSessions.length,
+            wsReadyState: wsConnection.readyState
+          });
+          wsConnection.send(JSON.stringify({ type: 'ListPendingSigningSessions', payload: null }));
+        } else {
+          console.error('❌ WebSocket not available for session list request:', {
+            wsConnection: !!wsConnection,
+            readyState: wsConnection?.readyState,
+            connectionStatus
+          });
+        }
+      }, 1000); // Small delay to ensure server has processed the announcement
+      
+      // Close the modal
+      setShowSigningModal(false);
+      setSelectedKeyPackageForModal(null);
+      
       // Switch to sessions tab to see the created session
-      setActiveTab('sessions');
+      setTimeout(() => {
+        setActiveTab('sessions');
+      }, 1500);
     }
   };
 
@@ -797,6 +906,50 @@ export default function ThresholdSigningPage() {
     setSuccessMessage('✅ Signature downloaded successfully!');
   };
 
+  // Clear all local data (key packages, imported sessions, local state)
+  const handleClearAllLocalData = () => {
+    if (!confirm('Clear all local data? This will remove:\n\n• All key packages and imported sessions\n• Current session state\n\nNote: Active server sessions will remain and reappear when you refresh the session list.\n\nThis action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      // Clear current signing session UI state (temporary)
+      setSigningSessions([]);
+      setJoinedSigningSessions(new Set());
+      setSelectedSession(null);
+      setJoiningSigningSession('');
+      
+      // Clear current key package state
+      setKeyPackage('');
+      setSelectedKeyPackageId('');
+      setSigningGroupId('');
+      setSigningThreshold('2');
+      setSigningGroupVk('');
+      setSigningRoster(['', '', '']);
+      
+      // Clear ALL key packages from localStorage
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith('dkg_key_package_')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      
+      console.log(`🧹 [DEBUG] Cleared ${keysToRemove.length} key packages`);
+      
+      // Reload available key packages to reflect the changes
+      loadAvailableKeyPackages();
+      
+      setSuccessMessage(`✅ Cleared all local data: ${keysToRemove.length} key packages. Server sessions will reappear when refreshed.`);
+      
+      console.log('🧹 [DEBUG] Cleared all local data');
+    } catch (error: any) {
+      console.error('❌ [DEBUG] Error clearing local data:', error);
+      setError(`Failed to clear local data: ${error.message}`);
+    }
+  };
 
   return (
     <>
@@ -807,15 +960,24 @@ export default function ThresholdSigningPage() {
         onCreateSession={handleCreateSessionFromModal}
         isAuthenticated={authState.isAuthenticated}
       />
-      
+
       <Layout
         title="Threshold Signature Signing"
         subtitle="Create and participate in FROST threshold signature signing ceremonies"
         showSidebar={true}
         showFooter={true}
       >
-      <div className="p-8">
-        <div className="max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto space-y-6 p-4 lg:p-8">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+                Threshold Signing
+              </h1>
+              <p className="text-gray-400 mt-1">Create and participate in FROST threshold signature ceremonies</p>
+            </div>
+          </div>
+
           {/* Connection Status */}
           <DKGConnectionStatus
             connectionStatus={connectionStatus}
@@ -828,21 +990,6 @@ export default function ThresholdSigningPage() {
             onAuthenticate={authenticate}
             onClearAuth={clearAuth}
           />
-
-          {/* Key Package Status */}
-          {keyPackage && (
-            <div className="mb-6 p-4 bg-green-900/30 border border-green-500">
-              <div className="flex items-center gap-2 text-green-400">
-                <Key className="w-5 h-5" />
-                <span className="font-semibold">Key Package Loaded</span>
-              </div>
-              {signingGroupId && (
-                <p className="text-sm text-gray-400 mt-2">
-                  Group: {signingGroupId} | Threshold: {signingThreshold}
-                </p>
-              )}
-            </div>
-          )}
 
           {/* Error/Success Messages */}
           {error && (
@@ -917,12 +1064,16 @@ export default function ThresholdSigningPage() {
                       <RefreshCw className="w-4 h-4" />
                       Refresh
                     </button>
-                    <button
-                      onClick={() => setSigningSessions([])}
-                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 flex items-center gap-2"
-                    >
-                      Clear
-                    </button>
+                    {availableKeyPackages.length > 0 && (
+                      <button
+                        onClick={handleClearAllLocalData}
+                        className="px-4 py-2 bg-red-700 hover:bg-red-600 flex items-center gap-2 text-red-200 hover:text-white"
+                        title="Clears local key packages and imported sessions only"
+                      >
+                        <X className="w-4 h-4" />
+                        Clear Local Data
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1115,21 +1266,47 @@ export default function ThresholdSigningPage() {
               <div className="space-y-6">
                 <h2 className="text-2xl font-bold mb-4">Create New Signing Session</h2>
 
-                {/* Step 1: Load Key Package */}
-                  <div className="bg-gray-800/50 border border-gray-700 p-6">
+                {/* Available Sessions */}
+                <div className="bg-gray-800/50 border border-gray-700 p-6">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${keyPackage ? 'bg-green-500 text-white' : 'bg-blue-500 text-white'}`}>
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold bg-blue-500 text-white">
                       1
                     </div>
-                    <h3 className="text-xl font-bold">Load Key Package</h3>
-                    {keyPackage && <CheckCircle className="w-5 h-5 text-green-400 ml-auto" />}
+                    <h3 className="text-xl font-bold">Select DKG Session</h3>
                   </div>
 
-                  {/* Saved Key Packages */}
-                  {availableKeyPackages.length > 0 && (
-                    <div className="mb-4">
-                      <label className="block text-sm font-semibold mb-2">Saved Key Packages</label>
-                      <div className="grid gap-3">
+                  {/* Key Package Upload Section */}
+                  <div className="mb-6 p-4 border-2 border-dashed border-gray-600 bg-gray-800/30 hover:border-gray-500 transition-colors">
+                    <div className="text-center">
+                      <FileUp className="w-8 h-8 mx-auto text-gray-400 mb-2" />
+                      <h4 className="text-lg font-semibold text-white mb-2">Upload Key Package</h4>
+                      <p className="text-sm text-gray-400 mb-4">Upload your individual key package file downloaded from a DKG ceremony</p>
+                      
+                      <input
+                        type="file"
+                        accept=".json"
+                        onChange={handleKeyPackageFileUpload}
+                        className="hidden"
+                        id="key-package-upload"
+                      />
+                      
+                      <label
+                        htmlFor="key-package-upload"
+                        className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-[#028bee] hover:bg-[#0277d4] text-white font-medium rounded-md transition-colors"
+                      >
+                        <FileUp className="w-4 h-4" />
+                        Choose Key Package File
+                      </label>
+                      
+                      <p className="text-xs text-gray-500 mt-2">
+                        Accepts JSON files with your individual signing key (frost-key-*.json)
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Available Key Packages and Imported Sessions */}
+                  {availableKeyPackages.length > 0 ? (
+                    <div className="grid gap-3">
                       {availableKeyPackages.map((pkg) => (
                         <button
                           key={pkg.id}
@@ -1138,59 +1315,37 @@ export default function ThresholdSigningPage() {
                         >
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="font-semibold text-white">{pkg.groupId}</p>
-                              <p className="text-sm text-gray-400 mt-1">Threshold: {pkg.threshold} | Total: {pkg.total}</p>
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="font-semibold text-white">{pkg.groupId}</p>
+                                {pkg.type === 'key_package' && (
+                                  <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded border border-green-500/30">
+                                    {pkg.id.includes('uploaded_') ? '📁 Uploaded' : 'Key Package'}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-gray-400">Threshold: {pkg.threshold} | Total: {pkg.total}</p>
                             </div>
-                            <MessageSquare className="w-5 h-5 text-blue-400" />
+                            <div className="flex items-center gap-2">
+                            </div>
                           </div>
                         </button>
                       ))}
-                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-blue-900/20 border border-blue-500/50 p-6 text-center">
+                      <FileUp className="w-12 h-12 mx-auto mb-3 text-blue-400" />
+                      <p className="text-blue-300 font-semibold mb-2">No Key Packages Available</p>
+                      <p className="text-sm text-gray-400 mb-4">
+                        Upload your individual key package from a DKG ceremony to create signing sessions.
+                      </p>
                     </div>
                   )}
-
-                    {/* Upload Key Package */}
-                  <div>
-                    <label className="block text-sm font-semibold mb-2">Or Upload Key Package File</label>
-                    <div className="border-2 border-dashed border-gray-700 p-6 text-center hover:border-blue-500 transition-all">
-                      <FileUp className="w-10 h-10 mx-auto mb-3 text-gray-600" />
-                      <input
-                        type="file"
-                        accept=".json"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                        id="keyPackageUploadCreate"
-                      />
-                      <label
-                        htmlFor="keyPackageUploadCreate"
-                        className="cursor-pointer px-4 py-2 bg-blue-600 hover:bg-blue-700 font-semibold inline-block text-sm"
-                      >
-                        Choose Key Package File
-                      </label>
-                      {keyPackageFile && (
-                        <p className="mt-3 text-sm text-gray-400">
-                          Loaded: {keyPackageFile.name}
-                        </p>
-                      )}
-                    </div>
-                  </div>
                 </div>
-
-                {/* Instructions */}
-                {availableKeyPackages.length === 0 && !keyPackageFile && (
-                  <div className="bg-blue-900/20 border border-blue-500/50 p-6 text-center">
-                    <Key className="w-12 h-12 mx-auto mb-3 text-blue-400" />
-                    <p className="text-blue-300 font-semibold mb-2">No Key Packages Found</p>
-                    <p className="text-sm text-gray-400">
-                      Complete a DKG ceremony first to generate a key package, or upload an existing one.
-                    </p>
-                  </div>
-                )}
 
                 {availableKeyPackages.length > 0 && (
                   <div className="bg-green-900/20 border border-green-500/50 p-4 text-center">
                     <p className="text-green-300 text-sm">
-                      👆 Click on a key package above to create a signing session
+                      👆 Click on a session above to create a signing session
                     </p>
                   </div>
                 )}
@@ -1198,7 +1353,6 @@ export default function ThresholdSigningPage() {
             )}
 
           </div>
-        </div>
       </div>
     </Layout>
     </>
