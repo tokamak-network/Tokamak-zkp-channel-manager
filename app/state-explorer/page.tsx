@@ -48,7 +48,9 @@ import {
   RefreshCw,
   AlertCircle,
   Upload,
+  Download,
 } from "lucide-react";
+import JSZip from "jszip";
 
 // Types
 interface ParticipantBalance {
@@ -389,6 +391,7 @@ function StateExplorerDetailView({
   const [stateTransitions, setStateTransitions] = useState<StateTransition[]>([]);
   const [isLoadingTransitions, setIsLoadingTransitions] = useState(false);
   const [isTransitionsExpanded, setIsTransitionsExpanded] = useState(false);
+  const [isDownloadingProofs, setIsDownloadingProofs] = useState(false);
   const publicClient = usePublicClient();
   const VISIBLE_PARTICIPANTS_COLLAPSED = 3;
 
@@ -872,6 +875,110 @@ function StateExplorerDetailView({
     }
   };
 
+  // Download all verified proofs
+  const handleDownloadAllVerifiedProofs = async () => {
+    setIsDownloadingProofs(true);
+    try {
+      // Get all verified proofs from Firebase
+      const verifiedProofsData = await getData(
+        `channels/${channel.id}/verifiedProofs`
+      );
+
+      if (!verifiedProofsData) {
+        alert("No verified proofs found for this channel.");
+        return;
+      }
+
+      // Convert to array and sort by sequence number
+      const verifiedProofsArray = Object.entries(verifiedProofsData)
+        .map(([key, value]: [string, any]) => ({
+          key,
+          ...value,
+        }))
+        .sort((a: any, b: any) => a.sequenceNumber - b.sequenceNumber);
+
+      if (verifiedProofsArray.length === 0) {
+        alert("No verified proofs found for this channel.");
+        return;
+      }
+
+      // Create a new ZIP file to contain all proof ZIPs
+      const masterZip = new JSZip();
+
+      // Add each verified proof ZIP to the master ZIP
+      for (const proof of verifiedProofsArray) {
+        if (!proof.zipFile?.content) {
+          console.warn(`Proof ${proof.key} has no zipFile content, skipping...`);
+          continue;
+        }
+
+        try {
+          // Decode base64 content
+          const base64Content = proof.zipFile.content;
+          const binaryString = atob(base64Content);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+
+          // Create a folder for each proof
+          const proofFolderName = `proof_${proof.sequenceNumber || proof.key || 'unknown'}`;
+          const proofZip = await JSZip.loadAsync(bytes);
+
+          // Add all files from the proof ZIP to the master ZIP under a folder
+          const files = Object.keys(proofZip.files);
+          for (const fileName of files) {
+            const file = proofZip.files[fileName];
+            if (!file.dir) {
+              const content = await file.async('uint8array');
+              masterZip.file(`${proofFolderName}/${fileName}`, content);
+            }
+          }
+
+          // Also add proof metadata
+          const metadata = {
+            proofId: proof.proofId || proof.key,
+            sequenceNumber: proof.sequenceNumber || 0,
+            timestamp: proof.timestamp || proof.submittedAt || Date.now(),
+            submitter: proof.submitter || "Unknown",
+            verifiedAt: proof.verifiedAt || "Unknown",
+            verifiedBy: proof.verifiedBy || "Unknown",
+          };
+          masterZip.file(
+            `${proofFolderName}/proof_metadata.json`,
+            JSON.stringify(metadata, null, 2)
+          );
+        } catch (error) {
+          console.error(`Error processing proof ${proof.key}:`, error);
+        }
+      }
+
+      // Generate the master ZIP file
+      const masterZipBlob = await masterZip.generateAsync({ type: "blob" });
+
+      // Download the file
+      const url = URL.createObjectURL(masterZipBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `channel-${channel.id}-all-verified-proofs.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      alert(`Successfully downloaded ${verifiedProofsArray.length} verified proof(s)!`);
+    } catch (error) {
+      console.error("Error downloading verified proofs:", error);
+      alert(
+        `Failed to download verified proofs: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    } finally {
+      setIsDownloadingProofs(false);
+    }
+  };
+
   // Fetch proofs from Firebase - extracted to useCallback for reusability
   const fetchProofs = useCallback(async () => {
     setIsLoadingProofs(true);
@@ -1035,26 +1142,49 @@ function StateExplorerDetailView({
                 </div>
               </div>
               {/* Action Buttons */}
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setIsSubmitProofModalOpen(true);
-                  }}
-                  type="button"
-                  className="flex items-center gap-2 px-4 py-2 bg-[#4fc3f7] hover:bg-[#029bee] text-white rounded transition-all hover:shadow-lg hover:shadow-[#4fc3f7]/30 font-medium cursor-pointer pointer-events-auto"
-                >
-                  <Upload className="w-4 h-4" />
-                  Submit Proof
-                </button>
-                <button
-                  onClick={() => setIsBundleModalOpen(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded transition-all hover:shadow-lg hover:shadow-green-500/30 font-medium"
-                >
-                  <Plus className="w-4 h-4" />
-                  Create Transaction
-                </button>
+              <div className="flex flex-col items-end gap-3">
+                {/* First row: Submit Proof and Create Transaction */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsSubmitProofModalOpen(true);
+                    }}
+                    type="button"
+                    className="flex items-center gap-2 px-4 py-2 bg-[#4fc3f7] hover:bg-[#029bee] text-white rounded transition-all hover:shadow-lg hover:shadow-[#4fc3f7]/30 font-medium cursor-pointer pointer-events-auto"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Submit Proof
+                  </button>
+                  <button
+                    onClick={() => setIsBundleModalOpen(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded transition-all hover:shadow-lg hover:shadow-green-500/30 font-medium"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Create Transaction
+                  </button>
+                </div>
+                {/* Second row: Download Verified Proofs */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleDownloadAllVerifiedProofs}
+                    disabled={isDownloadingProofs || stats.verified === 0}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded transition-all hover:shadow-lg hover:shadow-purple-500/30 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isDownloadingProofs ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Downloading...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4" />
+                        Download Verified Proofs ({stats.verified})
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-4 text-sm text-gray-400">
