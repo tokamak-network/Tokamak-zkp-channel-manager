@@ -3,13 +3,13 @@ import { NextResponse } from 'next/server';
 export const runtime = "nodejs";
 export const dynamic = 'force-static';
 
-import { deriveL2MptKeyFromSignature } from "@/lib/mptKeyUtils";
+import { deriveL2KeysAndAddressFromSignature } from "@/lib/mptKeyUtils";
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const key = deriveL2MptKeyFromSignature(
+  const result = deriveL2KeysAndAddressFromSignature(
     body.signature,
     body.slotIndex,
   )
-  return NextResponse.json({ key });
+  return NextResponse.json(result);
 }
