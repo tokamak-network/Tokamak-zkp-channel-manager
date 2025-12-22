@@ -45,6 +45,8 @@ import {
   ROLLUP_BRIDGE_CORE_ABI,
 } from "@/lib/contracts";
 import { parseProofFromBase64Zip } from "@/lib/proofAnalyzer";
+import { useSignMessage, useAccount } from "wagmi";
+import { L2_PRV_KEY_MESSAGE } from "@/lib/l2KeyMessage";
 
 interface TransactionBundleModalProps {
   isOpen: boolean;
@@ -81,6 +83,11 @@ export function TransactionBundleModal({
   const [toAddress, setToAddress] = useState("");
   const [tokenAmount, setTokenAmount] = useState("");
   const [isSigning, setIsSigning] = useState(false);
+  const [signature, setSignature] = useState<`0x${string}` | null>(null);
+
+  // Wagmi hooks for MetaMask signing
+  const { signMessageAsync } = useSignMessage();
+  const { address, isConnected } = useAccount();
 
   // Auto-select default channel when modal opens
   useEffect(() => {
@@ -91,6 +98,7 @@ export function TransactionBundleModal({
     if (isOpen) {
       setStep("input");
       setIsSigned(false);
+      setSignature(null);
       setToAddress("");
       setTokenAmount("");
       setError(null);
@@ -165,19 +173,39 @@ export function TransactionBundleModal({
     }
   };
 
-  // Mock function for signing - will be replaced with MetaMask signing later
+  // Sign message with MetaMask
   const handleSign = async () => {
+    if (!isConnected || !address) {
+      setError("Please connect your wallet first");
+      return;
+    }
+
+    if (!selectedChannelId) {
+      setError("Please select a channel first");
+      return;
+    }
+
     setIsSigning(true);
     setError(null);
 
     try {
-      // TODO: Replace with actual MetaMask signing
-      // For now, just simulate signing
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const message = L2_PRV_KEY_MESSAGE + selectedChannelId;
+      const signedMessage = await signMessageAsync({ message });
+      setSignature(signedMessage);
       setIsSigned(true);
     } catch (err) {
-      console.error("Failed to sign:", err);
-      setError("Failed to sign with MetaMask");
+      if (err instanceof Error && err.message.includes("User rejected")) {
+        setError("Signature cancelled by user");
+      } else {
+        console.error("Failed to sign:", err);
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to sign with MetaMask"
+        );
+      }
+      setIsSigned(false);
+      setSignature(null);
     } finally {
       setIsSigning(false);
     }
@@ -574,6 +602,7 @@ export function TransactionBundleModal({
     setBundleData(null);
     setStep("input");
     setIsSigned(false);
+    setSignature(null);
     setToAddress("");
     setTokenAmount("");
     onClose();
