@@ -50,26 +50,28 @@ export function SubmitProofModal({ isOpen, onClose, channelId, onUploadSuccess }
     setUploadProgress(0);
 
     try {
-      // Step 1: Get current proof sequence
+      // Step 1: Get next proof number atomically from backend
+      // SECURITY: This calculation is now performed on the backend to prevent
+      // race conditions when multiple users submit proofs simultaneously
       setUploadProgress(10);
-      const verifiedProofs = await getData<any>(`channels/${channelId}/verifiedProofs`);
-      const submittedProofs = await getData<any>(`channels/${channelId}/submittedProofs`);
+      const proofNumberResponse = await fetch("/api/get-next-proof-number", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ channelId }),
+      });
+
+      if (!proofNumberResponse.ok) {
+        const errorData = await proofNumberResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to get next proof number");
+      }
+
+      const { proofNumber, subNumber, proofId, storageProofId } =
+        await proofNumberResponse.json();
       
-      // Calculate proof number
-      const verifiedCount = verifiedProofs ? Object.keys(verifiedProofs).length : 0;
-      const proofNumber = verifiedCount + 1;
-      
-      // Count how many proofs are submitted for this sequence number
-      const currentSequenceProofs = submittedProofs 
-        ? Object.values(submittedProofs).filter((p: any) => p.sequenceNumber === proofNumber)
-        : [];
-      const subNumber = currentSequenceProofs.length + 1;
-      
-      // Use URL-safe format for proof ID
-      const proofId = subNumber === 1 ? `proof#${proofNumber}` : `proof#${proofNumber}-${subNumber}`;
-      const storageProofId = subNumber === 1 ? `proof-${proofNumber}` : `proof-${proofNumber}-${subNumber}`;
-      
-      // Step 2: Upload ZIP file directly to Realtime Database
+      // Step 2: Upload ZIP file to Firebase Storage
+      // SECURITY: storagePath is now constructed on the server-side
       setUploadProgress(30);
       const formData = new FormData();
       formData.append('file', file);

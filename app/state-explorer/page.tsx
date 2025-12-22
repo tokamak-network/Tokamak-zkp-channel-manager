@@ -388,7 +388,9 @@ function StateExplorerDetailView({
   const [isLoadingProofs, setIsLoadingProofs] = useState(true);
   const [initialMerkleRoot, setInitialMerkleRoot] = useState<string>("N/A");
   const [currentMerkleRoot, setCurrentMerkleRoot] = useState<string>("N/A");
-  const [stateTransitions, setStateTransitions] = useState<StateTransition[]>([]);
+  const [stateTransitions, setStateTransitions] = useState<StateTransition[]>(
+    []
+  );
   const [isLoadingTransitions, setIsLoadingTransitions] = useState(false);
   const [isTransitionsExpanded, setIsTransitionsExpanded] = useState(false);
   const [isDownloadingProofs, setIsDownloadingProofs] = useState(false);
@@ -493,7 +495,7 @@ function StateExplorerDetailView({
               );
               latestProofBalances = analysis.balances;
               latestAnalysis = analysis;
-              
+
               // Set current Merkle root from the latest proof
               setCurrentMerkleRoot(analysis.merkleRoots.resulting);
             }
@@ -535,7 +537,7 @@ function StateExplorerDetailView({
             const parsed = await parseProofFromBase64Zip(
               firstProof.zipFile.content
             );
-            
+
             if (parsed.instance && parsed.snapshot) {
               const analysis = analyzeProof(
                 parsed.instance,
@@ -644,21 +646,25 @@ function StateExplorerDetailView({
             );
 
             // Calculate balance changes
-            const balanceChanges = analysis.balances.map((bal: any, idx: number) => {
-              const beforeBalance = previousBalances[idx]?.balanceFormatted || 
-                participantBalances[idx]?.initialDeposit || "0.00";
-              const afterBalance = bal.balanceFormatted;
-              const change = (
-                parseFloat(afterBalance) - parseFloat(beforeBalance)
-              ).toFixed(2);
+            const balanceChanges = analysis.balances.map(
+              (bal: any, idx: number) => {
+                const beforeBalance =
+                  previousBalances[idx]?.balanceFormatted ||
+                  participantBalances[idx]?.initialDeposit ||
+                  "0.00";
+                const afterBalance = bal.balanceFormatted;
+                const change = (
+                  parseFloat(afterBalance) - parseFloat(beforeBalance)
+                ).toFixed(2);
 
-              return {
-                address: channel.participants[idx],
-                before: beforeBalance,
-                after: afterBalance,
-                change: parseFloat(change) >= 0 ? `+${change}` : change,
-              };
-            });
+                return {
+                  address: channel.participants[idx],
+                  before: beforeBalance,
+                  after: afterBalance,
+                  change: parseFloat(change) >= 0 ? `+${change}` : change,
+                };
+              }
+            );
 
             transitions.push({
               sequenceNumber: proof.sequenceNumber || 0,
@@ -673,10 +679,7 @@ function StateExplorerDetailView({
             previousBalances = analysis.balances;
           }
         } catch (parseError) {
-          console.error(
-            `Error parsing proof ${proof.key}:`,
-            parseError
-          );
+          console.error(`Error parsing proof ${proof.key}:`, parseError);
         }
       }
 
@@ -708,6 +711,8 @@ function StateExplorerDetailView({
   >(null);
 
   // Handle proof verification
+  // SECURITY: This operation is now performed on the backend via API route
+  // to ensure atomic transactions and prevent race conditions
   const handleVerifyProof = async (proof: ProofData) => {
     if (!channel.isLeader || !proof.key || !proof.sequenceNumber) {
       return;
@@ -716,152 +721,30 @@ function StateExplorerDetailView({
     setIsVerifying(proof.key as string);
 
     try {
-      // Get all submitted proofs
-      const submittedProofs = await getData<any>(
-        `channels/${channel.id}/submittedProofs`
-      );
-      if (!submittedProofs) {
-        throw new Error("No submitted proofs found");
+      // Call backend API to perform atomic verification
+      const response = await fetch("/api/verify-proof", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          channelId: channel.id,
+          proofKey: proof.key,
+          sequenceNumber: proof.sequenceNumber,
+          verifierAddress: userAddress,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to verify proof");
       }
 
-      const submittedList = Array.isArray(submittedProofs)
-        ? submittedProofs.map((p: any, idx: number) => ({
-            ...p,
-            key: idx.toString(),
-          }))
-        : Object.entries(submittedProofs).map(
-            ([key, value]: [string, any]) => ({ ...value, key })
-          );
-
-      // Find the proof to verify and others with same sequenceNumber
-      const proofToVerify = submittedList.find((p: any) => p.key === proof.key);
-      const sameSequenceProofs = submittedList.filter(
-        (p: any) => p.sequenceNumber === proof.sequenceNumber
-      );
-
-      if (!proofToVerify) {
-        throw new Error("Proof not found in submitted proofs");
-      }
-
-      // Move verified proof to verifiedProofs
-      const verifiedProof = {
-        ...proofToVerify,
-        status: "verified",
-        verifiedAt: new Date().toISOString(),
-        verifiedBy: userAddress,
-      };
-      await pushData(`channels/${channel.id}/verifiedProofs`, verifiedProof);
-
-      // Move other proofs with same sequenceNumber to rejectedProofs
-      const rejectedProofs = sameSequenceProofs
-        .filter((p: any) => p.key !== proof.key)
-        .map((p: any) => ({
-          ...p,
-          status: "rejected",
-          rejectedAt: new Date().toISOString(),
-          rejectedBy: userAddress,
-          reason: "Another proof was verified for this sequence",
-        }));
-
-      for (const rejectedProof of rejectedProofs) {
-        await pushData(`channels/${channel.id}/rejectedProofs`, rejectedProof);
-      }
-
-      // Remove all proofs from submittedProofs
-      // Firebase Realtime Database stores as object with auto-generated keys
-      // So we need to delete each key individually
-      for (const proofToRemove of sameSequenceProofs) {
-        if (proofToRemove.key) {
-          await deleteData(
-            `channels/${channel.id}/submittedProofs/${proofToRemove.key}`
-          );
-        }
-      }
+      const result = await response.json();
+      console.log("Proof verified successfully:", result);
 
       // Refresh proofs list and balances
-      const fetchProofs = async () => {
-        try {
-          const [verifiedProofs, submittedProofs, rejectedProofs] =
-            await Promise.all([
-              getData<any>(`channels/${channel.id}/verifiedProofs`),
-              getData<any>(`channels/${channel.id}/submittedProofs`),
-              getData<any>(`channels/${channel.id}/rejectedProofs`),
-            ]);
-
-          const allProofs: ProofData[] = [];
-
-          // Add verified proofs
-          if (verifiedProofs) {
-            const verifiedList = Array.isArray(verifiedProofs)
-              ? verifiedProofs
-              : Object.entries(verifiedProofs).map(
-                  ([key, value]: [string, any]) => ({ ...value, key })
-                );
-            verifiedList.forEach((proof: any, idx: number) => {
-              allProofs.push({
-                ...proof,
-                id: proof.id || `verified-${idx}`,
-                key:
-                  proof.key ||
-                  (Array.isArray(verifiedProofs)
-                    ? undefined
-                    : Object.keys(verifiedProofs)[idx]),
-                status: "verified" as const,
-              });
-            });
-          }
-
-          // Add submitted proofs (pending)
-          if (submittedProofs) {
-            const submittedList = Array.isArray(submittedProofs)
-              ? submittedProofs
-              : Object.entries(submittedProofs).map(
-                  ([key, value]: [string, any]) => ({ ...value, key })
-                );
-            submittedList.forEach((proof: any, idx: number) => {
-              allProofs.push({
-                ...proof,
-                id: proof.id || `submitted-${idx}`,
-                key:
-                  proof.key ||
-                  (Array.isArray(submittedProofs)
-                    ? undefined
-                    : Object.keys(submittedProofs)[idx]),
-                status: "pending" as const,
-              });
-            });
-          }
-
-          // Add rejected proofs
-          if (rejectedProofs) {
-            const rejectedList = Array.isArray(rejectedProofs)
-              ? rejectedProofs
-              : Object.entries(rejectedProofs).map(
-                  ([key, value]: [string, any]) => ({ ...value, key })
-                );
-            rejectedList.forEach((proof: any, idx: number) => {
-              allProofs.push({
-                ...proof,
-                id: proof.id || `rejected-${idx}`,
-                key:
-                  proof.key ||
-                  (Array.isArray(rejectedProofs)
-                    ? undefined
-                    : Object.keys(rejectedProofs)[idx]),
-                status: "rejected" as const,
-              });
-            });
-          }
-
-          setProofs(allProofs);
-        } catch (error) {
-          console.error("Error refreshing proofs:", error);
-        }
-      };
-
       await fetchProofs();
-
-      // Refresh balances to reflect the latest verified proof
       await fetchCurrentBalances();
     } catch (error) {
       console.error("Error verifying proof:", error);
@@ -908,7 +791,9 @@ function StateExplorerDetailView({
       // Add each verified proof ZIP to the master ZIP
       for (const proof of verifiedProofsArray) {
         if (!proof.zipFile?.content) {
-          console.warn(`Proof ${proof.key} has no zipFile content, skipping...`);
+          console.warn(
+            `Proof ${proof.key} has no zipFile content, skipping...`
+          );
           continue;
         }
 
@@ -922,7 +807,9 @@ function StateExplorerDetailView({
           }
 
           // Create a folder for each proof
-          const proofFolderName = `proof_${proof.sequenceNumber || proof.key || 'unknown'}`;
+          const proofFolderName = `proof_${
+            proof.sequenceNumber || proof.key || "unknown"
+          }`;
           const proofZip = await JSZip.loadAsync(bytes);
 
           // Add all files from the proof ZIP to the master ZIP under a folder
@@ -930,7 +817,7 @@ function StateExplorerDetailView({
           for (const fileName of files) {
             const file = proofZip.files[fileName];
             if (!file.dir) {
-              const content = await file.async('uint8array');
+              const content = await file.async("uint8array");
               masterZip.file(`${proofFolderName}/${fileName}`, content);
             }
           }
@@ -966,7 +853,9 @@ function StateExplorerDetailView({
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      alert(`Successfully downloaded ${verifiedProofsArray.length} verified proof(s)!`);
+      alert(
+        `Successfully downloaded ${verifiedProofsArray.length} verified proof(s)!`
+      );
     } catch (error) {
       console.error("Error downloading verified proofs:", error);
       alert(
@@ -1279,7 +1168,8 @@ function StateExplorerDetailView({
                           Initial Root:
                         </span>
                         <span className="font-mono text-[10px] text-[#4fc3f7]">
-                          {initialMerkleRoot.slice(0, 8)}...{initialMerkleRoot.slice(-6)}
+                          {initialMerkleRoot.slice(0, 8)}...
+                          {initialMerkleRoot.slice(-6)}
                         </span>
                       </div>
                     )}
@@ -1346,7 +1236,8 @@ function StateExplorerDetailView({
                           Current Root:
                         </span>
                         <span className="font-mono text-[10px] text-green-400">
-                          {currentMerkleRoot.slice(0, 8)}...{currentMerkleRoot.slice(-6)}
+                          {currentMerkleRoot.slice(0, 8)}...
+                          {currentMerkleRoot.slice(-6)}
                         </span>
                       </div>
                     )}
@@ -1548,7 +1439,9 @@ function StateExplorerDetailView({
               <div className="mb-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7]/50 shadow-lg overflow-hidden">
                 {/* Collapsible Header */}
                 <button
-                  onClick={() => setIsTransitionsExpanded(!isTransitionsExpanded)}
+                  onClick={() =>
+                    setIsTransitionsExpanded(!isTransitionsExpanded)
+                  }
                   className="w-full flex items-center justify-between p-4 hover:bg-[#4fc3f7]/5 transition-colors"
                 >
                   <div className="flex items-center gap-3">
@@ -1560,7 +1453,8 @@ function StateExplorerDetailView({
                         State Transition History
                       </h3>
                       <p className="text-xs text-gray-400">
-                        {stateTransitions.length} state{stateTransitions.length > 1 ? 's' : ''} recorded
+                        {stateTransitions.length} state
+                        {stateTransitions.length > 1 ? "s" : ""} recorded
                       </p>
                     </div>
                   </div>
@@ -1572,7 +1466,11 @@ function StateExplorerDetailView({
                       </span>
                       {stateTransitions.length > 0 && (
                         <span className="text-gray-400">
-                          Latest: #{stateTransitions[stateTransitions.length - 1]?.sequenceNumber}
+                          Latest: #
+                          {
+                            stateTransitions[stateTransitions.length - 1]
+                              ?.sequenceNumber
+                          }
                         </span>
                       )}
                     </div>
@@ -1597,18 +1495,23 @@ function StateExplorerDetailView({
                 >
                   <div className="px-4 pb-4">
                     <p className="text-gray-400 text-sm mb-4">
-                      Track how participant balances have evolved through each approved state transition
+                      Track how participant balances have evolved through each
+                      approved state transition
                     </p>
 
                     {isLoadingTransitions ? (
                       <div className="text-center py-8">
                         <LoadingSpinner size="md" />
-                        <p className="text-gray-400 text-sm mt-4">Loading state history...</p>
+                        <p className="text-gray-400 text-sm mt-4">
+                          Loading state history...
+                        </p>
                       </div>
                     ) : (
-                      <div 
+                      <div
                         className={`space-y-4 ${
-                          stateTransitions.length > 3 ? 'max-h-[450px] overflow-y-auto pr-2 scrollbar-thin' : ''
+                          stateTransitions.length > 3
+                            ? "max-h-[450px] overflow-y-auto pr-2 scrollbar-thin"
+                            : ""
                         }`}
                       >
                         {stateTransitions.map((transition, idx) => (
@@ -1629,14 +1532,19 @@ function StateExplorerDetailView({
                                     {transition.proofId}
                                   </div>
                                   <div className="text-gray-400 text-xs">
-                                    {new Date(transition.timestamp).toLocaleString()}
+                                    {new Date(
+                                      transition.timestamp
+                                    ).toLocaleString()}
                                   </div>
                                 </div>
                               </div>
                               <div className="text-right">
-                                <div className="text-gray-400 text-xs">Submitter</div>
+                                <div className="text-gray-400 text-xs">
+                                  Submitter
+                                </div>
                                 <div className="text-white font-mono text-xs">
-                                  {transition.submitter.slice(0, 6)}...{transition.submitter.slice(-4)}
+                                  {transition.submitter.slice(0, 6)}...
+                                  {transition.submitter.slice(-4)}
                                 </div>
                               </div>
                             </div>
@@ -1649,7 +1557,8 @@ function StateExplorerDetailView({
                                   Initial Root
                                 </div>
                                 <div className="text-[#4fc3f7] font-mono text-[10px]">
-                                  {transition.merkleRoots.initial.slice(0, 10)}...
+                                  {transition.merkleRoots.initial.slice(0, 10)}
+                                  ...
                                   {transition.merkleRoots.initial.slice(-8)}
                                 </div>
                               </div>
@@ -1659,7 +1568,11 @@ function StateExplorerDetailView({
                                   Resulting Root
                                 </div>
                                 <div className="text-green-400 font-mono text-[10px]">
-                                  {transition.merkleRoots.resulting.slice(0, 10)}...
+                                  {transition.merkleRoots.resulting.slice(
+                                    0,
+                                    10
+                                  )}
+                                  ...
                                   {transition.merkleRoots.resulting.slice(-8)}
                                 </div>
                               </div>
@@ -1671,63 +1584,71 @@ function StateExplorerDetailView({
                                 Balance Changes
                               </div>
                               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                {transition.balanceChanges.map((change, changeIdx) => {
-                                  const hasChange = parseFloat(change.change) !== 0;
-                                  const isIncrease = parseFloat(change.change) > 0;
-                                  
-                                  return (
-                                    <div
-                                      key={change.address}
-                                      className={`p-2 rounded text-xs ${
-                                        hasChange
-                                          ? isIncrease
-                                            ? "bg-green-500/10 border border-green-500/30"
-                                            : "bg-red-500/10 border border-red-500/30"
-                                          : "bg-[#1a2347]/30 border border-[#4fc3f7]/10"
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-1 mb-1">
-                                        <span className="bg-[#4fc3f7]/20 px-1 rounded text-[#4fc3f7] font-bold text-[9px]">
-                                          #{changeIdx + 1}
-                                        </span>
-                                        <span className="text-gray-300 font-mono text-[10px]">
-                                          {change.address.slice(0, 6)}...{change.address.slice(-4)}
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center justify-between">
-                                        <div>
-                                          <span className="text-gray-400 text-[10px]">
-                                            {change.before} →{" "}
+                                {transition.balanceChanges.map(
+                                  (change, changeIdx) => {
+                                    const hasChange =
+                                      parseFloat(change.change) !== 0;
+                                    const isIncrease =
+                                      parseFloat(change.change) > 0;
+
+                                    return (
+                                      <div
+                                        key={change.address}
+                                        className={`p-2 rounded text-xs ${
+                                          hasChange
+                                            ? isIncrease
+                                              ? "bg-green-500/10 border border-green-500/30"
+                                              : "bg-red-500/10 border border-red-500/30"
+                                            : "bg-[#1a2347]/30 border border-[#4fc3f7]/10"
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-1 mb-1">
+                                          <span className="bg-[#4fc3f7]/20 px-1 rounded text-[#4fc3f7] font-bold text-[9px]">
+                                            #{changeIdx + 1}
                                           </span>
-                                          <span className="text-white font-medium text-[10px]">
-                                            {change.after}
+                                          <span className="text-gray-300 font-mono text-[10px]">
+                                            {change.address.slice(0, 6)}...
+                                            {change.address.slice(-4)}
                                           </span>
                                         </div>
-                                        {hasChange && (
-                                          <span
-                                            className={`font-bold text-[10px] ${
-                                              isIncrease ? "text-green-400" : "text-red-400"
-                                            }`}
-                                          >
-                                            {change.change} {symbol}
-                                          </span>
-                                        )}
+                                        <div className="flex items-center justify-between">
+                                          <div>
+                                            <span className="text-gray-400 text-[10px]">
+                                              {change.before} →{" "}
+                                            </span>
+                                            <span className="text-white font-medium text-[10px]">
+                                              {change.after}
+                                            </span>
+                                          </div>
+                                          {hasChange && (
+                                            <span
+                                              className={`font-bold text-[10px] ${
+                                                isIncrease
+                                                  ? "text-green-400"
+                                                  : "text-red-400"
+                                              }`}
+                                            >
+                                              {change.change} {symbol}
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
-                                    </div>
-                                  );
-                                })}
+                                    );
+                                  }
+                                )}
                               </div>
                             </div>
                           </div>
                         ))}
                       </div>
                     )}
-                    
+
                     {/* Scroll indicator when there are more than 3 transitions */}
                     {stateTransitions.length > 3 && (
                       <div className="mt-3 text-center text-xs text-gray-500">
                         <span className="bg-[#1a2347]/50 px-3 py-1 rounded">
-                          Scroll to see all {stateTransitions.length} state transitions
+                          Scroll to see all {stateTransitions.length} state
+                          transitions
                         </span>
                       </div>
                     )}

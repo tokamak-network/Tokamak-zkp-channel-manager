@@ -7,22 +7,29 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const channelId = formData.get('channelId') as string;
-    const storagePath = formData.get('storagePath') as string;
+    const proofId = formData.get('proofId') as string; // Changed from storagePath to proofId
 
     console.log('Upload request received:', { 
       fileName: file?.name, 
       channelId, 
-      storagePath,
+      proofId,
       fileSize: file?.size 
     });
 
-    if (!file || !channelId || !storagePath) {
-      console.error('Missing required fields:', { file: !!file, channelId, storagePath });
+    if (!file || !channelId || !proofId) {
+      console.error('Missing required fields:', { file: !!file, channelId, proofId });
       return NextResponse.json(
-        { error: 'Missing required fields: file, channelId, or storagePath' },
+        { error: 'Missing required fields: file, channelId, or proofId' },
         { status: 400 }
       );
     }
+
+    // SECURITY: Construct storage path on server-side using trusted inputs only
+    // This prevents path traversal attacks (e.g., ../)
+    // Sanitize proofId to prevent path injection
+    const sanitizedProofId = proofId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const sanitizedChannelId = channelId.replace(/[^0-9]/g, '');
+    const storagePath = `proofs/channel-${sanitizedChannelId}/${sanitizedProofId}.zip`;
 
     // Initialize Firebase app on server side
     const storageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
@@ -87,7 +94,7 @@ export async function POST(request: NextRequest) {
     const fileBlob = await file.arrayBuffer();
     const blob = new Blob([fileBlob], { type: file.type || 'application/octet-stream' });
 
-    console.log('Uploading to Firebase Storage:', storagePath);
+    console.log('Uploading to Firebase Storage:', storagePath, '(sanitized path)');
 
     // Upload to Firebase Storage
     const storageRef = ref(storage, storagePath);
