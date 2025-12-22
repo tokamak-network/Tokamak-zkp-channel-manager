@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 export const runtime = "nodejs";
+export const dynamic = 'force-static';
 
 import { deriveL2KeysAndAddressFromSignature } from "@/lib/mptKeyUtils";
 

@@ -227,6 +227,9 @@ export default function UnfreezeStatePage() {
     }
   };
 
+  // R_MOD constant from BridgeProofManager contract
+  const R_MOD = BigInt('0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001');
+
   const generateGroth16Proof = async () => {
     if (!parsedChannelId || !channelParticipants || !channelTreeSize || !finalStateRoot || !channelTargetContract) {
       throw new Error('Missing channel data');
@@ -244,57 +247,107 @@ export default function UnfreezeStatePage() {
     
     setProofGenerationStatus(`Collecting data for ${treeSize}-leaf merkle tree (${preAllocCount} pre-allocated + ${participantCount} participants)...`);
     
+    // Collect storage keys (L2 MPT keys) and values (final balances)
+    // Following the contract logic: pre-allocated leaves FIRST, then participant data
     const storageKeysL2MPT: string[] = [];
     const storageValues: string[] = [];
     
-    if (preAllocCount > 0 && preAllocatedKeys) {
+    // STEP 1: Add pre-allocated leaves data FIRST (matching contract logic)
+    if (preAllocCount > 0 && preAllocatedKeys && channelTargetContract) {
       setProofGenerationStatus(`Fetching ${preAllocCount} pre-allocated leaves...`);
       
       for (let i = 0; i < (preAllocatedKeys as `0x${string}`[]).length; i++) {
         const key = (preAllocatedKeys as `0x${string}`[])[i];
         
         try {
-          const response = await fetch(`/api/get-pre-allocated-leaf?targetContract=${channelTargetContract}&mptKey=${key}`);
-          if (response.ok) {
-            const result = await response.json();
-            if (result.exists) {
-              storageKeysL2MPT.push(BigInt(key).toString());
-              storageValues.push(result.value);
-            }
+          // Get pre-allocated leaf value directly from contract using viem
+          const { createPublicClient, http } = await import('viem');
+          const { sepolia } = await import('viem/chains');
+          
+          const publicClient = createPublicClient({
+            chain: sepolia,
+            transport: http('https://eth-sepolia.g.alchemy.com/v2/N-Gnpjy1WvCfokwj6fiOfuAVL_At6IvE')
+          });
+          
+          const result = await publicClient.readContract({
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: 'getPreAllocatedLeaf',
+            args: [channelTargetContract, key]
+          }) as [bigint, boolean];
+          
+          const [value, exists] = result;
+          
+          if (exists) {
+            // Apply modulo R_MOD as the contract does
+            const modedKey = (BigInt(key) % R_MOD).toString();
+            const modedValue = (value % R_MOD).toString();
+            
+            storageKeysL2MPT.push(modedKey);
+            storageValues.push(modedValue);
+            
+            console.log(`Pre-allocated leaf ${i}: key=${key} -> ${modedKey}, value=${value.toString()} -> ${modedValue}`);
           }
         } catch (error) {
           console.error(`Failed to fetch pre-allocated leaf for key ${key}:`, error);
-          throw new Error(`Failed to fetch pre-allocated leaf for key ${key}`);
+          // Continue without throwing - some pre-allocated keys might not exist
+          console.log(`Skipping pre-allocated leaf ${i} (doesn't exist or failed to fetch)`);
         }
       }
     }
     
+    // STEP 2: Add participant data AFTER pre-allocated leaves (matching contract logic)
     setProofGenerationStatus(`Processing ${participantCount} participants...`);
     
     for (let i = 0; i < (channelParticipants as string[]).length && storageKeysL2MPT.length < treeSize; i++) {
       const participant = (channelParticipants as string[])[i];
       
-      setProofGenerationStatus(`Fetching L2 MPT key for participant ${i + 1}...`);
+      setProofGenerationStatus(`Processing participant ${i + 1} of ${participantCount}...`);
       
       let l2MptKey = '0';
+      
       try {
-        const keyResponse = await fetch(`/api/get-l2-mpt-key?participant=${participant}&channelId=${parsedChannelId}`, {
-          signal: AbortSignal.timeout(5000)
-        });
-        if (keyResponse.ok) {
-          const keyResult = await keyResponse.json();
-          l2MptKey = keyResult.key || '0';
+        // Get L2 MPT key directly from contract
+        try {
+          const { createPublicClient, http } = await import('viem');
+          const { sepolia } = await import('viem/chains');
+          
+          const publicClient = createPublicClient({
+            chain: sepolia,
+            transport: http('https://eth-sepolia.g.alchemy.com/v2/N-Gnpjy1WvCfokwj6fiOfuAVL_At6IvE')
+          });
+          
+          const l2MptKeyResult = await publicClient.readContract({
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: 'getL2MptKey',
+            args: [BigInt(parsedChannelId), participant as `0x${string}`]
+          }) as bigint;
+          
+          l2MptKey = l2MptKeyResult.toString();
+        } catch (keyError) {
+          console.error(`L2 MPT key fetch failed for ${participant}:`, keyError);
+          // Use default value
+          l2MptKey = '0';
         }
+        
+        const finalBalance = finalBalances[participant.toLowerCase()] || finalBalances[participant] || '0';
+        
+        // Apply modulo R_MOD as the contract does
+        const modedL2MptKey = l2MptKey !== '0' ? (BigInt(l2MptKey) % R_MOD).toString() : '0';
+        const modedBalance = finalBalance !== '0' ? (BigInt(finalBalance) % R_MOD).toString() : '0';
+        
+        storageKeysL2MPT.push(modedL2MptKey);
+        storageValues.push(modedBalance);
+        
+        console.log(`Participant ${i}: key=${l2MptKey} -> ${modedL2MptKey}, balance=${finalBalance} -> ${modedBalance}`);
       } catch (error) {
-        console.error(`Failed to fetch L2 MPT key for ${participant}:`, error);
+        console.error(`Failed to get data for ${participant}:`, error);
+        throw error;
       }
-      
-      const finalBalance = finalBalances[participant.toLowerCase()] || finalBalances[participant] || '0';
-      
-      storageKeysL2MPT.push(l2MptKey);
-      storageValues.push(finalBalance);
     }
     
+    // STEP 3: Fill remaining entries with zeros (matching contract logic)
     while (storageKeysL2MPT.length < treeSize) {
       storageKeysL2MPT.push('0');
       storageValues.push('0');

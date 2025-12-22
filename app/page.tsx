@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation';
 import { Layout } from '@/components/Layout';
 import { ContractInfo } from '@/components/ContractInfo';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
-import { Lock, Zap, Gem, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Activity, FileCheck, XCircle, Unlock } from 'lucide-react';
+import { Lock, Zap, Gem, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Activity, FileCheck, Unlock } from 'lucide-react';
 
 export default function HomePage() {
   const router = useRouter();
@@ -47,10 +47,6 @@ export default function HomePage() {
   };
 
 
-  const handleCloseChannel = () => {
-    if (!isConnected) return;
-    router.push('/close-channel');
-  };
 
   const handleUnfreezeState = () => {
     if (!isConnected) return;
@@ -282,21 +278,6 @@ export default function HomePage() {
                         </div>
                       </div>
 
-                      {/* Close Channel */}
-                      <div 
-                        onClick={handleCloseChannel}
-                        className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
-                      >
-                        <div className="h-12 w-12 bg-[#4fc3f7] flex items-center justify-center flex-shrink-0 group-hover:bg-[#029bee] transition-all shadow-lg shadow-[#4fc3f7]/30">
-                          <XCircle className="w-6 h-6 text-white" />
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-white mb-1 text-sm group-hover:text-[#4fc3f7] transition-colors">Close Channel</h3>
-                          <p className="text-gray-300 text-xs group-hover:text-gray-200 transition-colors">
-                            Close the channel
-                          </p>
-                        </div>
-                      </div>
 
                     </>
                   )}

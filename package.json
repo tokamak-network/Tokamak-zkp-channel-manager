@@ -4,12 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && npx @cloudflare/next-on-pages@latest",
+    "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "clean": "rm -rf .next node_modules/.cache",
-    "preview": "npx wrangler pages dev",
-    "deploy": "npm run build && npx wrangler pages deploy .vercel/output/static"
+    "clean": "rm -rf .next node_modules/.cache"
   },
   "dependencies": {
     "@ethereumjs/util": "^10.1.0",
@@ -47,7 +45,6 @@
     "wagmi": "^1.4.13"
   },
   "devDependencies": {
-    "@cloudflare/next-on-pages": "^1.13.16",
     "@types/crypto-js": "^4.2.2",
     "@types/elliptic": "^6.4.18",
     "@types/node": "^20.19.25",

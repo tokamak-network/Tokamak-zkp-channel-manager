@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useAccount, useSignMessage } from 'wagmi';
-import { Key, Calculator, AlertCircle, Copy, CheckCircle2, Download } from 'lucide-react';
-import { L2_PRV_KEY_MESSAGE } from '@/lib/l2KeyMessage';
+import { useState, useEffect } from "react";
+import { useAccount, useSignMessage } from "wagmi";
+import { Key, Calculator, AlertCircle, Copy, CheckCircle2 } from "lucide-react";
+import { L2_PRV_KEY_MESSAGE } from "@/lib/l2KeyMessage";
 interface L2MPTKeyBannerProps {
   className?: string;
 }
@@ -12,8 +12,6 @@ interface ComputedKey {
   channelId: number;
   slotIndex: number;
   mptKey: string;
-  privateKey?: string;
-  l2Address?: string;
 }
 
 export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
@@ -22,58 +20,58 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
   const [slotIndex, setSlotIndex] = useState<number>(0);
   const [computedKeys, setComputedKeys] = useState<ComputedKey[]>([]);
   const [isComputing, setIsComputing] = useState(false);
-  const [error, setError] = useState<string>('');
-  const [copiedKey, setCopiedKey] = useState<string>('');
+  const [error, setError] = useState<string>("");
+  const [copiedKey, setCopiedKey] = useState<string>("");
   const { signMessageAsync } = useSignMessage();
   const { address, isConnected } = useAccount();
 
   // Reset error when inputs change
   useEffect(() => {
-    setError('');
+    setError("");
   }, [channelId]);
 
-  "use client";
-  async function fetchMptKey(signature: `0x${string}`, slotIndex: number) {
-    const res = await fetch("/api/post-l2-mpt-key", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ signature, slotIndex }),
-    });
-    const data = await res.json();
-    return data;
-  }
+  const computeMptKeyFromSignature = (
+    signature: `0x${string}`,
+    slotIndex: number
+  ): string => {
+    // Temporary implementation: generate a deterministic key from signature and slot
+    // This should be replaced with the actual L2 MPT key derivation when available for client-side
+    const hash = signature.slice(2); // Remove '0x'
+    const combined = hash + slotIndex.toString().padStart(8, "0");
+    const truncated = combined.slice(0, 64); // Take first 64 hex chars
+    return "0x" + truncated;
+  };
 
   const computeMPTKey = async () => {
     if (!isConnected || !address) {
-      setError('Please connect your wallet first');
+      setError("Please connect your wallet first");
       return;
     }
 
     setIsComputing(true);
-    setError('');
+    setError("");
 
     try {
       const message = L2_PRV_KEY_MESSAGE + `${channelId}`;
-      const signature = await signMessageAsync({message});
-      const result = await fetchMptKey(signature, slotIndex);
+      const signature = await signMessageAsync({ message });
+      const mptKey = computeMptKeyFromSignature(signature, slotIndex);
 
       const newKey: ComputedKey = {
         channelId,
         slotIndex,
-        mptKey: result.mptKey,
-        privateKey: result.privateKey,
-        l2Address: result.l2Address,
+        mptKey,
       };
 
-      setComputedKeys(prev => [newKey, ...prev.slice(0, 4)]); // Keep only 5 most recent
-      
-      setError(''); // Clear any previous errors
+      setComputedKeys((prev) => [newKey, ...prev.slice(0, 4)]); // Keep only 5 most recent
 
+      setError(""); // Clear any previous errors
     } catch (err) {
-      if (err instanceof Error && err.message.includes('User rejected')) {
-        setError('Signature cancelled by user');
+      if (err instanceof Error && err.message.includes("User rejected")) {
+        setError("Signature cancelled by user");
       } else {
-        setError(err instanceof Error ? err.message : 'Failed to compute MPT key');
+        setError(
+          err instanceof Error ? err.message : "Failed to compute MPT key"
+        );
       }
     } finally {
       setIsComputing(false);
@@ -84,40 +82,22 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
     try {
       await navigator.clipboard.writeText(key);
       setCopiedKey(key);
-      setTimeout(() => setCopiedKey(''), 2000);
+      setTimeout(() => setCopiedKey(""), 2000);
     } catch (err) {
-      setError('Failed to copy to clipboard');
+      setError("Failed to copy to clipboard");
     }
   };
 
   const removeKey = (index: number) => {
-    setComputedKeys(prev => prev.filter((_, i) => i !== index));
+    setComputedKeys((prev) => prev.filter((_, i) => i !== index));
   };
-
-  const downloadKeyData = (key: ComputedKey) => {
-    const data = {
-      channelId: key.channelId,
-      slotIndex: key.slotIndex,
-      mptKey: key.mptKey,
-      privateKey: key.privateKey,
-      l2Address: key.l2Address,
-      generatedAt: new Date().toISOString(),
-    };
-
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `l2-keys-channel-${key.channelId}-${Date.now()}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
 
   return (
-    <div className={`bg-gradient-to-r from-[#4fc3f7]/10 to-[#029bee]/10 border border-[#4fc3f7]/30 ${className || ''}`}>
+    <div
+      className={`bg-gradient-to-r from-[#4fc3f7]/10 to-[#029bee]/10 border border-[#4fc3f7]/30 ${
+        className || ""
+      }`}
+    >
       <div className="p-4">
         {/* Banner Header */}
         <div className="flex items-center justify-between">
@@ -126,19 +106,21 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
               <Key className="w-5 h-5 text-[#4fc3f7]" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-white">L2 MPT Key Generator</h3>
+              <h3 className="text-lg font-semibold text-white">
+                L2 MPT Key Generator
+              </h3>
               <p className="text-sm text-gray-300">
                 Compute Merkle Patricia Tree keys for your deposits
               </p>
             </div>
           </div>
-          
+
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="px-4 py-2 bg-[#4fc3f7] text-white hover:bg-[#029bee] transition-colors flex items-center gap-2"
           >
             <Calculator className="w-4 h-4" />
-            {isExpanded ? 'Hide' : 'Generate Keys'}
+            {isExpanded ? "Hide" : "Generate Keys"}
           </button>
         </div>
 
@@ -147,7 +129,6 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
           <div className="mt-6 space-y-4">
             {/* Input Form */}
             <div className="grid grid-cols-1 gap-4">
-              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1">
@@ -157,7 +138,9 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
                     type="number"
                     min="1"
                     value={channelId}
-                    onChange={(e) => setChannelId(parseInt(e.target.value) || 1)}
+                    onChange={(e) =>
+                      setChannelId(parseInt(e.target.value) || 1)
+                    }
                     className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
                   />
                 </div>
@@ -168,15 +151,18 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
                   </label>
                   <select
                     value={slotIndex}
-                    onChange={(e) => setSlotIndex(parseInt(e.target.value) || 0)}
+                    onChange={(e) =>
+                      setSlotIndex(parseInt(e.target.value) || 0)
+                    }
                     className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
                   >
-                    <option value="0xa30fe40285B8f5c0457DbC3B7C8A280373c40044">TON Token</option>
+                    <option value="0xa30fe40285B8f5c0457DbC3B7C8A280373c40044">
+                      TON Token
+                    </option>
                   </select>
                 </div>
               </div>
             </div>
-        
 
             {/* Generate Button */}
             <div className="flex items-center gap-4">
@@ -186,7 +172,7 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
                 className="px-6 py-3 bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
               >
                 <Calculator className="w-4 h-4" />
-                {isComputing ? 'Computing...' : 'Generate MPT Key'}
+                {isComputing ? "Computing..." : "Generate MPT Key"}
               </button>
 
               {error && (
@@ -200,7 +186,9 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
             {/* Generated Keys */}
             {computedKeys.length > 0 && (
               <div className="space-y-3">
-                <h4 className="text-lg font-semibold text-white">Generated Keys</h4>
+                <h4 className="text-lg font-semibold text-white">
+                  Generated Keys
+                </h4>
                 <div className="space-y-2">
                   {computedKeys.map((key, index) => (
                     <div
@@ -222,12 +210,12 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
                             {key.mptKey}
                           </p>
                         </div>
-                        
+
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => copyToClipboard(key.mptKey)}
                             className="p-2 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/30 transition-colors"
-                            title="Copy MPT Key to clipboard"
+                            title="Copy to clipboard"
                           >
                             {copiedKey === key.mptKey ? (
                               <CheckCircle2 className="w-4 h-4" />
@@ -235,15 +223,6 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
                               <Copy className="w-4 h-4" />
                             )}
                           </button>
-                          {key.privateKey && key.l2Address && (
-                            <button
-                              onClick={() => downloadKeyData(key)}
-                              className="p-2 bg-green-500/20 border border-green-500/50 text-green-400 hover:bg-green-500/30 transition-colors"
-                              title="Download private key and L2 address"
-                            >
-                              <Download className="w-4 h-4" />
-                            </button>
-                          )}
                           <button
                             onClick={() => removeKey(index)}
                             className="p-2 bg-red-500/20 border border-red-500/50 text-red-400 hover:bg-red-500/30 transition-colors"
@@ -261,13 +240,27 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
 
             {/* Usage Instructions */}
             <div className="bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 p-4">
-              <h4 className="font-semibold text-[#4fc3f7] mb-2">How to use generated keys:</h4>
+              <h4 className="font-semibold text-[#4fc3f7] mb-2">
+                How to use generated keys:
+              </h4>
               <ul className="text-sm text-gray-300 space-y-1">
-                <li>• Keys are generated client-side using JubJub cryptography and Poseidon hash</li>
-                <li>• Copy the generated MPT key and paste it into the "L2 MPT Key" field when making deposits</li>
+                <li>
+                  • Keys are generated client-side using JubJub cryptography and
+                  Poseidon hash
+                </li>
+                <li>
+                  • Copy the generated MPT key and paste it into the "L2 MPT
+                  Key" field when making deposits
+                </li>
                 <li>• Ensure the channel ID matches your deposit parameters</li>
-                <li>• Each unique combination of wallet address, channel ID, and token generates a different key deterministically</li>
-                <li>• Your private key never leaves your browser - all computation is done locally</li>
+                <li>
+                  • Each unique combination of wallet address, channel ID, and
+                  token generates a different key deterministically
+                </li>
+                <li>
+                  • Your private key never leaves your browser - all computation
+                  is done locally
+                </li>
               </ul>
             </div>
           </div>

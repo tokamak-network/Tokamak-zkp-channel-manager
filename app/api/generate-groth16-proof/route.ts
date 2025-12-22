@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-static';
+
 // Check if we're in a production serverless environment (Vercel)
 const isServerless = process.env.VERCEL || process.env.NODE_ENV === 'production';
 

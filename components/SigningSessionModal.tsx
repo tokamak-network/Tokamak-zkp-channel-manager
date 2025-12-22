@@ -41,21 +41,50 @@ export function SigningSessionModal({
   const [previewHash, setPreviewHash] = useState('');
   const [rosterFromPackage, setRosterFromPackage] = useState<string[]>([]);
 
-  // Extract roster from key package when modal opens (same as DKG management)
+  // Extract roster from key package or imported session when modal opens
   useEffect(() => {
-    if (isOpen && keyPackageData?.keyPackageHex) {
-      try {
-        const metadata = JSON.parse(get_key_package_metadata(keyPackageData.keyPackageHex));
-        console.log('📦 Key package metadata:', metadata);
+    if (isOpen && keyPackageData) {
+      if (keyPackageData.keyPackageHex) {
+        // Real key package - extract roster from metadata
+        try {
+          const metadata = JSON.parse(get_key_package_metadata(keyPackageData.keyPackageHex));
+          console.log('📦 Key package metadata:', metadata);
+          
+          // Extract roster as array of public keys (same as DKG management)
+          const pubkeys = Object.values(metadata.roster) as string[];
+          
+          console.log('📋 Roster public keys:', pubkeys);
+          setRosterFromPackage(pubkeys);
+        } catch (e) {
+          console.error('Failed to extract roster from key package:', e);
+          setRosterFromPackage([]);
+        }
+      } else {
+        // Imported session - use participant roster if available
+        console.log('📦 Imported session detected, checking for participant roster...');
+        console.log('📋 KeyPackageData:', keyPackageData);
+        console.log('📋 ParticipantRoster check:', {
+          hasParticipantRoster: !!(keyPackageData as any).participantRoster,
+          participantRosterLength: (keyPackageData as any).participantRoster?.length || 0,
+          participantRoster: (keyPackageData as any).participantRoster
+        });
         
-        // Extract roster as array of public keys (same as DKG management)
-        const pubkeys = Object.values(metadata.roster) as string[];
-        
-        console.log('📋 Roster public keys:', pubkeys);
-        setRosterFromPackage(pubkeys);
-      } catch (e) {
-        console.error('Failed to extract roster from key package:', e);
-        setRosterFromPackage([]);
+        // Check if the imported session has a participant roster (from new DKG output format)
+        if ((keyPackageData as any).participantRoster && (keyPackageData as any).participantRoster.length > 0) {
+          console.log('✅ Using participant roster from imported session:', (keyPackageData as any).participantRoster);
+          setRosterFromPackage((keyPackageData as any).participantRoster);
+        } else {
+          // Fallback: generate participant IDs based on session data for older imports
+          console.log('⚠️ No participant roster found, generating placeholder participant IDs...');
+          
+          const participantIds: string[] = [];
+          for (let i = 1; i <= keyPackageData.total; i++) {
+            participantIds.push(`participant_${i}`);
+          }
+          
+          console.log('📋 Generated participant IDs for imported session:', participantIds);
+          setRosterFromPackage(participantIds);
+        }
       }
     }
   }, [isOpen, keyPackageData]);
@@ -122,7 +151,7 @@ export function SigningSessionModal({
     }
 
     if (rosterFromPackage.length === 0) {
-      alert('No participants found in key package');
+      alert('No participants found - cannot create signing session');
       return;
     }
 
@@ -148,12 +177,25 @@ export function SigningSessionModal({
       });
     }
     
+    // Remove 0x prefix for server compatibility
+    const cleanMessage = packedData.startsWith('0x') ? packedData.slice(2) : packedData;
+    const cleanMessageHash = previewHash.startsWith('0x') ? previewHash.slice(2) : previewHash;
+    const cleanGroupVk = keyPackageData!.groupPublicKeyHex.startsWith('0x') ? keyPackageData!.groupPublicKeyHex.slice(2) : keyPackageData!.groupPublicKeyHex;
+    
+    console.log('📤 Sending session data:', {
+      message: cleanMessage,
+      messageHash: cleanMessageHash,
+      groupVk: cleanGroupVk,
+      groupId: validGroupId,
+      threshold: keyPackageData!.threshold
+    });
+    
     onCreateSession({
       groupId: validGroupId,
       threshold: keyPackageData!.threshold,
-      message: packedData, // Send the packed data, not the hash
-      messageHash: previewHash, // Show what the server will compute
-      groupVk: keyPackageData!.groupPublicKeyHex,
+      message: cleanMessage, // Send the packed data without 0x prefix
+      messageHash: cleanMessageHash, // Send hash without 0x prefix
+      groupVk: cleanGroupVk, // Send group verification key without 0x prefix
       roster: rosterFromPackage
     });
     
@@ -278,11 +320,28 @@ export function SigningSessionModal({
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold mb-2">
                 <Users className="w-4 h-4 text-purple-400" />
-                Participants from Key Package
+                Participants {keyPackageData?.keyPackageHex ? 'from Key Package' : 'from Imported Session'}
               </label>
               <p className="text-xs text-gray-400 mb-3">
                 {rosterFromPackage.length} participant(s) found (Threshold: {keyPackageData?.threshold})
               </p>
+              {!keyPackageData?.keyPackageHex && rosterFromPackage.length > 0 && rosterFromPackage[0]?.startsWith('participant_') && (
+                <div className="mb-3 p-3 bg-red-900/20 border border-red-500/50 rounded-lg">
+                  <p className="text-xs text-red-300">
+                    ⚠️ <strong>Legacy Imported Session:</strong> This session uses placeholder participant IDs. 
+                    Signing sessions may fail without real participant public keys. 
+                    Use a newer DKG session export with participant roster for better compatibility.
+                  </p>
+                </div>
+              )}
+              {!keyPackageData?.keyPackageHex && rosterFromPackage.length > 0 && !rosterFromPackage[0]?.startsWith('participant_') && (
+                <div className="mb-3 p-3 bg-green-900/20 border border-green-500/50 rounded-lg">
+                  <p className="text-xs text-green-300">
+                    ✅ <strong>Modern Imported Session:</strong> This session includes participant public keys 
+                    and can be used to create signing sessions.
+                  </p>
+                </div>
+              )}
               <div className="bg-purple-900/20 border border-purple-500/50 p-4">
                 <div className="space-y-2">
                   {rosterFromPackage.map((pubkey, index) => (
@@ -311,10 +370,14 @@ export function SigningSessionModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!isAuthenticated || !channelId || !finalStateRoot || !packedData}
+            disabled={!isAuthenticated || !channelId || !finalStateRoot || !packedData || (!keyPackageData?.keyPackageHex && (!rosterFromPackage.length || rosterFromPackage[0]?.startsWith('participant_')))}
             className="flex-1 px-6 py-3 bg-[#028bee] hover:bg-[#0277d4] disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold transition-all"
           >
-            {!isAuthenticated ? 'Not Authenticated' : 'Create Signing Session'}
+            {!isAuthenticated 
+              ? 'Not Authenticated' 
+              : !keyPackageData?.keyPackageHex && (!rosterFromPackage.length || rosterFromPackage[0]?.startsWith('participant_'))
+                ? 'Cannot Create from Legacy Import'
+                : 'Create Signing Session'}
           </button>
         </div>
       </div>

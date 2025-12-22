@@ -81,7 +81,6 @@ export function useUserRoles() {
         console.error('Error checking user roles:', error);
       }
 
-      console.log(`Final results: hasLeadership=${foundLeadership}, hasParticipation=${foundParticipation && !foundLeadership}`);
       setHasLeadership(foundLeadership);
       setHasParticipation(foundParticipation && !foundLeadership);
       setIsLoading(false);
