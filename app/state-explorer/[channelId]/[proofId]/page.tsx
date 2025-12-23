@@ -136,7 +136,7 @@ export default function ProofDetailPage() {
             // Match by proofId, id, or key (case-insensitive comparison)
             const pProofId = String(p.proofId || '').toLowerCase();
             const pId = String(p.id || '').toLowerCase();
-            const pKey = String(p.key || key || '').toLowerCase();
+            const pKey = String(p.key || '').toLowerCase();
             const searchId = String(proofId || '').toLowerCase();
             return pProofId === searchId || pId === searchId || pKey === searchId;
           });
@@ -150,7 +150,7 @@ export default function ProofDetailPage() {
           foundProof = verifiedList.find((p: any) => {
             const pProofId = String(p.proofId || '').toLowerCase();
             const pId = String(p.id || '').toLowerCase();
-            const pKey = String(p.key || key || '').toLowerCase();
+            const pKey = String(p.key || '').toLowerCase();
             const searchId = String(proofId || '').toLowerCase();
             return pProofId === searchId || pId === searchId || pKey === searchId;
           });
@@ -164,7 +164,7 @@ export default function ProofDetailPage() {
           foundProof = rejectedList.find((p: any) => {
             const pProofId = String(p.proofId || '').toLowerCase();
             const pId = String(p.id || '').toLowerCase();
-            const pKey = String(p.key || key || '').toLowerCase();
+            const pKey = String(p.key || '').toLowerCase();
             const searchId = String(proofId || '').toLowerCase();
             return pProofId === searchId || pId === searchId || pKey === searchId;
           });
@@ -409,7 +409,7 @@ export default function ProofDetailPage() {
 
         // Get previous proof's resulting state if this is not the first proof
         let previousProofBalances: any[] = [];
-        const currentSequenceNumber = proof?.sequenceNumber || proof?.id || 0;
+        const currentSequenceNumber = Number(proof?.sequenceNumber || proof?.id || 0);
         
         if (currentSequenceNumber > 1) {
           try {

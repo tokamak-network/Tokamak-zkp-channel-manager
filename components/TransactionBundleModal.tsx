@@ -372,16 +372,16 @@ export function TransactionBundleModal({
         let initializationTxHash = null;
 
         // Try from channel object first
-        if (channel?.initializationTxHash) {
-          initializationTxHash = channel.initializationTxHash;
+        if ((channel as any)?.initializationTxHash) {
+          initializationTxHash = (channel as any).initializationTxHash;
         }
 
         // Try from initialProof object in channel data
         if (
           !initializationTxHash &&
-          channel?.initialProof?.initializationTxHash
+          (channel as any)?.initialProof?.initializationTxHash
         ) {
-          initializationTxHash = channel.initialProof.initializationTxHash;
+          initializationTxHash = (channel as any).initialProof.initializationTxHash;
         }
 
         // Try from getChannel with current ID format
@@ -389,8 +389,8 @@ export function TransactionBundleModal({
           try {
             const channelData = await getChannel(selectedChannelId);
             initializationTxHash =
-              channelData?.initializationTxHash ||
-              channelData?.initialProof?.initializationTxHash ||
+              (channelData as any)?.initializationTxHash ||
+              (channelData as any)?.initialProof?.initializationTxHash ||
               null;
           } catch (err) {
             console.warn(
@@ -439,8 +439,8 @@ export function TransactionBundleModal({
             const numericId = Number(selectedChannelId);
             const channelData = await getChannel(String(numericId));
             initializationTxHash =
-              channelData?.initializationTxHash ||
-              channelData?.initialProof?.initializationTxHash ||
+              (channelData as any)?.initializationTxHash ||
+              (channelData as any)?.initialProof?.initializationTxHash ||
               null;
           } catch (err) {
             console.warn("Failed to get channel data with numeric ID:", err);
@@ -511,16 +511,16 @@ export function TransactionBundleModal({
         // Get initializationTxHash
         let initializationTxHash = null;
 
-        if (channel?.initializationTxHash) {
-          initializationTxHash = channel.initializationTxHash;
-        } else if (channel?.initialProof?.initializationTxHash) {
-          initializationTxHash = channel.initialProof.initializationTxHash;
+        if ((channel as any)?.initializationTxHash) {
+          initializationTxHash = (channel as any).initializationTxHash;
+        } else if ((channel as any)?.initialProof?.initializationTxHash) {
+          initializationTxHash = (channel as any).initialProof.initializationTxHash;
         } else {
           try {
             const channelData = await getChannel(selectedChannelId);
             initializationTxHash =
-              channelData?.initializationTxHash ||
-              channelData?.initialProof?.initializationTxHash ||
+              (channelData as any)?.initializationTxHash ||
+              (channelData as any)?.initialProof?.initializationTxHash ||
               null;
           } catch (err) {
             console.warn("Failed to get channel data:", err);

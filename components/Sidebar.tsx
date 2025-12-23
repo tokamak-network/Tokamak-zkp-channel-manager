@@ -113,17 +113,8 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
     );
   }
 
-  // Channel explorer actions - shown only when user has channels or is a participant
+  // Channel actions
   const channelActions = [];
-  if (isConnected && (hasChannels || isParticipant)) {
-    channelActions.push({
-      name: 'Channel Explorer',
-      href: '/channel-explorer',
-      icon: Search,
-      description: 'View all channels and activity',
-      requiresConnection: true
-    });
-  }
   // State Explorer - always visible when connected
   if (isConnected) {
     channelActions.push({

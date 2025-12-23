@@ -12,17 +12,19 @@ import {
 } from "@/lib/contracts";
 
 // Create a public client for reading blockchain data
-const alchemyUrl = process.env.NEXT_PUBLIC_ALCHEMY_SEPOLIA_URL;
-if (!alchemyUrl) {
-  throw new Error(
-    "NEXT_PUBLIC_ALCHEMY_SEPOLIA_URL environment variable is not set"
-  );
-}
+function getPublicClient() {
+  const alchemyUrl = process.env.NEXT_PUBLIC_ALCHEMY_SEPOLIA_URL;
+  if (!alchemyUrl) {
+    throw new Error(
+      "NEXT_PUBLIC_ALCHEMY_SEPOLIA_URL environment variable is not set"
+    );
+  }
 
-const publicClient = createPublicClient({
-  chain: sepolia,
-  transport: http(alchemyUrl),
-});
+  return createPublicClient({
+    chain: sepolia,
+    transport: http(alchemyUrl),
+  });
+}
 
 // Event signatures
 const stateInitializedEvent = parseAbiItem(
@@ -53,7 +55,7 @@ async function searchLogsInChunks(
       currentBlock + chunkSize > endBlock ? endBlock : currentBlock + chunkSize;
 
     try {
-      const logs = await publicClient.getLogs({
+      const logs = await getPublicClient().getLogs({
         address,
         event,
         args,
@@ -124,7 +126,7 @@ async function getProofFromTxHash(txHash: `0x${string}`) {
   try {
     console.log(`🔍 Getting proof from transaction ${txHash}...`);
 
-    const tx = await publicClient.getTransaction({ hash: txHash });
+    const tx = await getPublicClient().getTransaction({ hash: txHash });
 
     if (!tx) {
       return NextResponse.json(
@@ -134,7 +136,7 @@ async function getProofFromTxHash(txHash: `0x${string}`) {
     }
 
     // Get transaction receipt for block info
-    const receipt = await publicClient.getTransactionReceipt({ hash: txHash });
+    const receipt = await getPublicClient().getTransactionReceipt({ hash: txHash });
 
     // Decode the calldata
     let decodedProof;
@@ -225,7 +227,7 @@ export async function GET(request: Request) {
     }
 
     const channelId = BigInt(channelIdParam);
-    const currentBlock = await publicClient.getBlockNumber();
+    const currentBlock = await getPublicClient().getBlockNumber();
 
     // Determine search start block
     let searchStartBlock = BigInt(0);
@@ -270,7 +272,7 @@ export async function GET(request: Request) {
     console.log(`✅ Found StateInitialized event in tx ${txHash}`);
 
     // 2. Get the transaction data
-    const tx = await publicClient.getTransaction({
+    const tx = await getPublicClient().getTransaction({
       hash: txHash,
     });
 

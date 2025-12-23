@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
           functionName: 'getL2MptKey',
           args: [BigInt(channelId), participant]
         });
-        results.l2MptKeysList = keysList;
+        results.l2MptKeysList = keysList.toString();
         console.log('✓ getL2MptKey (bulk) works:', keysList);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
