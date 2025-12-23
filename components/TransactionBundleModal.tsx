@@ -323,7 +323,10 @@ export function TransactionBundleModal({
   };
 
   // OPTIMIZED: Helper to get initializationTxHash with minimal Firebase calls
-  const getInitializationTxHash = async (channelId: string, channelData: Channel | null): Promise<string | null> => {
+  const getInitializationTxHash = async (
+    channelId: string,
+    channelData: Channel | null
+  ): Promise<string | null> => {
     // 1. Try from already loaded channel data first (no Firebase call)
     // Note: initializationTxHash is stored dynamically and not in the Channel type
     const channelAny = channelData as any;
@@ -336,7 +339,9 @@ export function TransactionBundleModal({
 
     // 2. Single Firebase call to get initialProof (most common location)
     try {
-      const initialProofData = await getData<any>(`channels/${channelId}/initialProof`);
+      const initialProofData = await getData<any>(
+        `channels/${channelId}/initialProof`
+      );
       if (initialProofData?.initializationTxHash) {
         return initialProofData.initializationTxHash;
       }
@@ -348,13 +353,17 @@ export function TransactionBundleModal({
   };
 
   // OPTIMIZED: Helper to get latest verified proof's state snapshot
-  const getLatestStateSnapshot = async (channelId: string): Promise<any | null> => {
+  const getLatestStateSnapshot = async (
+    channelId: string
+  ): Promise<any | null> => {
     try {
       // Get only the metadata first (without zipFile.content if possible)
       // Note: Firebase doesn't support partial reads, so we get the whole thing
       // but we only need the latest proof's content
-      const verifiedProofsData = await getData<any>(`channels/${channelId}/verifiedProofs`);
-      
+      const verifiedProofsData = await getData<any>(
+        `channels/${channelId}/verifiedProofs`
+      );
+
       if (!verifiedProofsData) return null;
 
       // Find the latest proof key (highest sequenceNumber)
@@ -379,7 +388,9 @@ export function TransactionBundleModal({
       // If content not in initial fetch, get it separately (this handles Firebase's lazy loading)
       if (!zipFileContent) {
         try {
-          const zipFileData = await getData<any>(`channels/${channelId}/verifiedProofs/${latestKey}/zipFile`);
+          const zipFileData = await getData<any>(
+            `channels/${channelId}/verifiedProofs/${latestKey}/zipFile`
+          );
           zipFileContent = zipFileData?.content;
         } catch (err) {
           console.warn("Failed to fetch zipFile content:", err);
@@ -416,7 +427,10 @@ export function TransactionBundleModal({
 
     try {
       // OPTIMIZED: Use already loaded bundleData.channel, only fetch if missing
-      const initTxHash = await getInitializationTxHash(selectedChannelId, bundleData?.channel || null);
+      const initTxHash = await getInitializationTxHash(
+        selectedChannelId,
+        bundleData?.channel || null
+      );
 
       if (!initTxHash) {
         throw new Error(
@@ -425,7 +439,9 @@ export function TransactionBundleModal({
       }
 
       // OPTIMIZED: Get state snapshot with single efficient call
-      const previousStateSnapshot = await getLatestStateSnapshot(selectedChannelId);
+      const previousStateSnapshot = await getLatestStateSnapshot(
+        selectedChannelId
+      );
 
       console.log("Synthesizing L2 transfer with:", {
         channelId: selectedChannelId,
@@ -509,7 +525,10 @@ export function TransactionBundleModal({
       const zip = new JSZip();
 
       // OPTIMIZED: Single call to get initializationTxHash
-      const initializationTxHash = await getInitializationTxHash(selectedChannelId, channel || null);
+      const initializationTxHash = await getInitializationTxHash(
+        selectedChannelId,
+        channel || null
+      );
 
       if (!initializationTxHash) {
         throw new Error(
@@ -518,7 +537,9 @@ export function TransactionBundleModal({
       }
 
       // OPTIMIZED: Single call to get latest state snapshot
-      const latestStateSnapshot = await getLatestStateSnapshot(selectedChannelId);
+      const latestStateSnapshot = await getLatestStateSnapshot(
+        selectedChannelId
+      );
 
       // Create transaction-info.json
       const transactionInfo = {
@@ -530,16 +551,25 @@ export function TransactionBundleModal({
         signed: isSigned,
         ...(signature && { signature }),
       };
-      zip.file("transaction-info.json", JSON.stringify(transactionInfo, null, 2));
+      zip.file(
+        "transaction-info.json",
+        JSON.stringify(transactionInfo, null, 2)
+      );
 
       // Add L2 signed transaction if available
       if (l2SignedTx) {
-        zip.file("signed-transaction.json", JSON.stringify(l2SignedTx, null, 2));
+        zip.file(
+          "signed-transaction.json",
+          JSON.stringify(l2SignedTx, null, 2)
+        );
       }
 
       // Add state_snapshot.json if available
       if (latestStateSnapshot) {
-        zip.file("state_snapshot.json", JSON.stringify(latestStateSnapshot, null, 2));
+        zip.file(
+          "state_snapshot.json",
+          JSON.stringify(latestStateSnapshot, null, 2)
+        );
       }
 
       // Generate and download
