@@ -1514,9 +1514,9 @@ function StateExplorerDetailView({
                 <div
                   className={`transition-all duration-300 ease-in-out ${
                     isTransitionsExpanded
-                      ? "max-h-[600px] opacity-100"
-                      : "max-h-0 opacity-0"
-                  } overflow-hidden`}
+                      ? "max-h-[600px] opacity-100 overflow-y-auto scrollbar-thin"
+                      : "max-h-0 opacity-0 overflow-hidden"
+                  }`}
                 >
                   <div className="px-4 pb-4">
                     <p className="text-gray-400 text-sm mb-4">
@@ -1534,8 +1534,8 @@ function StateExplorerDetailView({
                     ) : (
                       <div
                         className={`space-y-4 ${
-                          stateTransitions.length > 3
-                            ? "max-h-[450px] overflow-y-auto pr-2 scrollbar-thin"
+                          stateTransitions.length >= 3
+                            ? "max-h-[420px] overflow-y-auto pr-2 scrollbar-thin"
                             : ""
                         }`}
                       >
@@ -1668,8 +1668,8 @@ function StateExplorerDetailView({
                       </div>
                     )}
 
-                    {/* Scroll indicator when there are more than 3 transitions */}
-                    {stateTransitions.length > 3 && (
+                    {/* Scroll indicator when there are 3 or more transitions */}
+                    {stateTransitions.length >= 3 && (
                       <div className="mt-3 text-center text-xs text-gray-500">
                         <span className="bg-[#1a2347]/50 px-3 py-1 rounded">
                           Scroll to see all {stateTransitions.length} state
