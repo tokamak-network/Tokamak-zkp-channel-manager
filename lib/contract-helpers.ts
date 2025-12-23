@@ -27,35 +27,33 @@ export async function fetchChannelDataFromContract(channelId: string) {
       args: [BigInt(channelId)],
     });
 
-    // 3. Get allowed tokens
+    // 3. Get target contract (for token information)
     const allowedTokens = await readContract({
       address: ROLLUP_BRIDGE_ADDRESS,
       abi: ROLLUP_BRIDGE_ABI,
-      functionName: "getChannelAllowedTokens",
+      functionName: "getChannelTargetContract",
       args: [BigInt(channelId)],
     });
 
     // 4. Get DKG public key
-    const { pkx, pky } = await readContract({
+    const [pkx, pky] = await readContract({
       address: ROLLUP_BRIDGE_ADDRESS,
       abi: ROLLUP_BRIDGE_ABI,
       functionName: "getChannelPublicKey",
       args: [BigInt(channelId)],
     });
 
-    // 5. Get MPT keys for each participant and token
+    // 5. Get MPT keys for each participant
     const mptKeyList: string[] = [];
     for (const participant of participants as string[]) {
-      for (const token of allowedTokens as string[]) {
-        const mptKey = await readContract({
-          address: ROLLUP_BRIDGE_ADDRESS,
-          abi: ROLLUP_BRIDGE_ABI,
-          functionName: "getParticipantL2MptKey",
-          args: [BigInt(channelId), participant as `0x${string}`, token as `0x${string}`],
-        });
-        if (mptKey && BigInt(mptKey as string) > 0n) {
-          mptKeyList.push((mptKey as bigint).toString());
-        }
+      const mptKey = await readContract({
+        address: ROLLUP_BRIDGE_ADDRESS,
+        abi: ROLLUP_BRIDGE_ABI,
+        functionName: "getL2MptKey",
+        args: [BigInt(channelId), participant as `0x${string}`],
+      });
+      if (mptKey && BigInt(mptKey as bigint) > 0n) {
+        mptKeyList.push((mptKey as bigint).toString());
       }
     }
 
