@@ -168,3 +168,50 @@ export async function getData<T = any>(path: string): Promise<T | null> {
   return snapshot.exists() ? snapshot.val() : null;
 }
 
+// ============================================================================
+// Proof Operations
+// ============================================================================
+
+/**
+ * Get current state number based on verified proofs
+ * Returns the next state number (max sequenceNumber + 1)
+ * Returns 0 if no verified proofs exist
+ */
+export async function getCurrentStateNumber(channelId: string): Promise<number> {
+  try {
+    const verifiedProofsData = await getData<any>(
+      `channels/${channelId}/verifiedProofs`
+    );
+
+    if (!verifiedProofsData) {
+      // No verified proofs, starting from state 0
+      return 0;
+    }
+
+    // Convert to array and find the highest sequenceNumber
+    const verifiedProofsArray = Object.entries(verifiedProofsData)
+      .map(([key, value]: [string, any]) => ({
+        key,
+        ...value,
+      }))
+      .filter((proof: any) => proof.sequenceNumber !== undefined);
+
+    if (verifiedProofsArray.length === 0) {
+      // No verified proofs with sequenceNumber, starting from state 0
+      return 0;
+    }
+
+    // Get the highest sequenceNumber (latest verified proof)
+    const maxSequenceNumber = Math.max(
+      ...verifiedProofsArray.map((proof: any) => proof.sequenceNumber || 0)
+    );
+
+    // Next state will be maxSequenceNumber + 1
+    return maxSequenceNumber + 1;
+  } catch (err) {
+    console.warn("Failed to get current state number:", err);
+    // Default to 0 if we can't determine
+    return 0;
+  }
+}
+

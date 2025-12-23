@@ -64,3 +64,6 @@ public/zk-assets/zkey/circuit_final_128.zkey
 # Public ZK assets - smaller files are committed for client-side proof generation
 # public/zk-assets/**/*.zkey  # commented out - we commit small zkey files
 # public/zk-assets/**/*.wasm  # commented out - we commit all WASM files
+
+# Tokamak-Zk-EVM
+/tokamak-zk-evm-bin

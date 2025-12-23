@@ -31,6 +31,7 @@ import {
   getChannelUserBalances,
   getChannelParticipants,
   getData,
+  getCurrentStateNumber,
 } from "@/lib/realtime-db-helpers";
 import type {
   Channel,
@@ -82,8 +83,12 @@ export function TransactionBundleModal({
   const [isSigned, setIsSigned] = useState(false);
   const [toAddress, setToAddress] = useState("");
   const [tokenAmount, setTokenAmount] = useState("");
+  const [currentStateNumber, setCurrentStateNumber] = useState<number | null>(
+    null
+  );
   const [isSigning, setIsSigning] = useState(false);
   const [signature, setSignature] = useState<`0x${string}` | null>(null);
+  const [signedTxData, setSignedTxData] = useState<any>(null);
 
   // Wagmi hooks for MetaMask signing
   const { signMessageAsync } = useSignMessage();
@@ -101,8 +106,10 @@ export function TransactionBundleModal({
       setSignature(null);
       setToAddress("");
       setTokenAmount("");
+      setCurrentStateNumber(null);
       setError(null);
       setDownloadComplete(false);
+      setSignedTxData(null);
     }
   }, [isOpen, defaultChannelId]);
 
@@ -159,6 +166,9 @@ export function TransactionBundleModal({
         }
       }
 
+      // Get current state number from verified proofs using shared utility
+      const stateNumber = await getCurrentStateNumber(channelId);
+      setCurrentStateNumber(stateNumber);
       setBundleData({
         channel,
         snapshot,
@@ -220,6 +230,82 @@ export function TransactionBundleModal({
     );
   };
 
+  // Generate L2 signed transaction using synthesizer binary
+  const synthesizeL2Transfer = async (
+    initTxHash: string,
+    previousStateSnapshot?: any
+  ) => {
+    if (!signature) {
+      throw new Error("Signature is required to synthesize L2 transfer");
+    }
+
+    const response = await fetch("/api/synthesize-l2-transfer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channelId: selectedChannelId,
+        initTx: initTxHash,
+        signature,
+        recipient: toAddress.trim(),
+        amount: tokenAmount.trim(),
+        useSepolia: true,
+        previousStateSnapshot: previousStateSnapshot || null,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Failed to synthesize L2 transfer");
+    }
+
+    // Response is a ZIP file blob
+    return await response.blob();
+  };
+
+  // Legacy: Generate L2 signed transaction (kept for backwards compatibility)
+  const generateSignedTransaction = async () => {
+    if (!signature) {
+      throw new Error("Signature is required to generate signed transaction");
+    }
+
+    // Encode transfer callData: transfer(address to, uint256 amount)
+    // Function selector for transfer(address,uint256) = 0xa9059cbb
+    const functionSelector = "0xa9059cbb";
+    const paddedToAddress = toAddress
+      .trim()
+      .toLowerCase()
+      .replace("0x", "")
+      .padStart(64, "0");
+    // Convert token amount to wei (assuming 18 decimals)
+    const amountInWei = BigInt(Math.floor(Number(tokenAmount) * 1e18));
+    const paddedAmount = amountInWei.toString(16).padStart(64, "0");
+    const callData =
+      `${functionSelector}${paddedToAddress}${paddedAmount}` as `0x${string}`;
+
+    // L2 contract address (TON token on L2)
+    const l2ContractAddress =
+      "0xa30fe40285B8f5c0457DbC3B7C8A280373c40044" as `0x${string}`;
+
+    const response = await fetch("/api/create-l2-signed-transaction", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        signature,
+        nonce: currentStateNumber || 0, // Use current state number as nonce
+        to: l2ContractAddress,
+        callData,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Failed to create signed transaction");
+    }
+
+    const result = await response.json();
+    return result;
+  };
+
   // Handle proceed to summary
   const handleProceedToSummary = () => {
     if (isFormValid()) {
@@ -236,6 +322,168 @@ export function TransactionBundleModal({
     setError(null);
   };
 
+  // OPTIMIZED: Helper to get initializationTxHash with minimal Firebase calls
+  const getInitializationTxHash = async (
+    channelId: string,
+    channelData: Channel | null
+  ): Promise<string | null> => {
+    // 1. Try from already loaded channel data first (no Firebase call)
+    // Note: initializationTxHash is stored dynamically and not in the Channel type
+    const channelAny = channelData as any;
+    if (channelAny?.initializationTxHash) {
+      return channelAny.initializationTxHash;
+    }
+    if (channelAny?.initialProof?.initializationTxHash) {
+      return channelAny.initialProof.initializationTxHash;
+    }
+
+    // 2. Single Firebase call to get initialProof (most common location)
+    try {
+      const initialProofData = await getData<any>(
+        `channels/${channelId}/initialProof`
+      );
+      if (initialProofData?.initializationTxHash) {
+        return initialProofData.initializationTxHash;
+      }
+    } catch (err) {
+      console.warn("Failed to get initializationTxHash:", err);
+    }
+
+    return null;
+  };
+
+  // OPTIMIZED: Helper to get latest verified proof's state snapshot
+  const getLatestStateSnapshot = async (
+    channelId: string
+  ): Promise<any | null> => {
+    try {
+      // Get only the metadata first (without zipFile.content if possible)
+      // Note: Firebase doesn't support partial reads, so we get the whole thing
+      // but we only need the latest proof's content
+      const verifiedProofsData = await getData<any>(
+        `channels/${channelId}/verifiedProofs`
+      );
+
+      if (!verifiedProofsData) return null;
+
+      // Find the latest proof key (highest sequenceNumber)
+      const entries = Object.entries(verifiedProofsData);
+      if (entries.length === 0) return null;
+
+      let latestKey = entries[0][0];
+      let latestSeq = (entries[0][1] as any)?.sequenceNumber || 0;
+
+      for (const [key, value] of entries) {
+        const seq = (value as any)?.sequenceNumber || 0;
+        if (seq > latestSeq) {
+          latestSeq = seq;
+          latestKey = key;
+        }
+      }
+
+      // Get zipFile content from the latest proof
+      const latestProof = verifiedProofsData[latestKey];
+      let zipFileContent = latestProof?.zipFile?.content;
+
+      // If content not in initial fetch, get it separately (this handles Firebase's lazy loading)
+      if (!zipFileContent) {
+        try {
+          const zipFileData = await getData<any>(
+            `channels/${channelId}/verifiedProofs/${latestKey}/zipFile`
+          );
+          zipFileContent = zipFileData?.content;
+        } catch (err) {
+          console.warn("Failed to fetch zipFile content:", err);
+          return null;
+        }
+      }
+
+      if (!zipFileContent) return null;
+
+      // Parse and extract state_snapshot
+      const { snapshot } = await parseProofFromBase64Zip(zipFileContent);
+      return snapshot || null;
+    } catch (err) {
+      console.warn("Failed to get latest state snapshot:", err);
+      return null;
+    }
+  };
+
+  // Synthesize L2 transfer and download result
+  const handleSynthesizerDownload = async () => {
+    if (!selectedChannelId) {
+      setError("No channel selected");
+      return;
+    }
+
+    if (!isFormValid()) {
+      setError("Please fill in all fields correctly");
+      return;
+    }
+
+    setStep("downloading");
+    setIsDownloading(true);
+    setError(null);
+
+    try {
+      // OPTIMIZED: Use already loaded bundleData.channel, only fetch if missing
+      const initTxHash = await getInitializationTxHash(
+        selectedChannelId,
+        bundleData?.channel || null
+      );
+
+      if (!initTxHash) {
+        throw new Error(
+          "Could not find initialization transaction hash for this channel"
+        );
+      }
+
+      // OPTIMIZED: Get state snapshot with single efficient call
+      const previousStateSnapshot = await getLatestStateSnapshot(
+        selectedChannelId
+      );
+
+      console.log("Synthesizing L2 transfer with:", {
+        channelId: selectedChannelId,
+        initTx: initTxHash,
+        recipient: toAddress.trim(),
+        amount: tokenAmount.trim(),
+        hasPreviousState: !!previousStateSnapshot,
+      });
+
+      // Call synthesizer API
+      const zipBlob = await synthesizeL2Transfer(
+        initTxHash,
+        previousStateSnapshot
+      );
+
+      // Download the ZIP file
+      const url = URL.createObjectURL(zipBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `l2-transfer-channel-${selectedChannelId}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setDownloadComplete(true);
+      setTimeout(() => {
+        handleClose();
+      }, 2000);
+    } catch (err) {
+      console.error("Failed to synthesize L2 transfer:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to synthesize L2 transfer"
+      );
+      setStep("summary");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  // OPTIMIZED: Removed duplicate handleDownload - use handleSynthesizerDownload instead
+  // The legacy handleDownload had 8+ redundant Firebase calls that have been consolidated
   const handleDownload = async () => {
     if (!selectedChannelId) {
       setError("No channel selected");
@@ -252,304 +500,76 @@ export function TransactionBundleModal({
     setError(null);
 
     try {
-      // Fetch data if not already loaded
-      let channel = bundleData?.channel;
-      let snapshot = bundleData?.snapshot;
-      let balances = bundleData?.balances || [];
-      let participants = bundleData?.participants || [];
+      // Generate L2 signed transaction first
+      let l2SignedTx = null;
+      if (signature) {
+        try {
+          console.log("Generating L2 signed transaction...");
+          l2SignedTx = await generateSignedTransaction();
+          console.log("L2 signed transaction generated:", l2SignedTx);
+          setSignedTxData(l2SignedTx);
+        } catch (txErr) {
+          console.error("Failed to generate L2 signed transaction:", txErr);
+          setError(
+            `Warning: L2 transaction generation failed - ${
+              txErr instanceof Error ? txErr.message : String(txErr)
+            }`
+          );
+        }
+      }
 
-      if (!channel) {
-        try {
-          channel = await getChannel(selectedChannelId);
-        } catch (err) {
-          console.warn("Failed to load channel from Firebase:", err);
-        }
-      }
-      if (!snapshot) {
-        try {
-          snapshot = await getLatestSnapshot(selectedChannelId);
-        } catch (err) {
-          console.warn("Failed to load snapshot:", err);
-        }
-      }
-      if (balances.length === 0) {
-        try {
-          balances = await getChannelUserBalances(selectedChannelId);
-        } catch (err) {
-          console.warn("Failed to load balances:", err);
-        }
-      }
-      if (participants.length === 0) {
-        try {
-          participants = await getChannelParticipants(selectedChannelId);
-        } catch (err) {
-          console.warn("Failed to load participants:", err);
-        }
-      }
+      // OPTIMIZED: Use already loaded bundleData (fetched once in fetchBundleData)
+      const channel = bundleData?.channel;
+      const snapshot = bundleData?.snapshot;
 
       const zip = new JSZip();
 
-      // Check if verifiedProofs exists and has content
-      let verifiedProofs = null;
-      let hasVerifiedProofs = false;
-      let latestStateSnapshot = null;
+      // OPTIMIZED: Single call to get initializationTxHash
+      const initializationTxHash = await getInitializationTxHash(
+        selectedChannelId,
+        channel || null
+      );
 
-      try {
-        verifiedProofs = await getData<any>(
-          `channels/${selectedChannelId}/verifiedProofs`
+      if (!initializationTxHash) {
+        throw new Error(
+          `Could not find initialization transaction hash for channel ${selectedChannelId}. Please ensure the channel has been initialized.`
         );
-
-        // Check if verifiedProofs is an object (Firebase structure)
-        if (verifiedProofs && typeof verifiedProofs === "object") {
-          // Convert to array if it's an object
-          const proofsArray = Array.isArray(verifiedProofs)
-            ? verifiedProofs
-            : Object.entries(verifiedProofs).map(
-                ([key, value]: [string, any]) => ({
-                  proofId: key,
-                  ...value,
-                })
-              );
-
-          hasVerifiedProofs = proofsArray.length > 0;
-
-          // Find the latest verified proof (highest sequenceNumber)
-          if (hasVerifiedProofs) {
-            const latestProof = proofsArray.reduce(
-              (latest: any, current: any) => {
-                if (!latest) return current;
-                const latestSeq = latest.sequenceNumber || 0;
-                const currentSeq = current.sequenceNumber || 0;
-                return currentSeq > latestSeq ? current : latest;
-              },
-              null
-            );
-
-            // Try to get zipFile content - it might be in the proof object or need to be fetched separately
-            let zipFileContent = latestProof?.zipFile?.content;
-
-            // If zipFile is not directly in the proof, try to fetch it from Firebase
-            if (!zipFileContent && latestProof?.proofId) {
-              try {
-                const zipFileData = await getData<any>(
-                  `channels/${selectedChannelId}/verifiedProofs/${latestProof.proofId}/zipFile`
-                );
-                zipFileContent = zipFileData?.content;
-              } catch (err) {
-                console.warn("Failed to fetch zipFile from Firebase:", err);
-              }
-            }
-
-            // Extract state_snapshot.json from the latest proof's ZIP
-            if (zipFileContent) {
-              try {
-                const { snapshot } = await parseProofFromBase64Zip(
-                  zipFileContent
-                );
-                if (snapshot) {
-                  latestStateSnapshot = snapshot;
-                }
-              } catch (parseErr) {
-                console.warn(
-                  "Failed to parse ZIP from latest proof:",
-                  parseErr
-                );
-              }
-            } else {
-              console.warn(
-                "No zipFile content found for latest verified proof"
-              );
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("Failed to check verifiedProofs:", err);
       }
 
-      // If verifiedProofs folder is empty or doesn't exist, create channel-info.json only
-      if (!hasVerifiedProofs) {
-        // Get initializationTxHash from Firebase - try multiple paths and ID formats
-        let initializationTxHash = null;
+      // OPTIMIZED: Single call to get latest state snapshot
+      const latestStateSnapshot = await getLatestStateSnapshot(
+        selectedChannelId
+      );
 
-        // Try from channel object first
-        if ((channel as any)?.initializationTxHash) {
-          initializationTxHash = (channel as any).initializationTxHash;
-        }
+      // Create transaction-info.json
+      const transactionInfo = {
+        channelId: selectedChannelId,
+        initializedTxHash: initializationTxHash,
+        toAddress: toAddress.trim(),
+        tokenAmount: tokenAmount.trim(),
+        currentStateNumber,
+        signed: isSigned,
+        ...(signature && { signature }),
+      };
+      zip.file(
+        "transaction-info.json",
+        JSON.stringify(transactionInfo, null, 2)
+      );
 
-        // Try from initialProof object in channel data
-        if (
-          !initializationTxHash &&
-          (channel as any)?.initialProof?.initializationTxHash
-        ) {
-          initializationTxHash = (channel as any).initialProof.initializationTxHash;
-        }
-
-        // Try from getChannel with current ID format
-        if (!initializationTxHash) {
-          try {
-            const channelData = await getChannel(selectedChannelId);
-            initializationTxHash =
-              (channelData as any)?.initializationTxHash ||
-              (channelData as any)?.initialProof?.initializationTxHash ||
-              null;
-          } catch (err) {
-            console.warn(
-              "Failed to get channel data with ID:",
-              selectedChannelId,
-              err
-            );
-          }
-        }
-
-        // Try from initialProof object path
-        if (!initializationTxHash) {
-          try {
-            const initialProofData = await getData<any>(
-              `channels/${selectedChannelId}/initialProof`
-            );
-            if (initialProofData?.initializationTxHash) {
-              initializationTxHash = initialProofData.initializationTxHash;
-            }
-          } catch (err) {
-            console.warn(
-              "Failed to get initializationTxHash from initialProof:",
-              err
-            );
-          }
-        }
-
-        // Try direct path access with current ID
-        if (!initializationTxHash) {
-          try {
-            const directData = await getData<string>(
-              `channels/${selectedChannelId}/initializationTxHash`
-            );
-            initializationTxHash = directData || null;
-          } catch (err) {
-            console.warn(
-              "Failed to get initializationTxHash from direct path:",
-              err
-            );
-          }
-        }
-
-        // Try with numeric ID if current is string
-        if (!initializationTxHash && !isNaN(Number(selectedChannelId))) {
-          try {
-            const numericId = Number(selectedChannelId);
-            const channelData = await getChannel(String(numericId));
-            initializationTxHash =
-              (channelData as any)?.initializationTxHash ||
-              (channelData as any)?.initialProof?.initializationTxHash ||
-              null;
-          } catch (err) {
-            console.warn("Failed to get channel data with numeric ID:", err);
-          }
-        }
-
-        // Try from initialProof object with numeric ID
-        if (!initializationTxHash && !isNaN(Number(selectedChannelId))) {
-          try {
-            const numericId = Number(selectedChannelId);
-            const initialProofData = await getData<any>(
-              `channels/${numericId}/initialProof`
-            );
-            if (initialProofData?.initializationTxHash) {
-              initializationTxHash = initialProofData.initializationTxHash;
-            }
-          } catch (err) {
-            console.warn(
-              "Failed to get initializationTxHash from initialProof with numeric ID:",
-              err
-            );
-          }
-        }
-
-        // Try direct path access with numeric ID
-        if (!initializationTxHash && !isNaN(Number(selectedChannelId))) {
-          try {
-            const numericId = Number(selectedChannelId);
-            const directData = await getData<string>(
-              `channels/${numericId}/initializationTxHash`
-            );
-            initializationTxHash = directData || null;
-          } catch (err) {
-            console.warn(
-              "Failed to get initializationTxHash from numeric path:",
-              err
-            );
-          }
-        }
-
-        if (initializationTxHash) {
-          const transactionInfo = {
-            channelId: selectedChannelId,
-            initializedTxHash: initializationTxHash,
-            toAddress: toAddress.trim(),
-            tokenAmount: tokenAmount.trim(),
-            signed: isSigned,
-            ...(signature && { signature }),
-          };
-          zip.file(
-            "transaction-info.json",
-            JSON.stringify(transactionInfo, null, 2)
-          );
-        } else {
-          // More helpful error message
-          const errorMsg = `Could not find initialization transaction hash for channel ${selectedChannelId}. The channel may not have been initialized yet. Please ensure the channel has been initialized on the blockchain.`;
-          console.error(errorMsg, {
-            channelId: selectedChannelId,
-            channelIdType: typeof selectedChannelId,
-            numericId: Number(selectedChannelId),
-            channelData: channel,
-            verifiedProofs: hasVerifiedProofs,
-          });
-          throw new Error(errorMsg);
-        }
-      } else {
-        // If verifiedProofs exists, include state_snapshot.json from latest proof
-        // Get initializationTxHash
-        let initializationTxHash = null;
-
-        if ((channel as any)?.initializationTxHash) {
-          initializationTxHash = (channel as any).initializationTxHash;
-        } else if ((channel as any)?.initialProof?.initializationTxHash) {
-          initializationTxHash = (channel as any).initialProof.initializationTxHash;
-        } else {
-          try {
-            const channelData = await getChannel(selectedChannelId);
-            initializationTxHash =
-              (channelData as any)?.initializationTxHash ||
-              (channelData as any)?.initialProof?.initializationTxHash ||
-              null;
-          } catch (err) {
-            console.warn("Failed to get channel data:", err);
-          }
-        }
-
-        // Create transaction-info.json
-        const transactionInfo = {
-          channelId: selectedChannelId,
-          initializedTxHash: initializationTxHash || null,
-          toAddress: toAddress.trim(),
-          tokenAmount: tokenAmount.trim(),
-          signed: isSigned,
-          ...(signature && { signature }),
-        };
+      // Add L2 signed transaction if available
+      if (l2SignedTx) {
         zip.file(
-          "transaction-info.json",
-          JSON.stringify(transactionInfo, null, 2)
+          "signed-transaction.json",
+          JSON.stringify(l2SignedTx, null, 2)
         );
+      }
 
-        // Add state_snapshot.json from latest verified proof if available
-        if (latestStateSnapshot) {
-          zip.file(
-            "state_snapshot.json",
-            JSON.stringify(latestStateSnapshot, null, 2)
-          );
-        } else {
-          console.warn("No state_snapshot.json found in latest verified proof");
-        }
+      // Add state_snapshot.json if available
+      if (latestStateSnapshot) {
+        zip.file(
+          "state_snapshot.json",
+          JSON.stringify(latestStateSnapshot, null, 2)
+        );
       }
 
       // Generate and download
@@ -566,13 +586,12 @@ export function TransactionBundleModal({
       URL.revokeObjectURL(url);
 
       setDownloadComplete(true);
-      // Reset after a short delay
       setTimeout(() => {
         handleClose();
       }, 2000);
     } catch (err) {
       console.error("Failed to create bundle:", err);
-      setError("Failed to create bundle");
+      setError(err instanceof Error ? err.message : "Failed to create bundle");
       setStep("summary");
     } finally {
       setIsDownloading(false);
@@ -603,6 +622,8 @@ export function TransactionBundleModal({
     setSignature(null);
     setToAddress("");
     setTokenAmount("");
+    setCurrentStateNumber(null);
+    setSignedTxData(null);
     onClose();
   };
 
@@ -736,6 +757,27 @@ export function TransactionBundleModal({
                 />
               </div>
 
+              {/* Next State Number */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-[#4fc3f7]" />
+                  Next State
+                </label>
+                <div className="bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md px-4 py-2 text-white">
+                  {currentStateNumber !== null ? (
+                    <span className="text-lg font-semibold text-[#4fc3f7]">
+                      State #{currentStateNumber}
+                    </span>
+                  ) : (
+                    <span className="text-gray-500">Loading...</span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500">
+                  State number for this transaction (calculated from latest
+                  verified proof + 1)
+                </p>
+              </div>
+
               {/* Proceed Button */}
               <Button
                 onClick={handleProceedToSummary}
@@ -776,7 +818,7 @@ export function TransactionBundleModal({
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center justify-between py-2 border-b border-[#4fc3f7]/10">
                     <span className="text-gray-400 text-sm flex items-center gap-2">
                       <Coins className="w-4 h-4" />
                       Token Amount
@@ -785,33 +827,45 @@ export function TransactionBundleModal({
                       {tokenAmount}
                     </span>
                   </div>
+
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-gray-400 text-sm flex items-center gap-2">
+                      <Key className="w-4 h-4" />
+                      Next State
+                    </span>
+                    <span className="text-white font-medium">
+                      {currentStateNumber !== null
+                        ? `State #${currentStateNumber}`
+                        : "Loading..."}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-col gap-3">
                 <Button
-                  onClick={handleBackToInput}
-                  variant="outline"
-                  className="flex-1 border-[#4fc3f7]/30 text-[#4fc3f7] hover:bg-[#4fc3f7]/10"
-                >
-                  Back
-                </Button>
-                <Button
-                  onClick={handleDownload}
+                  onClick={handleSynthesizerDownload}
                   disabled={isDownloading}
-                  className="flex-1 bg-[#4fc3f7] hover:bg-[#4fc3f7]/80 text-[#0a1930] font-medium disabled:opacity-50"
+                  className="w-full bg-green-600 hover:bg-green-700 text-white font-medium disabled:opacity-50"
                 >
                   {isDownloading ? (
                     <>
                       <LoadingSpinner size="sm" className="mr-2" />
-                      Creating Bundle...
+                      Synthesizing...
                     </>
                   ) : (
                     <>
                       <Download className="w-4 h-4 mr-2" />
-                      Download Bundle
+                      Synthesize & Download
                     </>
                   )}
+                </Button>
+                <Button
+                  onClick={handleBackToInput}
+                  variant="outline"
+                  className="w-full border-[#4fc3f7]/30 text-[#4fc3f7] hover:bg-[#4fc3f7]/10"
+                >
+                  Back
                 </Button>
               </div>
             </div>
@@ -822,7 +876,7 @@ export function TransactionBundleModal({
             <div className="flex flex-col items-center justify-center py-8 space-y-4">
               <LoadingSpinner size="lg" />
               <p className="text-gray-400 text-sm">
-                Creating transaction bundle...
+                Synthesizing L2 transfer... Please wait a few seconds.
               </p>
             </div>
           )}
