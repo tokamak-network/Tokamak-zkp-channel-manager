@@ -82,8 +82,10 @@ export function TransactionBundleModal({
   const [isSigned, setIsSigned] = useState(false);
   const [toAddress, setToAddress] = useState("");
   const [tokenAmount, setTokenAmount] = useState("");
+  const [txNonce, setTxNonce] = useState<number>(0);
   const [isSigning, setIsSigning] = useState(false);
   const [signature, setSignature] = useState<`0x${string}` | null>(null);
+  const [signedTxData, setSignedTxData] = useState<any>(null);
 
   // Wagmi hooks for MetaMask signing
   const { signMessageAsync } = useSignMessage();
@@ -101,8 +103,10 @@ export function TransactionBundleModal({
       setSignature(null);
       setToAddress("");
       setTokenAmount("");
+      setTxNonce(0);
       setError(null);
       setDownloadComplete(false);
+      setSignedTxData(null);
     }
   }, [isOpen, defaultChannelId]);
 
@@ -220,6 +224,78 @@ export function TransactionBundleModal({
     );
   };
 
+  // Generate L2 signed transaction using synthesizer binary
+  const synthesizeL2Transfer = async (initTxHash: string) => {
+    if (!signature) {
+      throw new Error("Signature is required to synthesize L2 transfer");
+    }
+
+    const response = await fetch("/api/synthesize-l2-transfer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channelId: selectedChannelId,
+        initTx: initTxHash,
+        signature,
+        recipient: toAddress.trim(),
+        amount: tokenAmount.trim(),
+        useSepolia: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Failed to synthesize L2 transfer");
+    }
+
+    // Response is a ZIP file blob
+    return await response.blob();
+  };
+
+  // Legacy: Generate L2 signed transaction (kept for backwards compatibility)
+  const generateSignedTransaction = async () => {
+    if (!signature) {
+      throw new Error("Signature is required to generate signed transaction");
+    }
+
+    // Encode transfer callData: transfer(address to, uint256 amount)
+    // Function selector for transfer(address,uint256) = 0xa9059cbb
+    const functionSelector = "0xa9059cbb";
+    const paddedToAddress = toAddress
+      .trim()
+      .toLowerCase()
+      .replace("0x", "")
+      .padStart(64, "0");
+    // Convert token amount to wei (assuming 18 decimals)
+    const amountInWei = BigInt(Math.floor(Number(tokenAmount) * 1e18));
+    const paddedAmount = amountInWei.toString(16).padStart(64, "0");
+    const callData =
+      `${functionSelector}${paddedToAddress}${paddedAmount}` as `0x${string}`;
+
+    // L2 contract address (TON token on L2)
+    const l2ContractAddress =
+      "0xa30fe40285B8f5c0457DbC3B7C8A280373c40044" as `0x${string}`;
+
+    const response = await fetch("/api/create-l2-signed-transaction", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        signature,
+        nonce: txNonce,
+        to: l2ContractAddress,
+        callData,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Failed to create signed transaction");
+    }
+
+    const result = await response.json();
+    return result;
+  };
+
   // Handle proceed to summary
   const handleProceedToSummary = () => {
     if (isFormValid()) {
@@ -234,6 +310,92 @@ export function TransactionBundleModal({
   const handleBackToInput = () => {
     setStep("input");
     setError(null);
+  };
+
+  // Synthesize L2 transfer and download result
+  const handleSynthesizerDownload = async () => {
+    if (!selectedChannelId) {
+      setError("No channel selected");
+      return;
+    }
+
+    if (!isFormValid()) {
+      setError("Please fill in all fields correctly");
+      return;
+    }
+
+    setStep("downloading");
+    setIsDownloading(true);
+    setError(null);
+
+    try {
+      // Get initialization tx hash
+      let initTxHash: string | null = null;
+
+      // Try to get from channel data
+      const channel =
+        bundleData?.channel || (await getChannel(selectedChannelId));
+
+      if ((channel as any)?.initializationTxHash) {
+        initTxHash = (channel as any).initializationTxHash;
+      } else if ((channel as any)?.initialProof?.initializationTxHash) {
+        initTxHash = (channel as any).initialProof.initializationTxHash;
+      }
+
+      // Try from initialProof path
+      if (!initTxHash) {
+        try {
+          const initialProofData = await getData<any>(
+            `channels/${selectedChannelId}/initialProof`
+          );
+          initTxHash = initialProofData?.initializationTxHash || null;
+        } catch (err) {
+          console.warn(
+            "Failed to get initializationTxHash from initialProof:",
+            err
+          );
+        }
+      }
+
+      if (!initTxHash) {
+        throw new Error(
+          "Could not find initialization transaction hash for this channel"
+        );
+      }
+
+      console.log("Synthesizing L2 transfer with:", {
+        channelId: selectedChannelId,
+        initTx: initTxHash,
+        recipient: toAddress.trim(),
+        amount: tokenAmount.trim(),
+      });
+
+      // Call synthesizer API
+      const zipBlob = await synthesizeL2Transfer(initTxHash);
+
+      // Download the ZIP file
+      const url = URL.createObjectURL(zipBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `l2-transfer-channel-${selectedChannelId}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setDownloadComplete(true);
+      setTimeout(() => {
+        handleClose();
+      }, 2000);
+    } catch (err) {
+      console.error("Failed to synthesize L2 transfer:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to synthesize L2 transfer"
+      );
+      setStep("summary");
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const handleDownload = async () => {
@@ -252,6 +414,29 @@ export function TransactionBundleModal({
     setError(null);
 
     try {
+      // Generate L2 signed transaction first
+      let l2SignedTx = null;
+      if (signature) {
+        try {
+          console.log("Generating L2 signed transaction...");
+          l2SignedTx = await generateSignedTransaction();
+          console.log("L2 signed transaction generated:", l2SignedTx);
+          setSignedTxData(l2SignedTx);
+        } catch (txErr) {
+          console.error("Failed to generate L2 signed transaction:", txErr);
+          // Show error to user but continue with download
+          setError(
+            `Warning: L2 transaction generation failed - ${
+              txErr instanceof Error ? txErr.message : String(txErr)
+            }`
+          );
+        }
+      } else {
+        console.warn(
+          "No signature available, skipping L2 transaction generation"
+        );
+      }
+
       // Fetch data if not already loaded
       let channel = bundleData?.channel;
       let snapshot = bundleData?.snapshot;
@@ -487,6 +672,7 @@ export function TransactionBundleModal({
             initializedTxHash: initializationTxHash,
             toAddress: toAddress.trim(),
             tokenAmount: tokenAmount.trim(),
+            txNonce,
             signed: isSigned,
             ...(signature && { signature }),
           };
@@ -494,6 +680,14 @@ export function TransactionBundleModal({
             "transaction-info.json",
             JSON.stringify(transactionInfo, null, 2)
           );
+
+          // Add L2 signed transaction if available
+          if (l2SignedTx) {
+            zip.file(
+              "signed-transaction.json",
+              JSON.stringify(l2SignedTx, null, 2)
+            );
+          }
         } else {
           // More helpful error message
           const errorMsg = `Could not find initialization transaction hash for channel ${selectedChannelId}. The channel may not have been initialized yet. Please ensure the channel has been initialized on the blockchain.`;
@@ -533,6 +727,7 @@ export function TransactionBundleModal({
           initializedTxHash: initializationTxHash || null,
           toAddress: toAddress.trim(),
           tokenAmount: tokenAmount.trim(),
+          txNonce,
           signed: isSigned,
           ...(signature && { signature }),
         };
@@ -540,6 +735,14 @@ export function TransactionBundleModal({
           "transaction-info.json",
           JSON.stringify(transactionInfo, null, 2)
         );
+
+        // Add L2 signed transaction if available
+        if (l2SignedTx) {
+          zip.file(
+            "signed-transaction.json",
+            JSON.stringify(l2SignedTx, null, 2)
+          );
+        }
 
         // Add state_snapshot.json from latest verified proof if available
         if (latestStateSnapshot) {
@@ -603,6 +806,8 @@ export function TransactionBundleModal({
     setSignature(null);
     setToAddress("");
     setTokenAmount("");
+    setTxNonce(0);
+    setSignedTxData(null);
     onClose();
   };
 
@@ -736,6 +941,25 @@ export function TransactionBundleModal({
                 />
               </div>
 
+              {/* Transaction Nonce */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-[#4fc3f7]" />
+                  Transaction Nonce
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={txNonce}
+                  onChange={(e) => setTxNonce(parseInt(e.target.value) || 0)}
+                  className="bg-[#0a1930] border-[#4fc3f7]/30 text-white placeholder:text-gray-500 focus:border-[#4fc3f7]"
+                />
+                <p className="text-xs text-gray-500">
+                  L2 transaction nonce (starts from 0 for new accounts)
+                </p>
+              </div>
+
               {/* Proceed Button */}
               <Button
                 onClick={handleProceedToSummary}
@@ -776,7 +1000,7 @@ export function TransactionBundleModal({
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center justify-between py-2 border-b border-[#4fc3f7]/10">
                     <span className="text-gray-400 text-sm flex items-center gap-2">
                       <Coins className="w-4 h-4" />
                       Token Amount
@@ -785,34 +1009,62 @@ export function TransactionBundleModal({
                       {tokenAmount}
                     </span>
                   </div>
+
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-gray-400 text-sm flex items-center gap-2">
+                      <Key className="w-4 h-4" />
+                      Nonce
+                    </span>
+                    <span className="text-white font-medium">{txNonce}</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-col gap-3">
                 <Button
-                  onClick={handleBackToInput}
-                  variant="outline"
-                  className="flex-1 border-[#4fc3f7]/30 text-[#4fc3f7] hover:bg-[#4fc3f7]/10"
-                >
-                  Back
-                </Button>
-                <Button
-                  onClick={handleDownload}
+                  onClick={handleSynthesizerDownload}
                   disabled={isDownloading}
-                  className="flex-1 bg-[#4fc3f7] hover:bg-[#4fc3f7]/80 text-[#0a1930] font-medium disabled:opacity-50"
+                  className="w-full bg-green-600 hover:bg-green-700 text-white font-medium disabled:opacity-50"
                 >
                   {isDownloading ? (
                     <>
                       <LoadingSpinner size="sm" className="mr-2" />
-                      Creating Bundle...
+                      Synthesizing...
                     </>
                   ) : (
                     <>
                       <Download className="w-4 h-4 mr-2" />
-                      Download Bundle
+                      Synthesize & Download
                     </>
                   )}
                 </Button>
+                <div className="flex gap-3">
+                  <Button
+                    onClick={handleBackToInput}
+                    variant="outline"
+                    className="flex-1 border-[#4fc3f7]/30 text-[#4fc3f7] hover:bg-[#4fc3f7]/10"
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    onClick={handleDownload}
+                    disabled={isDownloading}
+                    variant="outline"
+                    className="flex-1 border-[#4fc3f7]/30 text-[#4fc3f7] hover:bg-[#4fc3f7]/10"
+                  >
+                    {isDownloading ? (
+                      <>
+                        <LoadingSpinner size="sm" className="mr-2" />
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 mr-2" />
+                        Download Info Only
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -822,7 +1074,7 @@ export function TransactionBundleModal({
             <div className="flex flex-col items-center justify-center py-8 space-y-4">
               <LoadingSpinner size="lg" />
               <p className="text-gray-400 text-sm">
-                Creating transaction bundle...
+                Synthesizing L2 transfer... This may take a few minutes.
               </p>
             </div>
           )}
