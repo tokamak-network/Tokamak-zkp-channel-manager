@@ -45,6 +45,8 @@ import {
   ROLLUP_BRIDGE_CORE_ABI,
 } from "@/lib/contracts";
 import { parseProofFromBase64Zip } from "@/lib/proofAnalyzer";
+import { useSignMessage, useAccount } from "wagmi";
+import { L2_PRV_KEY_MESSAGE } from "@/lib/l2KeyMessage";
 
 interface TransactionBundleModalProps {
   isOpen: boolean;
@@ -81,6 +83,11 @@ export function TransactionBundleModal({
   const [toAddress, setToAddress] = useState("");
   const [tokenAmount, setTokenAmount] = useState("");
   const [isSigning, setIsSigning] = useState(false);
+  const [signature, setSignature] = useState<`0x${string}` | null>(null);
+
+  // Wagmi hooks for MetaMask signing
+  const { signMessageAsync } = useSignMessage();
+  const { address, isConnected } = useAccount();
 
   // Auto-select default channel when modal opens
   useEffect(() => {
@@ -91,6 +98,7 @@ export function TransactionBundleModal({
     if (isOpen) {
       setStep("input");
       setIsSigned(false);
+      setSignature(null);
       setToAddress("");
       setTokenAmount("");
       setError(null);
@@ -165,19 +173,37 @@ export function TransactionBundleModal({
     }
   };
 
-  // Mock function for signing - will be replaced with MetaMask signing later
+  // Sign message with MetaMask
   const handleSign = async () => {
+    if (!isConnected || !address) {
+      setError("Please connect your wallet first");
+      return;
+    }
+
+    if (!selectedChannelId) {
+      setError("Please select a channel first");
+      return;
+    }
+
     setIsSigning(true);
     setError(null);
 
     try {
-      // TODO: Replace with actual MetaMask signing
-      // For now, just simulate signing
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const message = L2_PRV_KEY_MESSAGE + selectedChannelId;
+      const signedMessage = await signMessageAsync({ message });
+      setSignature(signedMessage);
       setIsSigned(true);
     } catch (err) {
-      console.error("Failed to sign:", err);
-      setError("Failed to sign with MetaMask");
+      if (err instanceof Error && err.message.includes("User rejected")) {
+        setError("Signature cancelled by user");
+      } else {
+        console.error("Failed to sign:", err);
+        setError(
+          err instanceof Error ? err.message : "Failed to sign with MetaMask"
+        );
+      }
+      setIsSigned(false);
+      setSignature(null);
     } finally {
       setIsSigning(false);
     }
@@ -346,16 +372,16 @@ export function TransactionBundleModal({
         let initializationTxHash = null;
 
         // Try from channel object first
-        if (channel?.initializationTxHash) {
-          initializationTxHash = channel.initializationTxHash;
+        if ((channel as any)?.initializationTxHash) {
+          initializationTxHash = (channel as any).initializationTxHash;
         }
 
         // Try from initialProof object in channel data
         if (
           !initializationTxHash &&
-          channel?.initialProof?.initializationTxHash
+          (channel as any)?.initialProof?.initializationTxHash
         ) {
-          initializationTxHash = channel.initialProof.initializationTxHash;
+          initializationTxHash = (channel as any).initialProof.initializationTxHash;
         }
 
         // Try from getChannel with current ID format
@@ -363,8 +389,8 @@ export function TransactionBundleModal({
           try {
             const channelData = await getChannel(selectedChannelId);
             initializationTxHash =
-              channelData?.initializationTxHash ||
-              channelData?.initialProof?.initializationTxHash ||
+              (channelData as any)?.initializationTxHash ||
+              (channelData as any)?.initialProof?.initializationTxHash ||
               null;
           } catch (err) {
             console.warn(
@@ -413,8 +439,8 @@ export function TransactionBundleModal({
             const numericId = Number(selectedChannelId);
             const channelData = await getChannel(String(numericId));
             initializationTxHash =
-              channelData?.initializationTxHash ||
-              channelData?.initialProof?.initializationTxHash ||
+              (channelData as any)?.initializationTxHash ||
+              (channelData as any)?.initialProof?.initializationTxHash ||
               null;
           } catch (err) {
             console.warn("Failed to get channel data with numeric ID:", err);
@@ -461,9 +487,8 @@ export function TransactionBundleModal({
             initializedTxHash: initializationTxHash,
             toAddress: toAddress.trim(),
             tokenAmount: tokenAmount.trim(),
-            // Private key will be added via MetaMask signing in the future
-            // For now, we include a placeholder
             signed: isSigned,
+            ...(signature && { signature }),
           };
           zip.file(
             "transaction-info.json",
@@ -486,16 +511,16 @@ export function TransactionBundleModal({
         // Get initializationTxHash
         let initializationTxHash = null;
 
-        if (channel?.initializationTxHash) {
-          initializationTxHash = channel.initializationTxHash;
-        } else if (channel?.initialProof?.initializationTxHash) {
-          initializationTxHash = channel.initialProof.initializationTxHash;
+        if ((channel as any)?.initializationTxHash) {
+          initializationTxHash = (channel as any).initializationTxHash;
+        } else if ((channel as any)?.initialProof?.initializationTxHash) {
+          initializationTxHash = (channel as any).initialProof.initializationTxHash;
         } else {
           try {
             const channelData = await getChannel(selectedChannelId);
             initializationTxHash =
-              channelData?.initializationTxHash ||
-              channelData?.initialProof?.initializationTxHash ||
+              (channelData as any)?.initializationTxHash ||
+              (channelData as any)?.initialProof?.initializationTxHash ||
               null;
           } catch (err) {
             console.warn("Failed to get channel data:", err);
@@ -509,6 +534,7 @@ export function TransactionBundleModal({
           toAddress: toAddress.trim(),
           tokenAmount: tokenAmount.trim(),
           signed: isSigned,
+          ...(signature && { signature }),
         };
         zip.file(
           "transaction-info.json",
@@ -574,6 +600,7 @@ export function TransactionBundleModal({
     setBundleData(null);
     setStep("input");
     setIsSigned(false);
+    setSignature(null);
     setToAddress("");
     setTokenAmount("");
     onClose();

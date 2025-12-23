@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, Suspense } from "react";
 import { useAccount, usePublicClient, useContractReads } from "wagmi";
 import { useSearchParams } from "next/navigation";
 import { formatUnits } from "viem";
@@ -1845,7 +1845,7 @@ function StateExplorerDetailView({
 }
 
 // Main Page Component
-export default function StateExplorerPage() {
+function StateExplorerPage() {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const searchParams = useSearchParams();
@@ -2137,5 +2137,14 @@ export default function StateExplorerPage() {
         />
       )}
     </Layout>
+  );
+}
+
+// Wrapper with Suspense boundary
+export default function StateExplorerPageWrapper() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <StateExplorerPage />
+    </Suspense>
   );
 }
