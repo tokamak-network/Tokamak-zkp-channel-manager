@@ -787,6 +787,9 @@ function StateExplorerDetailView({
 
       // Create a new ZIP file to contain all proof ZIPs
       const masterZip = new JSZip();
+      
+      // Root folder name
+      const rootFolderName = `channel-${channel.id}-all-verified-proofs`;
 
       // Add each verified proof ZIP to the master ZIP
       for (const proof of verifiedProofsArray) {
@@ -806,19 +809,36 @@ function StateExplorerDetailView({
             bytes[i] = binaryString.charCodeAt(i);
           }
 
-          // Create a folder for each proof
+          // Create a folder for each proof (proof_1, proof_2, etc.)
           const proofFolderName = `proof_${
             proof.sequenceNumber || proof.key || "unknown"
           }`;
           const proofZip = await JSZip.loadAsync(bytes);
 
-          // Add all files from the proof ZIP to the master ZIP under a folder
+          // Add all files from the proof ZIP to the master ZIP under rootFolder/proof_N/
           const files = Object.keys(proofZip.files);
           for (const fileName of files) {
             const file = proofZip.files[fileName];
             if (!file.dir) {
               const content = await file.async("uint8array");
-              masterZip.file(`${proofFolderName}/${fileName}`, content);
+              
+              // Extract file name, removing any nested folder paths like channel-proof-.../
+              let finalFileName = fileName;
+              
+              // If file is in a nested folder (e.g., channel-proof-.../file.json), extract just the filename
+              if (fileName.includes('/')) {
+                const parts = fileName.split('/');
+                // Find the actual filename (last non-empty part)
+                for (let i = parts.length - 1; i >= 0; i--) {
+                  if (parts[i] && parts[i].trim() !== '') {
+                    finalFileName = parts[i];
+                    break;
+                  }
+                }
+              }
+              
+              // Add file directly to proof_N folder (not in nested channel-proof folder)
+              masterZip.file(`${rootFolderName}/${proofFolderName}/${finalFileName}`, content);
             }
           }
 
@@ -832,7 +852,7 @@ function StateExplorerDetailView({
             verifiedBy: proof.verifiedBy || "Unknown",
           };
           masterZip.file(
-            `${proofFolderName}/proof_metadata.json`,
+            `${rootFolderName}/${proofFolderName}/proof_metadata.json`,
             JSON.stringify(metadata, null, 2)
           );
         } catch (error) {
