@@ -19,14 +19,16 @@ interface SynthesizeL2TransferRequest {
   recipient: string;
   amount: string;
   useSepolia?: boolean;
+  previousStateSnapshot?: any; // State snapshot JSON object from latest verified proof
 }
 
 export async function POST(req: Request) {
   const outputDir = path.join(process.cwd(), "tokamak-zk-evm-bin", "outputs", `transfer-${Date.now()}`);
+  let previousStateSnapshotPath: string | null = null;
   
   try {
     const body: SynthesizeL2TransferRequest = await req.json();
-    const { channelId, initTx, signature, recipient, amount, useSepolia = true } = body;
+    const { channelId, initTx, signature, recipient, amount, useSepolia = true, previousStateSnapshot } = body;
 
     // Validate inputs
     if (!channelId || !initTx || !signature || !recipient || !amount) {
@@ -43,6 +45,17 @@ export async function POST(req: Request) {
 
     // Create output directory
     await fs.mkdir(outputDir, { recursive: true });
+
+    // If previousStateSnapshot is provided, save it to a temporary file
+    if (previousStateSnapshot) {
+      previousStateSnapshotPath = path.join(outputDir, "previous_state_snapshot.json");
+      await fs.writeFile(
+        previousStateSnapshotPath,
+        JSON.stringify(previousStateSnapshot, null, 2),
+        "utf-8"
+      );
+      console.log("Saved previous state snapshot to:", previousStateSnapshotPath);
+    }
 
     // Build RPC URL from environment variable
     const alchemyApiKey = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY;
@@ -63,6 +76,11 @@ export async function POST(req: Request) {
       "--output", outputDir,
       "--rpc-url", rpcUrl,
     ];
+    
+    // Add --previous-state option if previousStateSnapshot is provided
+    if (previousStateSnapshotPath) {
+      args.push("--previous-state", previousStateSnapshotPath);
+    }
     
     if (useSepolia) {
       args.push("--sepolia");
@@ -121,8 +139,8 @@ export async function POST(req: Request) {
     };
     zip.file("transaction-info.json", JSON.stringify(transactionInfo, null, 2));
 
-    // Generate ZIP buffer
-    const zipBuffer = await zip.generateAsync({ type: "nodebuffer" });
+    // Generate ZIP buffer as Uint8Array for NextResponse compatibility
+    const zipBuffer = await zip.generateAsync({ type: "uint8array" });
 
     // Clean up output directory
     try {
@@ -147,6 +165,15 @@ export async function POST(req: Request) {
       await fs.rm(outputDir, { recursive: true, force: true });
     } catch (cleanupErr) {
       console.warn("Failed to clean up output directory:", cleanupErr);
+    }
+    
+    // Clean up previous state snapshot file if it was created
+    if (previousStateSnapshotPath) {
+      try {
+        await fs.unlink(previousStateSnapshotPath).catch(() => {});
+      } catch (cleanupErr) {
+        // Ignore cleanup errors for temp file
+      }
     }
 
     // Extract meaningful error message from stderr if available

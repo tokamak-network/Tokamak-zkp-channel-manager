@@ -31,6 +31,7 @@ import {
   getChannelUserBalances,
   getChannelParticipants,
   getData,
+  getCurrentStateNumber,
 } from "@/lib/realtime-db-helpers";
 import type {
   Channel,
@@ -82,7 +83,9 @@ export function TransactionBundleModal({
   const [isSigned, setIsSigned] = useState(false);
   const [toAddress, setToAddress] = useState("");
   const [tokenAmount, setTokenAmount] = useState("");
-  const [txNonce, setTxNonce] = useState<number>(0);
+  const [currentStateNumber, setCurrentStateNumber] = useState<number | null>(
+    null
+  );
   const [isSigning, setIsSigning] = useState(false);
   const [signature, setSignature] = useState<`0x${string}` | null>(null);
   const [signedTxData, setSignedTxData] = useState<any>(null);
@@ -103,7 +106,7 @@ export function TransactionBundleModal({
       setSignature(null);
       setToAddress("");
       setTokenAmount("");
-      setTxNonce(0);
+      setCurrentStateNumber(null);
       setError(null);
       setDownloadComplete(false);
       setSignedTxData(null);
@@ -163,6 +166,9 @@ export function TransactionBundleModal({
         }
       }
 
+      // Get current state number from verified proofs using shared utility
+      const stateNumber = await getCurrentStateNumber(channelId);
+      setCurrentStateNumber(stateNumber);
       setBundleData({
         channel,
         snapshot,
@@ -225,7 +231,10 @@ export function TransactionBundleModal({
   };
 
   // Generate L2 signed transaction using synthesizer binary
-  const synthesizeL2Transfer = async (initTxHash: string) => {
+  const synthesizeL2Transfer = async (
+    initTxHash: string,
+    previousStateSnapshot?: any
+  ) => {
     if (!signature) {
       throw new Error("Signature is required to synthesize L2 transfer");
     }
@@ -240,6 +249,7 @@ export function TransactionBundleModal({
         recipient: toAddress.trim(),
         amount: tokenAmount.trim(),
         useSepolia: true,
+        previousStateSnapshot: previousStateSnapshot || null,
       }),
     });
 
@@ -281,7 +291,7 @@ export function TransactionBundleModal({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         signature,
-        nonce: txNonce,
+        nonce: currentStateNumber || 0, // Use current state number as nonce
         to: l2ContractAddress,
         callData,
       }),
@@ -363,15 +373,83 @@ export function TransactionBundleModal({
         );
       }
 
+      // Get latest verified proof's state_snapshot.json if available
+      let previousStateSnapshot = null;
+      try {
+        const verifiedProofsData = await getData<any>(
+          `channels/${selectedChannelId}/verifiedProofs`
+        );
+
+        if (verifiedProofsData) {
+          // Convert to array and sort by sequence number
+          const verifiedProofsArray = Object.entries(verifiedProofsData)
+            .map(([key, value]: [string, any]) => ({
+              key,
+              ...value,
+            }))
+            .sort(
+              (a: any, b: any) =>
+                (b.sequenceNumber || 0) - (a.sequenceNumber || 0)
+            );
+
+          // Get the latest verified proof (highest sequenceNumber)
+          if (verifiedProofsArray.length > 0) {
+            const latestProof = verifiedProofsArray[0];
+
+            // Try to get zipFile content
+            let zipFileContent = latestProof?.zipFile?.content;
+
+            // If zipFile is not directly in the proof, try to fetch it from Firebase
+            if (!zipFileContent && latestProof?.key) {
+              try {
+                const zipFileData = await getData<any>(
+                  `channels/${selectedChannelId}/verifiedProofs/${latestProof.key}/zipFile`
+                );
+                zipFileContent = zipFileData?.content;
+              } catch (err) {
+                console.warn("Failed to fetch zipFile from Firebase:", err);
+              }
+            }
+
+            // Extract state_snapshot.json from the latest proof's ZIP
+            if (zipFileContent) {
+              try {
+                const { snapshot } = await parseProofFromBase64Zip(
+                  zipFileContent
+                );
+                if (snapshot) {
+                  previousStateSnapshot = snapshot;
+                  console.log(
+                    "Found previous state snapshot from latest verified proof"
+                  );
+                }
+              } catch (parseErr) {
+                console.warn(
+                  "Failed to parse ZIP from latest verified proof:",
+                  parseErr
+                );
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to get verified proofs for previous state:", err);
+        // Continue without previous state if it fails
+      }
+
       console.log("Synthesizing L2 transfer with:", {
         channelId: selectedChannelId,
         initTx: initTxHash,
         recipient: toAddress.trim(),
         amount: tokenAmount.trim(),
+        hasPreviousState: !!previousStateSnapshot,
       });
 
       // Call synthesizer API
-      const zipBlob = await synthesizeL2Transfer(initTxHash);
+      const zipBlob = await synthesizeL2Transfer(
+        initTxHash,
+        previousStateSnapshot
+      );
 
       // Download the ZIP file
       const url = URL.createObjectURL(zipBlob);
@@ -672,7 +750,7 @@ export function TransactionBundleModal({
             initializedTxHash: initializationTxHash,
             toAddress: toAddress.trim(),
             tokenAmount: tokenAmount.trim(),
-            txNonce,
+            currentStateNumber,
             signed: isSigned,
             ...(signature && { signature }),
           };
@@ -727,7 +805,7 @@ export function TransactionBundleModal({
           initializedTxHash: initializationTxHash || null,
           toAddress: toAddress.trim(),
           tokenAmount: tokenAmount.trim(),
-          txNonce,
+          currentStateNumber,
           signed: isSigned,
           ...(signature && { signature }),
         };
@@ -806,7 +884,7 @@ export function TransactionBundleModal({
     setSignature(null);
     setToAddress("");
     setTokenAmount("");
-    setTxNonce(0);
+    setCurrentStateNumber(null);
     setSignedTxData(null);
     onClose();
   };
@@ -941,22 +1019,24 @@ export function TransactionBundleModal({
                 />
               </div>
 
-              {/* Transaction Nonce */}
+              {/* Next State Number */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
                   <Key className="w-4 h-4 text-[#4fc3f7]" />
-                  Transaction Nonce
+                  Next State
                 </label>
-                <Input
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={txNonce}
-                  onChange={(e) => setTxNonce(parseInt(e.target.value) || 0)}
-                  className="bg-[#0a1930] border-[#4fc3f7]/30 text-white placeholder:text-gray-500 focus:border-[#4fc3f7]"
-                />
+                <div className="bg-[#0a1930] border border-[#4fc3f7]/30 rounded-md px-4 py-2 text-white">
+                  {currentStateNumber !== null ? (
+                    <span className="text-lg font-semibold text-[#4fc3f7]">
+                      State #{currentStateNumber}
+                    </span>
+                  ) : (
+                    <span className="text-gray-500">Loading...</span>
+                  )}
+                </div>
                 <p className="text-xs text-gray-500">
-                  L2 transaction nonce (starts from 0 for new accounts)
+                  State number for this transaction (calculated from latest
+                  verified proof + 1)
                 </p>
               </div>
 
@@ -1013,9 +1093,13 @@ export function TransactionBundleModal({
                   <div className="flex items-center justify-between py-2">
                     <span className="text-gray-400 text-sm flex items-center gap-2">
                       <Key className="w-4 h-4" />
-                      Nonce
+                      Next State
                     </span>
-                    <span className="text-white font-medium">{txNonce}</span>
+                    <span className="text-white font-medium">
+                      {currentStateNumber !== null
+                        ? `State #${currentStateNumber}`
+                        : "Loading..."}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1038,33 +1122,13 @@ export function TransactionBundleModal({
                     </>
                   )}
                 </Button>
-                <div className="flex gap-3">
-                  <Button
-                    onClick={handleBackToInput}
-                    variant="outline"
-                    className="flex-1 border-[#4fc3f7]/30 text-[#4fc3f7] hover:bg-[#4fc3f7]/10"
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    onClick={handleDownload}
-                    disabled={isDownloading}
-                    variant="outline"
-                    className="flex-1 border-[#4fc3f7]/30 text-[#4fc3f7] hover:bg-[#4fc3f7]/10"
-                  >
-                    {isDownloading ? (
-                      <>
-                        <LoadingSpinner size="sm" className="mr-2" />
-                        Creating...
-                      </>
-                    ) : (
-                      <>
-                        <Download className="w-4 h-4 mr-2" />
-                        Download Info Only
-                      </>
-                    )}
-                  </Button>
-                </div>
+                <Button
+                  onClick={handleBackToInput}
+                  variant="outline"
+                  className="w-full border-[#4fc3f7]/30 text-[#4fc3f7] hover:bg-[#4fc3f7]/10"
+                >
+                  Back
+                </Button>
               </div>
             </div>
           )}
@@ -1074,7 +1138,7 @@ export function TransactionBundleModal({
             <div className="flex flex-col items-center justify-center py-8 space-y-4">
               <LoadingSpinner size="lg" />
               <p className="text-gray-400 text-sm">
-                Synthesizing L2 transfer... This may take a few minutes.
+                Synthesizing L2 transfer... Please wait a few seconds.
               </p>
             </div>
           )}

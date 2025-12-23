@@ -648,11 +648,16 @@ function StateExplorerDetailView({
             // Calculate balance changes
             const balanceChanges = analysis.balances.map(
               (bal: any, idx: number) => {
-                const beforeBalance =
+                const beforeBalanceRaw =
                   previousBalances[idx]?.balanceFormatted ||
                   participantBalances[idx]?.initialDeposit ||
                   "0.00";
-                const afterBalance = bal.balanceFormatted;
+                const afterBalanceRaw = bal.balanceFormatted;
+                
+                // Format to 2 decimal places
+                const beforeBalance = parseFloat(beforeBalanceRaw).toFixed(2);
+                const afterBalance = parseFloat(afterBalanceRaw).toFixed(2);
+                
                 const change = (
                   parseFloat(afterBalance) - parseFloat(beforeBalance)
                 ).toFixed(2);
