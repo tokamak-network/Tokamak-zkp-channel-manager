@@ -139,8 +139,9 @@ export async function POST(req: Request) {
     };
     zip.file("transaction-info.json", JSON.stringify(transactionInfo, null, 2));
 
-    // Generate ZIP buffer as Uint8Array for NextResponse compatibility
+    // Generate ZIP buffer as Uint8Array and convert to Buffer for NextResponse
     const zipBuffer = await zip.generateAsync({ type: "uint8array" });
+    const zipBufferNode = Buffer.from(zipBuffer);
 
     // Clean up output directory
     try {
@@ -150,7 +151,7 @@ export async function POST(req: Request) {
     }
 
     // Return ZIP file
-    return new NextResponse(zipBuffer, {
+    return new NextResponse(zipBufferNode, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
