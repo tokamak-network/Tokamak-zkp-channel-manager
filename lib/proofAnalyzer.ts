@@ -128,6 +128,7 @@ export function analyzeProof(
 
 /**
  * Parse proof files from ZIP file content stored in Firebase
+ * Searches for files recursively by filename regardless of folder structure
  */
 export async function parseProofFromBase64Zip(
   base64Content: string
@@ -150,17 +151,31 @@ export async function parseProofFromBase64Zip(
     // Load ZIP
     const zip = await JSZip.loadAsync(bytes);
     
-    // Extract instance.json
+    // Helper function to find file by name (regardless of folder path)
+    const findFileByName = (fileName: string): ReturnType<typeof zip.file>[0] | null => {
+      const allFiles = Object.keys(zip.files);
+      for (const filePath of allFiles) {
+        // Get just the filename from the path
+        const parts = filePath.split('/');
+        const name = parts[parts.length - 1];
+        if (name.toLowerCase() === fileName.toLowerCase() && !zip.files[filePath].dir) {
+          return zip.files[filePath];
+        }
+      }
+      return null;
+    };
+    
+    // Extract instance.json (search by filename only)
     let instance: InstanceData | null = null;
-    const instanceFile = zip.file(/synthesizer\/instance\.json$/i)[0];
+    const instanceFile = findFileByName('instance.json');
     if (instanceFile) {
       const content = await instanceFile.async('string');
       instance = JSON.parse(content);
     }
     
-    // Extract state_snapshot.json
+    // Extract state_snapshot.json (search by filename only)
     let snapshot: StateSnapshotData | null = null;
-    const snapshotFile = zip.file(/synthesizer\/state_snapshot\.json$/i)[0];
+    const snapshotFile = findFileByName('state_snapshot.json');
     if (snapshotFile) {
       const content = await snapshotFile.async('string');
       snapshot = JSON.parse(content);
