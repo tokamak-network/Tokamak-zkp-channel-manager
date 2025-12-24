@@ -26,118 +26,109 @@ export function SubmitProofModal({ isOpen, onClose, channelId, onUploadSuccess }
 
   if (!isOpen) return null;
 
-  // Validate ZIP file structure and content
+  // Validate ZIP file structure - check for required files within 2 levels of depth
   const validateProofZip = async (file: File): Promise<string | null> => {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const zip = await JSZip.loadAsync(arrayBuffer);
 
-      // Find files regardless of nesting (e.g., "folder/prove/proof.json" or "prove/proof.json")
-      const allFiles = Object.keys(zip.files).filter(name => !name.endsWith('/'));
-      
-      // Find prove/proof.json (may be nested: "any-folder/prove/proof.json")
-      const proofJsonFile = allFiles.find(name => {
-        const normalized = name.replace(/\\/g, '/').toLowerCase();
-        return normalized.includes('/prove/proof.json') || normalized.endsWith('prove/proof.json');
+      // Get all files (not directories) within 2 levels of depth
+      // Depth 0: file.json
+      // Depth 1: folder/file.json
+      // Depth 2: folder/folder/file.json
+      const MAX_DEPTH = 2;
+      const allFiles = Object.keys(zip.files).filter(name => {
+        if (name.endsWith('/')) return false; // Skip directories
+        const normalized = name.replace(/\\/g, '/');
+        const depth = normalized.split('/').length - 1; // Count folder depth
+        return depth <= MAX_DEPTH;
       });
-      
-      if (!proofJsonFile) {
-        return 'Missing "prove/proof.json" file in ZIP';
-      }
 
-      // Validate prove/proof.json structure
-      const proofFile = zip.file(proofJsonFile);
-      if (!proofFile) {
-        return 'Could not read "prove/proof.json" file';
-      }
-      
-      try {
-        const proofContent = await proofFile.async('string');
-        const proofData = JSON.parse(proofContent);
-        
-        if (!proofData.proof_entries_part1 || !Array.isArray(proofData.proof_entries_part1)) {
-          return 'Invalid "prove/proof.json": missing or invalid "proof_entries_part1" array';
-        }
-        
-        if (!proofData.proof_entries_part2 || !Array.isArray(proofData.proof_entries_part2)) {
-          return 'Invalid "prove/proof.json": missing or invalid "proof_entries_part2" array';
-        }
-      } catch (parseError) {
-        return `Invalid "prove/proof.json": ${parseError instanceof Error ? parseError.message : 'Parse error'}`;
-      }
+      // Helper function to find file by name
+      const findFile = (fileName: string): string | undefined => {
+        return allFiles.find(name => {
+          const normalized = name.replace(/\\/g, '/').toLowerCase();
+          const fn = normalized.split('/').pop();
+          return fn === fileName.toLowerCase();
+        });
+      };
 
-      // Find synthesizer/instance.json (may be nested: "any-folder/synthesizer/instance.json")
-      const instanceJsonFile = allFiles.find(name => {
-        const normalized = name.replace(/\\/g, '/').toLowerCase();
-        return normalized.includes('/synthesizer/instance.json') || normalized.endsWith('synthesizer/instance.json');
-      });
-      
-      if (!instanceJsonFile) {
-        return 'Missing "synthesizer/instance.json" file in ZIP';
+      // 1. Check instance.json
+      const instancePath = findFile('instance.json');
+      if (!instancePath) {
+        return 'Missing required file: instance.json (must be within 2 folder levels)';
       }
-
-      // Validate synthesizer/instance.json structure
-      const instanceFile = zip.file(instanceJsonFile);
+      const instanceFile = zip.file(instancePath);
       if (!instanceFile) {
-        return 'Could not read "synthesizer/instance.json" file';
+        return 'Could not read instance.json';
       }
-      
       try {
         const instanceContent = await instanceFile.async('string');
         const instanceData = JSON.parse(instanceContent);
         
         if (!instanceData.a_pub_user || !Array.isArray(instanceData.a_pub_user)) {
-          return 'Invalid "synthesizer/instance.json": missing or invalid "a_pub_user" array';
+          return 'Invalid instance.json: missing or invalid "a_pub_user" array';
         }
-        
         if (!instanceData.a_pub_block || !Array.isArray(instanceData.a_pub_block)) {
-          return 'Invalid "synthesizer/instance.json": missing or invalid "a_pub_block" array';
+          return 'Invalid instance.json: missing or invalid "a_pub_block" array';
         }
-        
         if (!instanceData.a_pub_function || !Array.isArray(instanceData.a_pub_function)) {
-          return 'Invalid "synthesizer/instance.json": missing or invalid "a_pub_function" array';
+          return 'Invalid instance.json: missing or invalid "a_pub_function" array';
         }
       } catch (parseError) {
-        return `Invalid "synthesizer/instance.json": ${parseError instanceof Error ? parseError.message : 'Parse error'}`;
+        return `Invalid instance.json: ${parseError instanceof Error ? parseError.message : 'Parse error'}`;
       }
 
-      // Find synthesizer/state_snapshot.json (may be nested: "any-folder/synthesizer/state_snapshot.json")
-      const snapshotJsonFile = allFiles.find(name => {
-        const normalized = name.replace(/\\/g, '/').toLowerCase();
-        return normalized.includes('/synthesizer/state_snapshot.json') || normalized.endsWith('synthesizer/state_snapshot.json');
-      });
-      
-      if (!snapshotJsonFile) {
-        return 'Missing "synthesizer/state_snapshot.json" file in ZIP';
+      // 2. Check proof.json
+      const proofPath = findFile('proof.json');
+      if (!proofPath) {
+        return 'Missing required file: proof.json (must be within 2 folder levels)';
+      }
+      const proofFile = zip.file(proofPath);
+      if (!proofFile) {
+        return 'Could not read proof.json';
+      }
+      try {
+        const proofContent = await proofFile.async('string');
+        const proofData = JSON.parse(proofContent);
+        
+        if (!proofData.proof_entries_part1 || !Array.isArray(proofData.proof_entries_part1)) {
+          return 'Invalid proof.json: missing or invalid "proof_entries_part1" array';
+        }
+        if (!proofData.proof_entries_part2 || !Array.isArray(proofData.proof_entries_part2)) {
+          return 'Invalid proof.json: missing or invalid "proof_entries_part2" array';
+        }
+      } catch (parseError) {
+        return `Invalid proof.json: ${parseError instanceof Error ? parseError.message : 'Parse error'}`;
       }
 
-      // Validate synthesizer/state_snapshot.json structure
-      const snapshotFile = zip.file(snapshotJsonFile);
+      // 3. Check state_snapshot.json
+      const snapshotPath = findFile('state_snapshot.json');
+      if (!snapshotPath) {
+        return 'Missing required file: state_snapshot.json (must be within 2 folder levels)';
+      }
+      const snapshotFile = zip.file(snapshotPath);
       if (!snapshotFile) {
-        return 'Could not read "synthesizer/state_snapshot.json" file';
+        return 'Could not read state_snapshot.json';
       }
-      
       try {
         const snapshotContent = await snapshotFile.async('string');
         const snapshotData = JSON.parse(snapshotContent);
         
         if (typeof snapshotData.stateRoot !== 'string') {
-          return 'Invalid "synthesizer/state_snapshot.json": missing or invalid "stateRoot" field';
+          return 'Invalid state_snapshot.json: missing or invalid "stateRoot" field';
         }
-        
         if (!snapshotData.registeredKeys || !Array.isArray(snapshotData.registeredKeys)) {
-          return 'Invalid "synthesizer/state_snapshot.json": missing or invalid "registeredKeys" array';
+          return 'Invalid state_snapshot.json: missing or invalid "registeredKeys" array';
         }
-        
         if (!snapshotData.storageEntries || !Array.isArray(snapshotData.storageEntries)) {
-          return 'Invalid "synthesizer/state_snapshot.json": missing or invalid "storageEntries" array';
+          return 'Invalid state_snapshot.json: missing or invalid "storageEntries" array';
         }
-        
         if (typeof snapshotData.contractAddress !== 'string') {
-          return 'Invalid "synthesizer/state_snapshot.json": missing or invalid "contractAddress" field';
+          return 'Invalid state_snapshot.json: missing or invalid "contractAddress" field';
         }
       } catch (parseError) {
-        return `Invalid "synthesizer/state_snapshot.json": ${parseError instanceof Error ? parseError.message : 'Parse error'}`;
+        return `Invalid state_snapshot.json: ${parseError instanceof Error ? parseError.message : 'Parse error'}`;
       }
 
       // All validations passed

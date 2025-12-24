@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useLayoutEffect, useCallback, Suspense } from "react";
 import { useAccount, usePublicClient, useContractReads } from "wagmi";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { formatUnits } from "viem";
 import { Layout } from "@/components/Layout";
 import { ProofCard, ProofData } from "@/components/ProofCard";
@@ -1752,6 +1752,7 @@ function StateExplorerPage() {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [selectedChannel, setSelectedChannel] = useState<OnChainChannel | null>(
     null
   );
@@ -2020,6 +2021,8 @@ function StateExplorerPage() {
 
   const handleBack = () => {
     setSelectedChannel(null);
+    // Remove channelId from URL to prevent auto-reselection
+    router.push("/state-explorer");
   };
 
   return (
