@@ -10,7 +10,8 @@ import { MobileNavigation } from '@/components/MobileNavigation';
 import { Footer } from '@/components/Footer';
 import { useLeaderAccess } from '@/hooks/useLeaderAccess';
 import { ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS, ROLLUP_BRIDGE_PROOF_MANAGER_ABI, ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
-import { FileText, Link, ShieldOff, CheckCircle2, AlertCircle, Download, Hash } from 'lucide-react';
+import { FileText, Link, ShieldOff, CheckCircle2, AlertCircle, Download, Hash, FolderArchive, Loader2, ExternalLink } from 'lucide-react';
+import JSZip from 'jszip';
 
 interface ProofData {
   proofPart1: bigint[];
@@ -70,6 +71,7 @@ export default function SubmitProofPage() {
   const [proofError, setProofError] = useState('');
   const [signatureError, setSignatureError] = useState('');
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [isProcessingZip, setIsProcessingZip] = useState(false);
   
   // Channel information from core contract
   const { data: channelInfo } = useContractRead({
@@ -270,6 +272,132 @@ export default function SubmitProofPage() {
       setProofError(error instanceof Error ? error.message : 'Invalid proof file format');
     }
   };
+
+  // Handle verified proofs ZIP upload (from state explorer download)
+  const handleVerifiedProofsZipUpload = async (file: File) => {
+    try {
+      setProofError('');
+      setIsProcessingZip(true);
+      
+      const arrayBuffer = await file.arrayBuffer();
+      const zip = await JSZip.loadAsync(arrayBuffer);
+      
+      // Get all file paths
+      const allFiles = Object.keys(zip.files).filter(name => !name.endsWith('/'));
+      
+      // Find proof folders (proof_1, proof_2, etc.)
+      // Structure: channel-{id}-all-verified-proofs/proof_N/
+      const proofFolders = new Map<number, { proofJson: string | null; instanceJson: string | null }>();
+      
+      for (const filePath of allFiles) {
+        const parts = filePath.split('/');
+        // Look for proof_N folder pattern
+        const proofFolderMatch = parts.find(p => /^proof_\d+$/i.test(p));
+        if (proofFolderMatch) {
+          const proofNumber = parseInt(proofFolderMatch.replace(/proof_/i, ''), 10);
+          const fileName = parts[parts.length - 1].toLowerCase();
+          
+          if (!proofFolders.has(proofNumber)) {
+            proofFolders.set(proofNumber, { proofJson: null, instanceJson: null });
+          }
+          
+          const entry = proofFolders.get(proofNumber)!;
+          if (fileName === 'proof.json') {
+            entry.proofJson = filePath;
+          } else if (fileName === 'instance.json') {
+            entry.instanceJson = filePath;
+          }
+        }
+      }
+      
+      if (proofFolders.size === 0) {
+        throw new Error('No proof folders found. Expected format: proof_1/, proof_2/, etc.');
+      }
+      
+      // Sort by proof number and process
+      const sortedProofNumbers = Array.from(proofFolders.keys()).sort((a, b) => a - b);
+      const newProofs: UploadedProof[] = [];
+      
+      // Check if we have room for all proofs
+      const availableSlots = 5 - uploadedProofs.length;
+      if (sortedProofNumbers.length > availableSlots) {
+        throw new Error(`Cannot add ${sortedProofNumbers.length} proofs. Only ${availableSlots} slots available (max 5 total).`);
+      }
+      
+      for (const proofNumber of sortedProofNumbers) {
+        const entry = proofFolders.get(proofNumber)!;
+        
+        if (!entry.proofJson || !entry.instanceJson) {
+          throw new Error(`proof_${proofNumber}: Missing ${!entry.proofJson ? 'proof.json' : 'instance.json'}`);
+        }
+        
+        // Read proof.json
+        const proofFile = zip.file(entry.proofJson);
+        if (!proofFile) {
+          throw new Error(`Cannot read proof.json from proof_${proofNumber}`);
+        }
+        const proofContent = await proofFile.async('string');
+        const proofData = JSON.parse(proofContent);
+        
+        // Read instance.json
+        const instanceFile = zip.file(entry.instanceJson);
+        if (!instanceFile) {
+          throw new Error(`Cannot read instance.json from proof_${proofNumber}`);
+        }
+        const instanceContent = await instanceFile.async('string');
+        const instanceData = JSON.parse(instanceContent);
+        
+        // Validate required fields
+        if (!proofData.proof_entries_part1 || !Array.isArray(proofData.proof_entries_part1)) {
+          throw new Error(`proof_${proofNumber}: Invalid proof.json - missing proof_entries_part1`);
+        }
+        if (!proofData.proof_entries_part2 || !Array.isArray(proofData.proof_entries_part2)) {
+          throw new Error(`proof_${proofNumber}: Invalid proof.json - missing proof_entries_part2`);
+        }
+        if (!instanceData.a_pub_user || !Array.isArray(instanceData.a_pub_user)) {
+          throw new Error(`proof_${proofNumber}: Invalid instance.json - missing a_pub_user`);
+        }
+        if (!instanceData.a_pub_block || !Array.isArray(instanceData.a_pub_block)) {
+          throw new Error(`proof_${proofNumber}: Invalid instance.json - missing a_pub_block`);
+        }
+        if (!instanceData.a_pub_function || !Array.isArray(instanceData.a_pub_function)) {
+          throw new Error(`proof_${proofNumber}: Invalid instance.json - missing a_pub_function`);
+        }
+        
+        // Combine proof and instance data
+        const publicInputsRaw = [...instanceData.a_pub_user, ...instanceData.a_pub_block, ...instanceData.a_pub_function];
+        
+        const newProofData: ProofData = {
+          proofPart1: proofData.proof_entries_part1.map((x: string) => BigInt(x)),
+          proofPart2: proofData.proof_entries_part2.map((x: string) => BigInt(x)),
+          publicInputs: publicInputsRaw.map((x: string) => BigInt(x)),
+          smax: BigInt(256),
+          functions: []
+        };
+        
+        // Create virtual file for display
+        const virtualFile = new File(
+          [JSON.stringify({ ...proofData, ...instanceData }, null, 2)],
+          `proof_${proofNumber}.json`,
+          { type: 'application/json' }
+        );
+        
+        newProofs.push({
+          id: `proof_${Date.now()}_${proofNumber}_${Math.random().toString(36).substr(2, 9)}`,
+          file: virtualFile,
+          data: newProofData
+        });
+      }
+      
+      setUploadedProofs(prev => [...prev, ...newProofs]);
+      
+    } catch (error) {
+      console.error('Error processing verified proofs ZIP:', error);
+      setProofError(error instanceof Error ? error.message : 'Failed to process verified proofs ZIP');
+    } finally {
+      setIsProcessingZip(false);
+    }
+  };
   
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent, proofId: string) => {
@@ -308,6 +436,30 @@ export default function SubmitProofPage() {
   
   const removeProof = (proofId: string) => {
     setUploadedProofs(prev => prev.filter(p => p.id !== proofId));
+  };
+  
+  // View formatted JSON in new tab
+  const viewFormattedJson = (proof: UploadedProof) => {
+    // Convert BigInt values back to hex strings for display
+    const formattedData = {
+      proof_entries_part1: proof.data.proofPart1.map(n => '0x' + n.toString(16)),
+      proof_entries_part2: proof.data.proofPart2.map(n => '0x' + n.toString(16)),
+      a_pub_user: proof.data.publicInputs.slice(0, 40).map(n => '0x' + n.toString(16)),
+      a_pub_block: proof.data.publicInputs.slice(40, 64).map(n => '0x' + n.toString(16)),
+      a_pub_function: proof.data.publicInputs.slice(64).map(n => '0x' + n.toString(16)),
+      _metadata: {
+        fileName: proof.file.name,
+        totalPublicInputs: proof.data.publicInputs.length,
+        smax: proof.data.smax.toString(),
+        generatedAt: new Date().toISOString()
+      }
+    };
+    
+    // Create a blob and open in new tab
+    const jsonString = JSON.stringify(formattedData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
   };
   
   // Template download handlers
@@ -544,7 +696,7 @@ export default function SubmitProofPage() {
                 </div>
                 
                 <div className="p-6 space-y-6">
-                  <div className="text-center mb-6">
+                  <div className="flex flex-col sm:flex-row justify-center gap-4 mb-6">
                     <button
                       onClick={handleDownloadProofTemplate}
                       className="inline-flex items-center gap-2 px-4 py-2 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 text-[#4fc3f7] rounded-lg hover:bg-[#4fc3f7]/20 transition-colors"
@@ -552,6 +704,46 @@ export default function SubmitProofPage() {
                       <Download className="h-4 w-4" />
                       Download Single Proof Template
                     </button>
+                    
+                    {/* Auto-format from State Explorer ZIP */}
+                    <label className="inline-flex items-center gap-2 px-4 py-2 bg-purple-500/10 border border-purple-500/50 text-purple-400 rounded-lg hover:bg-purple-500/20 transition-colors cursor-pointer">
+                      <input
+                        type="file"
+                        accept=".zip"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) await handleVerifiedProofsZipUpload(file);
+                          e.target.value = ''; // Reset input
+                        }}
+                        className="hidden"
+                        disabled={isProcessingZip}
+                      />
+                      {isProcessingZip ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <FolderArchive className="h-4 w-4" />
+                          Import from State Explorer ZIP
+                        </>
+                      )}
+                    </label>
+                  </div>
+                  
+                  {/* Info about ZIP import */}
+                  <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4 mb-4">
+                    <div className="flex items-start gap-3">
+                      <FolderArchive className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm">
+                        <p className="text-purple-300 font-medium mb-1">Auto-format from State Explorer</p>
+                        <p className="text-purple-400/80">
+                          Upload the ZIP file downloaded from State Explorer's "Download Verified Proofs" button. 
+                          The proofs will be automatically formatted and added in order.
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Upload area */}
@@ -616,6 +808,16 @@ export default function SubmitProofPage() {
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    viewFormattedJson(proof);
+                                  }}
+                                  className="text-[#4fc3f7] hover:text-[#029bee] p-1 transition-colors"
+                                  title="View formatted JSON"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                </button>
                                 <div className="text-gray-400 text-xs">≡</div>
                                 <button
                                   onClick={() => removeProof(proof.id)}
