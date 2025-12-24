@@ -64,6 +64,15 @@ export default function DepositTokensPage() {
     enabled: !!selectedChannel,
   });
 
+  // Check if frost signatures are enabled for selected channel
+  const { data: isFrostSignatureEnabled } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'isFrostSignatureEnabled',
+    args: selectedChannel ? [selectedChannel.channelId] : undefined,
+    enabled: !!selectedChannel,
+  });
+
   // Get available channels for deposits (state = 1 means initialized)
   const availableChannels = participatingChannels
     .map(channelId => {
@@ -650,8 +659,8 @@ export default function DepositTokensPage() {
                         {/* Deposit button */}
                         <button
                           onClick={() => {
-                            // Check if public key is set before allowing deposit
-                            if (!isPublicKeySet) {
+                            // Check if public key is set before allowing deposit (only if frost signatures are enabled)
+                            if (isFrostSignatureEnabled && !isPublicKeySet) {
                               setShowPublicKeyWarning(true);
                               return;
                             }
@@ -675,7 +684,7 @@ export default function DepositTokensPage() {
                         >
                           {(isDepositingETH || isDepositingToken) ? 'Depositing...' : 
                            isWaitingDeposit ? 'Confirming...' : 
-                           !isPublicKeySet ? 'Public Key Required' :
+                           (isFrostSignatureEnabled && !isPublicKeySet) ? 'Public Key Required' :
                            'Deposit'}
                         </button>
                       </div>
@@ -724,13 +733,25 @@ export default function DepositTokensPage() {
                             </div>
                           </div>
                           
-                          {!isPublicKeySet && (
+                          {isFrostSignatureEnabled && !isPublicKeySet && (
                             <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/50 rounded">
                               <div className="flex items-start gap-2">
                                 <AlertTriangle className="h-4 w-4 text-yellow-400 mt-0.5 flex-shrink-0" />
                                 <div className="text-xs text-yellow-300">
                                   <p className="font-medium mb-1">DKG Required</p>
                                   <p>The channel leader must complete the DKG ceremony to set the public key before deposits can be made.</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {isFrostSignatureEnabled === false && (
+                            <div className="mt-3 p-3 bg-green-500/10 border border-green-500/50 rounded">
+                              <div className="flex items-start gap-2">
+                                <CheckCircle2 className="h-4 w-4 text-green-400 mt-0.5 flex-shrink-0" />
+                                <div className="text-xs text-green-300">
+                                  <p className="font-medium mb-1">Frost Signatures Disabled</p>
+                                  <p>This channel operates without threshold signatures. No DKG ceremony required for deposits.</p>
                                 </div>
                               </div>
                             </div>
@@ -788,7 +809,7 @@ export default function DepositTokensPage() {
             {/* Content */}
             <div className="p-6">
               <p className="text-gray-300 mb-4">
-                The channel's public key has not been set yet. Any deposit transaction will revert and fail.
+                This channel has frost signatures enabled, but the group public key has not been set yet. Any deposit transaction will revert and fail.
               </p>
               <div className="bg-yellow-500/10 border border-yellow-500/50 rounded-lg p-4">
                 <h4 className="font-medium text-yellow-300 mb-2">
