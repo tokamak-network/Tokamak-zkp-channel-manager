@@ -136,6 +136,13 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
   },
   {
     inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'isFrostSignatureEnabled',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'channelId', type: 'uint256' }],
     name: 'getChannelTimeout',
     outputs: [{ name: 'openTimestamp', type: 'uint256' }, { name: 'timeout', type: 'uint256' }],
     stateMutability: 'view',
@@ -245,7 +252,8 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
         type: 'tuple',
         components: [
           { name: 'targetContract', type: 'address' },
-          { name: 'participants', type: 'address[]' }
+          { name: 'participants', type: 'address[]' },
+          { name: 'enableFrostSignature', type: 'bool' }
         ]
       }
     ],

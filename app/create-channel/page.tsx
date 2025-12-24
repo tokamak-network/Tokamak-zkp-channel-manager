@@ -68,6 +68,7 @@ export default function CreateChannelPage() {
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [createdChannelId, setCreatedChannelId] = useState<string>('');
   const [txHash, setTxHash] = useState<string>('');
+  const [enableFrostSignature, setEnableFrostSignature] = useState<boolean>(true);
 
   // Add/Remove participants
   const addParticipant = () => {
@@ -137,7 +138,8 @@ export default function CreateChannelPage() {
   // Prepare contract call
   const channelParams = isFormValid() ? {
     targetContract: targetContract as `0x${string}`,
-    participants: participants.map(p => p.address as `0x${string}`)
+    participants: participants.map(p => p.address as `0x${string}`),
+    enableFrostSignature: enableFrostSignature
   } : undefined;
 
   const contractConfig = channelParams ? {
@@ -385,6 +387,71 @@ export default function CreateChannelPage() {
                 
               </div>
 
+              {/* Frost Signature Toggle */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-4">
+                  Frost Signature Configuration
+                </label>
+                
+                <div className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-medium text-white">Enable Frost Signatures</h4>
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="enableFrost"
+                        checked={enableFrostSignature}
+                        onChange={(e) => setEnableFrostSignature(e.target.checked)}
+                        className="w-4 h-4 text-[#4fc3f7] bg-[#0a1930] border-[#4fc3f7]/50 rounded focus:ring-[#4fc3f7] focus:ring-2"
+                      />
+                      <label htmlFor="enableFrost" className="ml-2 text-sm text-gray-300">
+                        {enableFrostSignature ? 'Enabled' : 'Disabled'}
+                      </label>
+                    </div>
+                  </div>
+                  
+                  <div className={`p-3 border rounded-lg ${enableFrostSignature 
+                    ? 'border-green-500/50 bg-green-900/20' 
+                    : 'border-gray-500/50 bg-gray-900/20'
+                  }`}>
+                    {enableFrostSignature ? (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                          <p className="text-green-300 text-sm font-medium">Frost Signatures Enabled</p>
+                        </div>
+                        <p className="text-green-200/80 text-xs">
+                          This channel will require:
+                        </p>
+                        <ul className="text-green-200/70 text-xs mt-1 ml-4 space-y-1">
+                          <li>• Distributed Key Generation (DKG) ceremony</li>
+                          <li>• Threshold signatures for proof submissions</li>
+                          <li>• Group public key setup before state initialization</li>
+                        </ul>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
+                          <p className="text-gray-300 text-sm font-medium">Frost Signatures Disabled</p>
+                        </div>
+                        <p className="text-gray-200/80 text-xs">
+                          This channel will operate without threshold signatures:
+                        </p>
+                        <ul className="text-gray-200/70 text-xs mt-1 ml-4 space-y-1">
+                          <li>• No DKG ceremony required</li>
+                          <li>• Standard proof submissions without group signatures</li>
+                          <li>• Faster channel initialization</li>
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <p className="text-sm text-gray-400 mt-2">
+                  Choose whether this channel requires frost threshold signatures for enhanced security.
+                </p>
+              </div>
 
               {/* Submit Button */}
               <div className="pt-6">
@@ -455,34 +522,62 @@ export default function CreateChannelPage() {
             <div className="p-6">
               <h3 className="text-lg font-semibold text-white mb-4">Next Steps</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-300">
-                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
-                  <span className="text-[#4fc3f7] font-bold text-lg">1.</span>
-                  <div>
-                    <p className="font-medium text-white mb-1">Coordinate DKG Ceremony</p>
-                    <p>Use the DKG Management page to coordinate the distributed key generation ceremony with all participants.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
-                  <span className="text-[#4fc3f7] font-bold text-lg">2.</span>
-                  <div>
-                    <p className="font-medium text-white mb-1">Wait for Participants to Deposit</p>
-                    <p>All whitelisted participants need to deposit their tokens into the channel.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
-                  <span className="text-[#4fc3f7] font-bold text-lg">3.</span>
-                  <div>
-                    <p className="font-medium text-white mb-1">Initialize Channel State</p>
-                    <p>As the channel leader, you'll need to initialize the channel state once DKG and deposits are complete.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
-                  <span className="text-[#4fc3f7] font-bold text-lg">4.</span>
-                  <div>
-                    <p className="font-medium text-white mb-1">Proof Operations & Close</p>
-                    <p>Submit aggregated proofs, collect signatures, close the channel, and allow whitelisted participants to withdraw.</p>
-                  </div>
-                </div>
+                {enableFrostSignature ? (
+                  <>
+                    <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
+                      <span className="text-[#4fc3f7] font-bold text-lg">1.</span>
+                      <div>
+                        <p className="font-medium text-white mb-1">Coordinate DKG Ceremony</p>
+                        <p>Use the DKG Management page to coordinate the distributed key generation ceremony with all participants.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
+                      <span className="text-[#4fc3f7] font-bold text-lg">2.</span>
+                      <div>
+                        <p className="font-medium text-white mb-1">Wait for Participants to Deposit</p>
+                        <p>All whitelisted participants need to deposit their tokens into the channel.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
+                      <span className="text-[#4fc3f7] font-bold text-lg">3.</span>
+                      <div>
+                        <p className="font-medium text-white mb-1">Initialize Channel State</p>
+                        <p>As the channel leader, you'll need to initialize the channel state once DKG and deposits are complete.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
+                      <span className="text-[#4fc3f7] font-bold text-lg">4.</span>
+                      <div>
+                        <p className="font-medium text-white mb-1">Proof Operations & Close</p>
+                        <p>Submit aggregated proofs, collect signatures, close the channel, and allow whitelisted participants to withdraw.</p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
+                      <span className="text-[#4fc3f7] font-bold text-lg">1.</span>
+                      <div>
+                        <p className="font-medium text-white mb-1">Wait for Participants to Deposit</p>
+                        <p>All whitelisted participants need to deposit their tokens into the channel.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
+                      <span className="text-[#4fc3f7] font-bold text-lg">2.</span>
+                      <div>
+                        <p className="font-medium text-white mb-1">Initialize Channel State</p>
+                        <p>As the channel leader, you can initialize the channel state once deposits are complete. No DKG required.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
+                      <span className="text-[#4fc3f7] font-bold text-lg">3.</span>
+                      <div>
+                        <p className="font-medium text-white mb-1">Proof Operations & Close</p>
+                        <p>Submit aggregated proofs (no signatures needed), close the channel, and allow whitelisted participants to withdraw.</p>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="mt-6 p-4 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50">
