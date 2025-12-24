@@ -24,9 +24,12 @@ export function useUserRolesDynamic() {
     enabled: isConnected,
   });
 
-  // Get the actual channel count, fallback to checking first 10 if no data
+  // Get the actual channel count from nextChannelId - this is always the real total
   const channelCount = totalChannelsData?.[0]?.result ? Number(totalChannelsData[0].result) : 10;
-  const maxChannelsToCheck = Math.min(channelCount, 20); // Reasonable limit
+  
+  // For role checking (leader/participant status), we limit the number to avoid performance issues
+  // but the total channel count display will always show the real number from channelCount
+  const maxChannelsToCheck = Math.min(channelCount, 1000); // Reasonable limit for role checking
   const channelContracts = [];
 
   for (let i = 0; i < maxChannelsToCheck; i++) {
@@ -134,7 +137,8 @@ export function useUserRolesDynamic() {
 
     setHasChannels(foundLeadership);
     setIsParticipant(foundParticipation && !foundLeadership);
-    setTotalChannels(actualChannelCount);
+    // Always use the real total from nextChannelId contract call, regardless of how many we checked for roles
+    setTotalChannels(channelCount);
     setParticipatingChannels(participantChannels);
     setLeadingChannels(leaderChannels);
     setChannelStatsData(statsData);
