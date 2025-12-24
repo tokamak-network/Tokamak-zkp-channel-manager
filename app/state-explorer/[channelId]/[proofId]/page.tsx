@@ -36,6 +36,7 @@ import {
   analyzeProof, 
   type ProofAnalysisResult 
 } from '@/lib/proofAnalyzer';
+import JSZip from 'jszip';
 
 // Participant Balance Type
 interface ParticipantBalance {
@@ -733,20 +734,54 @@ export default function ProofDetailPage() {
                   }
 
                   try {
-                    // Convert base64 to Blob
+                    // Convert base64 to bytes
                     const base64Content = proof.zipFile.content;
                     const binaryString = atob(base64Content);
                     const bytes = new Uint8Array(binaryString.length);
                     for (let i = 0; i < binaryString.length; i++) {
                       bytes[i] = binaryString.charCodeAt(i);
                     }
-                    const blob = new Blob([bytes], { type: 'application/zip' });
+
+                    // Parse the original ZIP
+                    const originalZip = await JSZip.loadAsync(bytes);
+                    
+                    // Create a new ZIP with organized structure
+                    const newZip = new JSZip();
+                    const proofFolderName = `channel-proof-${proof.proofId || proof.id || 'unknown'}`;
+                    
+                    // Extract files and put them directly in the proof folder (flatten structure)
+                    const files = Object.keys(originalZip.files);
+                    for (const filePath of files) {
+                      const file = originalZip.files[filePath];
+                      if (!file.dir) {
+                        const content = await file.async('uint8array');
+                        
+                        // Extract just the filename (remove any folder paths)
+                        let fileName = filePath;
+                        if (filePath.includes('/')) {
+                          const parts = filePath.split('/');
+                          // Get the last non-empty part (the actual filename)
+                          for (let i = parts.length - 1; i >= 0; i--) {
+                            if (parts[i] && parts[i].trim() !== '') {
+                              fileName = parts[i];
+                              break;
+                            }
+                          }
+                        }
+                        
+                        // Add file to the new ZIP under the proof folder
+                        newZip.file(`${proofFolderName}/${fileName}`, content);
+                      }
+                    }
+
+                    // Generate the new ZIP
+                    const newZipBlob = await newZip.generateAsync({ type: 'blob' });
 
                     // Create download link
-                    const url = URL.createObjectURL(blob);
+                    const url = URL.createObjectURL(newZipBlob);
                     const link = document.createElement('a');
                     link.href = url;
-                    link.download = proof.zipFile.fileName || `proof-${proof.proofId || proof.id || 'unknown'}.zip`;
+                    link.download = `${proofFolderName}.zip`;
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);

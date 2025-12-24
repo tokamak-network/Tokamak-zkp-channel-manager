@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useLayoutEffect, useCallback, Suspense } from "react";
 import { useAccount, usePublicClient, useContractReads } from "wagmi";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { formatUnits } from "viem";
 import { Layout } from "@/components/Layout";
 import { ProofCard, ProofData } from "@/components/ProofCard";
@@ -364,6 +364,9 @@ function ChannelSelectionView({
   );
 }
 
+// Cache for parsed ZIP files to avoid re-parsing
+const zipParseCache = new Map<string, { instance: any; snapshot: any; analysis: any }>();
+
 // State Explorer Detail View Component
 function StateExplorerDetailView({
   channel,
@@ -394,6 +397,9 @@ function StateExplorerDetailView({
   const [isLoadingTransitions, setIsLoadingTransitions] = useState(false);
   const [isTransitionsExpanded, setIsTransitionsExpanded] = useState(false);
   const [isDownloadingProofs, setIsDownloadingProofs] = useState(false);
+  // Cache for verified proofs data to avoid refetching
+  const [cachedVerifiedProofs, setCachedVerifiedProofs] = useState<any>(null);
+  const [dataFetchedOnce, setDataFetchedOnce] = useState(false);
   const publicClient = usePublicClient();
   const VISIBLE_PARTICIPANTS_COLLAPSED = 3;
 
@@ -439,161 +445,227 @@ function StateExplorerDetailView({
     enabled: channel.participants.length > 0,
   });
 
-  // Fetch current balances and Merkle roots from latest verified proof
-  const fetchCurrentBalances = useCallback(async () => {
-    if (!publicClient || !initialDeposits || channel.participants.length === 0)
+  // Helper function to parse ZIP with caching
+  const parseZipWithCache = useCallback(async (
+    proofKey: string,
+    zipContent: string,
+    parseProofFromBase64Zip: any,
+    analyzeProof: any,
+    decimalsVal: number
+  ) => {
+    // Check cache first
+    const cacheKey = `${channel.id}-${proofKey}`;
+    if (zipParseCache.has(cacheKey)) {
+      return zipParseCache.get(cacheKey)!;
+    }
+
+    // Parse and cache
+    const parsed = await parseProofFromBase64Zip(zipContent);
+    if (parsed.instance && parsed.snapshot) {
+      const analysis = analyzeProof(parsed.instance, parsed.snapshot, decimalsVal);
+      const result = { instance: parsed.instance, snapshot: parsed.snapshot, analysis };
+      zipParseCache.set(cacheKey, result);
+      return result;
+    }
+    return null;
+  }, [channel.id]);
+
+  // OPTIMIZED: Single unified data fetch function
+  // This replaces the previous 3 separate functions that were fetching the same data
+  const fetchAllChannelData = useCallback(async (forceRefresh = false) => {
+    if (!publicClient || !initialDeposits || channel.participants.length === 0) {
       return;
+    }
+
+    // Skip if already fetched and not forcing refresh
+    if (dataFetchedOnce && !forceRefresh) {
+      return;
+    }
 
     setIsLoadingBalances(true);
+    setIsLoadingProofs(true);
+    setIsLoadingTransitions(true);
+
     try {
-      // Get latest verified proof from Firebase
-      const verifiedProofsData = await getData(
-        `channels/${channel.id}/verifiedProofs`
-      );
+      // SINGLE FETCH: Get all proof data in one call
+      const [verifiedProofsData, submittedProofsData, rejectedProofsData] = await Promise.all([
+        cachedVerifiedProofs && !forceRefresh 
+          ? Promise.resolve(cachedVerifiedProofs) 
+          : getData<any>(`channels/${channel.id}/verifiedProofs`),
+        getData<any>(`channels/${channel.id}/submittedProofs`),
+        getData<any>(`channels/${channel.id}/rejectedProofs`),
+      ]);
 
+      // Cache verified proofs for later use
+      if (verifiedProofsData && !cachedVerifiedProofs) {
+        setCachedVerifiedProofs(verifiedProofsData);
+      }
+
+      // Import proof analyzer once
+      const { parseProofFromBase64Zip, analyzeProof } = await import("@/lib/proofAnalyzer");
+
+      // ============ PROCESS VERIFIED PROOFS ============
       let latestProofBalances: any = null;
-      let latestAnalysis: any = null;
+      const transitions: StateTransition[] = [];
+      let previousBalances: any[] = [];
 
       if (verifiedProofsData) {
-        // Find the latest verified proof (highest sequenceNumber)
-        const verifiedProofsArray = Object.entries(verifiedProofsData).map(
-          ([key, value]: [string, any]) => ({
-            key,
-            ...value,
-          })
-        );
+        const verifiedProofsArray = Object.entries(verifiedProofsData)
+          .map(([key, value]: [string, any]) => ({ key, ...value }))
+          .sort((a: any, b: any) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
 
-        const latestProof = verifiedProofsArray.reduce(
-          (latest: any, current: any) => {
-            if (
-              !latest ||
-              (current.sequenceNumber &&
-                current.sequenceNumber > latest.sequenceNumber)
-            ) {
-              return current;
-            }
-            return latest;
-          },
-          null
-        );
+        // Find first and last proofs for merkle roots
+        const firstProof = verifiedProofsArray[0];
+        const lastProof = verifiedProofsArray[verifiedProofsArray.length - 1];
 
-        // If we have a latest proof with zipFile, parse it
-        if (latestProof?.zipFile?.content) {
+        // Process proofs sequentially for state transitions (using cache)
+        for (const proof of verifiedProofsArray) {
+          if (!proof.zipFile?.content) continue;
+
           try {
-            const { parseProofFromBase64Zip, analyzeProof } = await import(
-              "@/lib/proofAnalyzer"
-            );
-            const parsed = await parseProofFromBase64Zip(
-              latestProof.zipFile.content
+            const cached = await parseZipWithCache(
+              proof.key,
+              proof.zipFile.content,
+              parseProofFromBase64Zip,
+              analyzeProof,
+              decimals
             );
 
-            if (parsed.instance && parsed.snapshot) {
-              const analysis = analyzeProof(
-                parsed.instance,
-                parsed.snapshot,
-                decimals
-              );
-              latestProofBalances = analysis.balances;
-              latestAnalysis = analysis;
+            if (cached) {
+              const { analysis } = cached;
 
-              // Set current Merkle root from the latest proof
-              setCurrentMerkleRoot(analysis.merkleRoots.resulting);
+              // Set merkle roots from first and last proofs
+              if (proof === firstProof) {
+                setInitialMerkleRoot(analysis.merkleRoots.initial);
+              }
+              if (proof === lastProof) {
+                setCurrentMerkleRoot(analysis.merkleRoots.resulting);
+                latestProofBalances = analysis.balances;
+              }
+
+              // Calculate balance changes for transitions
+              const balanceChanges = analysis.balances.map((bal: any, idx: number) => {
+                const beforeBalanceRaw = previousBalances[idx]?.balanceFormatted || 
+                  (initialDeposits?.[idx]?.result 
+                    ? formatUnits(initialDeposits[idx].result as bigint, decimals)
+                    : "0.00");
+                const afterBalanceRaw = bal.balanceFormatted;
+                const beforeBalance = parseFloat(beforeBalanceRaw).toFixed(2);
+                const afterBalance = parseFloat(afterBalanceRaw).toFixed(2);
+                const change = (parseFloat(afterBalance) - parseFloat(beforeBalance)).toFixed(2);
+
+                return {
+                  address: channel.participants[idx],
+                  before: beforeBalance,
+                  after: afterBalance,
+                  change: parseFloat(change) >= 0 ? `+${change}` : change,
+                };
+              });
+
+              transitions.push({
+                sequenceNumber: proof.sequenceNumber || 0,
+                proofId: proof.proofId || proof.key,
+                timestamp: proof.timestamp || proof.submittedAt || Date.now(),
+                submitter: proof.submitter || "Unknown",
+                merkleRoots: analysis.merkleRoots,
+                balanceChanges,
+              });
+
+              previousBalances = analysis.balances;
             }
           } catch (parseError) {
-            console.error("Error parsing latest verified proof:", parseError);
+            console.error(`Error parsing proof ${proof.key}:`, parseError);
           }
         }
       }
 
-      // Set initial Merkle root (from first verified proof or use initial deposits state)
-      if (verifiedProofsData) {
-        // Find the first verified proof (lowest sequenceNumber)
-        const verifiedProofsArray = Object.entries(verifiedProofsData).map(
-          ([key, value]: [string, any]) => ({
-            key,
-            ...value,
-          })
-        );
+      setStateTransitions(transitions);
 
-        const firstProof = verifiedProofsArray.reduce(
-          (earliest: any, current: any) => {
-            if (
-              !earliest ||
-              (current.sequenceNumber &&
-                current.sequenceNumber < earliest.sequenceNumber)
-            ) {
-              return current;
-            }
-            return earliest;
-          },
-          null
-        );
-
-        if (firstProof?.zipFile?.content) {
-          try {
-            const { parseProofFromBase64Zip, analyzeProof } = await import(
-              "@/lib/proofAnalyzer"
-            );
-            const parsed = await parseProofFromBase64Zip(
-              firstProof.zipFile.content
-            );
-
-            if (parsed.instance && parsed.snapshot) {
-              const analysis = analyzeProof(
-                parsed.instance,
-                parsed.snapshot,
-                decimals
-              );
-              setInitialMerkleRoot(analysis.merkleRoots.initial);
-            }
-          } catch (parseError) {
-            console.error("Error parsing first proof:", parseError);
-          }
+      // ============ SET PARTICIPANT BALANCES ============
+      const balances: ParticipantBalance[] = channel.participants.map((participant, idx) => {
+        const initialDeposit = (initialDeposits?.[idx]?.result as bigint) || BigInt(0);
+        const initialDepositFormatted = formatUnits(initialDeposit, decimals);
+        let currentBalance = initialDepositFormatted;
+        if (latestProofBalances && latestProofBalances[idx]) {
+          currentBalance = latestProofBalances[idx].balanceFormatted;
         }
-      }
-
-      const balances: ParticipantBalance[] = channel.participants.map(
-        (participant, idx) => {
-          const initialDeposit =
-            (initialDeposits?.[idx]?.result as bigint) || BigInt(0);
-          const initialDepositFormatted = formatUnits(initialDeposit, decimals);
-
-          // Get current balance from latest verified proof, if available
-          let currentBalance = initialDepositFormatted;
-          if (latestProofBalances && latestProofBalances[idx]) {
-            currentBalance = latestProofBalances[idx].balanceFormatted;
-          }
-
-          return {
-            address: participant,
-            initialDeposit: initialDepositFormatted,
-            currentBalance: currentBalance,
-            symbol: symbol,
-            decimals: decimals,
-          };
-        }
-      );
-
+        return {
+          address: participant,
+          initialDeposit: initialDepositFormatted,
+          currentBalance,
+          symbol,
+          decimals,
+        };
+      });
       setParticipantBalances(balances);
+
+      // ============ BUILD PROOFS LIST (without re-fetching) ============
+      const allProofs: ProofData[] = [];
+
+      // Add verified proofs (without zipFile.content to save memory)
+      if (verifiedProofsData) {
+        Object.entries(verifiedProofsData).forEach(([key, value]: [string, any]) => {
+          allProofs.push({
+            ...value,
+            // Exclude zipFile.content from the proofs list to save memory
+            zipFile: value.zipFile ? { ...value.zipFile, content: undefined } : undefined,
+            id: value.proofId || value.id || `verified-${key}`,
+            key,
+            status: "verified" as const,
+          });
+        });
+      }
+
+      // Add submitted proofs
+      if (submittedProofsData) {
+        Object.entries(submittedProofsData).forEach(([key, value]: [string, any]) => {
+          const existingProof = allProofs.find((p) => p.proofId === value.proofId && p.key === key);
+          if (!existingProof) {
+            allProofs.push({
+              ...value,
+              zipFile: value.zipFile ? { ...value.zipFile, content: undefined } : undefined,
+              id: value.proofId || value.id || `submitted-${key}`,
+              key,
+              status: "pending" as const,
+            });
+          }
+        });
+      }
+
+      // Add rejected proofs
+      if (rejectedProofsData) {
+        Object.entries(rejectedProofsData).forEach(([key, value]: [string, any]) => {
+          allProofs.push({
+            ...value,
+            zipFile: value.zipFile ? { ...value.zipFile, content: undefined } : undefined,
+            id: value.proofId || value.id || `rejected-${key}`,
+            key,
+            status: "rejected" as const,
+          });
+        });
+      }
+
+      setProofs(allProofs);
+      setDataFetchedOnce(true);
+
     } catch (error) {
-      console.error("Error fetching current balances:", error);
-      // Fallback to initial deposits only
-      const balances: ParticipantBalance[] = channel.participants.map(
-        (participant, idx) => {
-          const initialDeposit =
-            (initialDeposits?.[idx]?.result as bigint) || BigInt(0);
-          return {
-            address: participant,
-            initialDeposit: formatUnits(initialDeposit, decimals),
-            currentBalance: formatUnits(initialDeposit, decimals),
-            symbol: symbol,
-            decimals: decimals,
-          };
-        }
-      );
-      setParticipantBalances(balances);
+      console.error("Error fetching channel data:", error);
+      // Fallback for balances
+      const fallbackBalances: ParticipantBalance[] = channel.participants.map((participant, idx) => {
+        const initialDeposit = (initialDeposits?.[idx]?.result as bigint) || BigInt(0);
+        return {
+          address: participant,
+          initialDeposit: formatUnits(initialDeposit, decimals),
+          currentBalance: formatUnits(initialDeposit, decimals),
+          symbol,
+          decimals,
+        };
+      });
+      setParticipantBalances(fallbackBalances);
     } finally {
       setIsLoadingBalances(false);
+      setIsLoadingProofs(false);
+      setIsLoadingTransitions(false);
     }
   }, [
     initialDeposits,
@@ -602,108 +674,17 @@ function StateExplorerDetailView({
     publicClient,
     decimals,
     symbol,
+    dataFetchedOnce,
+    cachedVerifiedProofs,
+    parseZipWithCache,
   ]);
 
-  // Fetch state transitions from verified proofs
-  const fetchStateTransitions = useCallback(async () => {
-    setIsLoadingTransitions(true);
-    try {
-      const verifiedProofsData = await getData(
-        `channels/${channel.id}/verifiedProofs`
-      );
-
-      if (!verifiedProofsData) {
-        setStateTransitions([]);
-        return;
-      }
-
-      const { parseProofFromBase64Zip, analyzeProof } = await import(
-        "@/lib/proofAnalyzer"
-      );
-
-      // Convert to array and sort by sequence number
-      const verifiedProofsArray = Object.entries(verifiedProofsData)
-        .map(([key, value]: [string, any]) => ({
-          key,
-          ...value,
-        }))
-        .sort((a: any, b: any) => a.sequenceNumber - b.sequenceNumber);
-
-      const transitions: StateTransition[] = [];
-      let previousBalances: any[] = [];
-
-      for (const proof of verifiedProofsArray) {
-        if (!proof.zipFile?.content) continue;
-
-        try {
-          const parsed = await parseProofFromBase64Zip(proof.zipFile.content);
-
-          if (parsed.instance && parsed.snapshot) {
-            const analysis = analyzeProof(
-              parsed.instance,
-              parsed.snapshot,
-              decimals
-            );
-
-            // Calculate balance changes
-            const balanceChanges = analysis.balances.map(
-              (bal: any, idx: number) => {
-                const beforeBalance =
-                  previousBalances[idx]?.balanceFormatted ||
-                  participantBalances[idx]?.initialDeposit ||
-                  "0.00";
-                const afterBalance = bal.balanceFormatted;
-                const change = (
-                  parseFloat(afterBalance) - parseFloat(beforeBalance)
-                ).toFixed(2);
-
-                return {
-                  address: channel.participants[idx],
-                  before: beforeBalance,
-                  after: afterBalance,
-                  change: parseFloat(change) >= 0 ? `+${change}` : change,
-                };
-              }
-            );
-
-            transitions.push({
-              sequenceNumber: proof.sequenceNumber || 0,
-              proofId: proof.proofId || proof.key,
-              timestamp: proof.timestamp || proof.submittedAt || Date.now(),
-              submitter: proof.submitter || "Unknown",
-              merkleRoots: analysis.merkleRoots,
-              balanceChanges,
-            });
-
-            // Update previous balances for next iteration
-            previousBalances = analysis.balances;
-          }
-        } catch (parseError) {
-          console.error(`Error parsing proof ${proof.key}:`, parseError);
-        }
-      }
-
-      setStateTransitions(transitions);
-    } catch (error) {
-      console.error("Error fetching state transitions:", error);
-    } finally {
-      setIsLoadingTransitions(false);
-    }
-  }, [channel.id, channel.participants, decimals, participantBalances]);
-
-  // Fetch current balances on mount and when dependencies change
+  // Single useEffect to fetch all data once
   useEffect(() => {
-    if (initialDeposits && channel.participants.length > 0) {
-      fetchCurrentBalances();
+    if (initialDeposits && channel.participants.length > 0 && !dataFetchedOnce) {
+      fetchAllChannelData();
     }
-  }, [fetchCurrentBalances, initialDeposits, channel.participants.length]);
-
-  // Fetch state transitions when verified proofs are available
-  useEffect(() => {
-    if (channel.id && participantBalances.length > 0) {
-      fetchStateTransitions();
-    }
-  }, [fetchStateTransitions, channel.id, participantBalances.length]);
+  }, [initialDeposits, channel.participants.length, dataFetchedOnce, fetchAllChannelData]);
 
   const [isVerifying, setIsVerifying] = useState<string | null>(null);
   const [selectedProofForApproval, setSelectedProofForApproval] = useState<
@@ -743,9 +724,8 @@ function StateExplorerDetailView({
       const result = await response.json();
       console.log("Proof verified successfully:", result);
 
-      // Refresh proofs list and balances
+      // Refresh all data (proofs, balances, transitions) with single unified fetch
       await fetchProofs();
-      await fetchCurrentBalances();
     } catch (error) {
       console.error("Error verifying proof:", error);
       alert(
@@ -787,6 +767,9 @@ function StateExplorerDetailView({
 
       // Create a new ZIP file to contain all proof ZIPs
       const masterZip = new JSZip();
+      
+      // Root folder name
+      const rootFolderName = `channel-${channel.id}-all-verified-proofs`;
 
       // Add each verified proof ZIP to the master ZIP
       for (const proof of verifiedProofsArray) {
@@ -806,19 +789,36 @@ function StateExplorerDetailView({
             bytes[i] = binaryString.charCodeAt(i);
           }
 
-          // Create a folder for each proof
+          // Create a folder for each proof (proof_1, proof_2, etc.)
           const proofFolderName = `proof_${
             proof.sequenceNumber || proof.key || "unknown"
           }`;
           const proofZip = await JSZip.loadAsync(bytes);
 
-          // Add all files from the proof ZIP to the master ZIP under a folder
+          // Add all files from the proof ZIP to the master ZIP under rootFolder/proof_N/
           const files = Object.keys(proofZip.files);
           for (const fileName of files) {
             const file = proofZip.files[fileName];
             if (!file.dir) {
               const content = await file.async("uint8array");
-              masterZip.file(`${proofFolderName}/${fileName}`, content);
+              
+              // Extract file name, removing any nested folder paths like channel-proof-.../
+              let finalFileName = fileName;
+              
+              // If file is in a nested folder (e.g., channel-proof-.../file.json), extract just the filename
+              if (fileName.includes('/')) {
+                const parts = fileName.split('/');
+                // Find the actual filename (last non-empty part)
+                for (let i = parts.length - 1; i >= 0; i--) {
+                  if (parts[i] && parts[i].trim() !== '') {
+                    finalFileName = parts[i];
+                    break;
+                  }
+                }
+              }
+              
+              // Add file directly to proof_N folder (not in nested channel-proof folder)
+              masterZip.file(`${rootFolderName}/${proofFolderName}/${finalFileName}`, content);
             }
           }
 
@@ -832,7 +832,7 @@ function StateExplorerDetailView({
             verifiedBy: proof.verifiedBy || "Unknown",
           };
           masterZip.file(
-            `${proofFolderName}/proof_metadata.json`,
+            `${rootFolderName}/${proofFolderName}/proof_metadata.json`,
             JSON.stringify(metadata, null, 2)
           );
         } catch (error) {
@@ -868,110 +868,13 @@ function StateExplorerDetailView({
     }
   };
 
-  // Fetch proofs from Firebase - extracted to useCallback for reusability
+  // Refresh proofs - uses the unified fetch function with force refresh
   const fetchProofs = useCallback(async () => {
-    setIsLoadingProofs(true);
-    try {
-      const [verifiedProofs, submittedProofs, rejectedProofs] =
-        await Promise.all([
-          getData<any>(`channels/${channel.id}/verifiedProofs`),
-          getData<any>(`channels/${channel.id}/submittedProofs`),
-          getData<any>(`channels/${channel.id}/rejectedProofs`),
-        ]);
-
-      const allProofs: ProofData[] = [];
-
-      // Add verified proofs
-      if (verifiedProofs) {
-        const verifiedList = Array.isArray(verifiedProofs)
-          ? verifiedProofs
-          : Object.entries(verifiedProofs).map(
-              ([key, value]: [string, any]) => ({ ...value, key })
-            );
-
-        verifiedList.forEach((proof: any, idx: number) => {
-          const proofKey =
-            proof.key ||
-            (Array.isArray(verifiedProofs)
-              ? undefined
-              : Object.keys(verifiedProofs)[idx]);
-          allProofs.push({
-            ...proof,
-            id: proof.proofId || proof.id || `verified-${idx}`, // Use proofId as id
-            key: proofKey,
-            status: "verified" as const,
-          });
-        });
-      }
-
-      // Add submitted proofs (pending)
-      if (submittedProofs) {
-        const submittedList = Array.isArray(submittedProofs)
-          ? submittedProofs
-          : Object.entries(submittedProofs).map(
-              ([key, value]: [string, any]) => ({ ...value, key })
-            );
-
-        submittedList.forEach((proof: any, idx: number) => {
-          // Only add if not already added (check by proofId and key)
-          const existingProof = allProofs.find(
-            (p) =>
-              p.proofId === proof.proofId &&
-              p.key === (proof.key || Object.keys(submittedProofs)[idx])
-          );
-
-          if (!existingProof) {
-            const proofKey =
-              proof.key ||
-              (Array.isArray(submittedProofs)
-                ? undefined
-                : Object.keys(submittedProofs)[idx]);
-            allProofs.push({
-              ...proof,
-              id: proof.proofId || proof.id || `submitted-${idx}`, // Use proofId as id
-              key: proofKey,
-              status: "pending" as const,
-            });
-          }
-        });
-      }
-
-      // Add rejected proofs
-      if (rejectedProofs) {
-        const rejectedList = Array.isArray(rejectedProofs)
-          ? rejectedProofs
-          : Object.entries(rejectedProofs).map(
-              ([key, value]: [string, any]) => ({ ...value, key })
-            );
-
-        rejectedList.forEach((proof: any, idx: number) => {
-          const proofKey =
-            proof.key ||
-            (Array.isArray(rejectedProofs)
-              ? undefined
-              : Object.keys(rejectedProofs)[idx]);
-          allProofs.push({
-            ...proof,
-            id: proof.proofId || proof.id || `rejected-${idx}`, // Use proofId as id
-            key: proofKey,
-            status: "rejected" as const,
-          });
-        });
-      }
-
-      setProofs(allProofs);
-    } catch (error) {
-      console.error("Error fetching proofs:", error);
-      setProofs([]);
-    } finally {
-      setIsLoadingProofs(false);
-    }
-  }, [channel.id]);
-
-  // Initial fetch on mount
-  useEffect(() => {
-    fetchProofs();
-  }, [fetchProofs]);
+    // Clear cache and force refresh
+    setCachedVerifiedProofs(null);
+    setDataFetchedOnce(false);
+    await fetchAllChannelData(true);
+  }, [fetchAllChannelData]);
 
   const filteredProofs = proofs.filter((proof) => {
     if (filter === "all") return true;
@@ -1489,9 +1392,9 @@ function StateExplorerDetailView({
                 <div
                   className={`transition-all duration-300 ease-in-out ${
                     isTransitionsExpanded
-                      ? "max-h-[600px] opacity-100"
-                      : "max-h-0 opacity-0"
-                  } overflow-hidden`}
+                      ? "max-h-[600px] opacity-100 overflow-y-auto scrollbar-thin"
+                      : "max-h-0 opacity-0 overflow-hidden"
+                  }`}
                 >
                   <div className="px-4 pb-4">
                     <p className="text-gray-400 text-sm mb-4">
@@ -1509,8 +1412,8 @@ function StateExplorerDetailView({
                     ) : (
                       <div
                         className={`space-y-4 ${
-                          stateTransitions.length > 3
-                            ? "max-h-[450px] overflow-y-auto pr-2 scrollbar-thin"
+                          stateTransitions.length >= 3
+                            ? "max-h-[420px] overflow-y-auto pr-2 scrollbar-thin"
                             : ""
                         }`}
                       >
@@ -1643,8 +1546,8 @@ function StateExplorerDetailView({
                       </div>
                     )}
 
-                    {/* Scroll indicator when there are more than 3 transitions */}
-                    {stateTransitions.length > 3 && (
+                    {/* Scroll indicator when there are 3 or more transitions */}
+                    {stateTransitions.length >= 3 && (
                       <div className="mt-3 text-center text-xs text-gray-500">
                         <span className="bg-[#1a2347]/50 px-3 py-1 rounded">
                           Scroll to see all {stateTransitions.length} state
@@ -1849,6 +1752,7 @@ function StateExplorerPage() {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [selectedChannel, setSelectedChannel] = useState<OnChainChannel | null>(
     null
   );
@@ -2117,6 +2021,8 @@ function StateExplorerPage() {
 
   const handleBack = () => {
     setSelectedChannel(null);
+    // Remove channelId from URL to prevent auto-reselection
+    router.push("/state-explorer");
   };
 
   return (
