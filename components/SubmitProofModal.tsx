@@ -3,8 +3,8 @@
 import { useState, useRef } from 'react';
 import { useAccount } from 'wagmi';
 import { X, Upload, FileArchive, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
-// Using API route to avoid CORS issues
 import { getData, updateData, setData } from '@/lib/realtime-db-helpers';
+import { uploadProofZipToStorage } from '@/lib/firebase-storage';
 import JSZip from 'jszip';
 
 interface SubmitProofModalProps {
@@ -202,31 +202,20 @@ export function SubmitProofModal({ isOpen, onClose, channelId, onUploadSuccess }
       const { proofNumber, subNumber, proofId, storageProofId } =
         await proofNumberResponse.json();
       
-      // Step 2: Upload ZIP file to Firebase Storage
-      // SECURITY: storagePath is now constructed on the server-side
+      // Step 2: Upload ZIP file directly to Firebase Storage (bypasses API route)
+      // This is more efficient and avoids server-side processing
       setUploadProgress(30);
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('channelId', channelId.toString());
-      formData.append('proofId', storageProofId);
       
-      const uploadResponse = await fetch('/api/save-proof-zip', {
-        method: 'POST',
-        body: formData,
-      });
+      const storageResult = await uploadProofZipToStorage(
+        file,
+        channelId.toString(),
+        storageProofId
+      );
       
-      if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json().catch(() => ({}));
-        const errorMessage = errorData.error || errorData.details || 'Upload failed';
-        throw new Error(errorMessage);
-      }
-      
-      const { path, size } = await uploadResponse.json();
-      setUploadProgress(90);
+      setUploadProgress(70);
       
       // Step 3: Save metadata to Firebase Realtime Database
-      // IMPORTANT: Don't include zipFile object to avoid overwriting zipFile.content
-      // The zipFile.content was already saved by /api/save-proof-zip
+      // IMPORTANT: No base64 content is saved - only metadata and storage URL
       const proofMetadata = {
         proofId: proofId,
         sequenceNumber: proofNumber,
@@ -239,15 +228,20 @@ export function SubmitProofModal({ isOpen, onClose, channelId, onUploadSuccess }
         channelId: channelId.toString(),
       };
       
-      // Use updateData to merge with existing data (preserves zipFile.content)
+      // Save proof metadata
       await updateData(`channels/${channelId}/submittedProofs/${storageProofId}`, proofMetadata);
       
-      // Update zipFile metadata fields individually to preserve content
+      // Save zipFile metadata (NO content field - references Storage instead)
       await updateData(`channels/${channelId}/submittedProofs/${storageProofId}/zipFile`, {
-        fileName: file.name,
-        size: size,
-        path: path,
+        fileName: storageResult.fileName,
+        size: storageResult.size,
+        storagePath: storageResult.storagePath,   // Path in Firebase Storage
+        downloadUrl: storageResult.downloadUrl,    // Direct download URL
+        uploadedAt: storageResult.uploadedAt,
+        // NO content field! This is the key change.
       });
+      
+      setUploadProgress(90);
       
       setUploadProgress(100);
       setSuccess(true);

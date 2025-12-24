@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase, ref, set } from 'firebase/database';
 import { initializeApp, getApps } from 'firebase/app';
 
+/**
+ * DEPRECATED: This API route is deprecated.
+ * Use client-side Firebase Storage upload instead via uploadProofZipToStorage() in lib/firebase-storage.ts
+ * 
+ * This endpoint remains for backwards compatibility but will redirect to storage-based approach.
+ */
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
