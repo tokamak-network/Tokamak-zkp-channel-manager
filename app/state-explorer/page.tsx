@@ -1907,49 +1907,48 @@ function StateExplorerPage() {
             `State Explorer: Channel ${i} - Leader: ${leader}, Participants: ${participants.length}, IsParticipant: ${isParticipant}, IsLeader: ${isLeader}`
           );
 
-          if (isParticipant || isLeader) {
-            console.log(`State Explorer: Adding channel ${i} to user channels`);
-            // Fetch remaining channel details
-            // getChannelInfo returns: [targetAddress, state, participantCount, initialRoot]
-            const [channelInfo, publicKey, targetAddress] = await Promise.all([
-              publicClient.readContract({
-                address: ROLLUP_BRIDGE_CORE_ADDRESS,
-                abi: ROLLUP_BRIDGE_CORE_ABI,
-                functionName: "getChannelInfo",
-                args: [BigInt(i)],
-              }) as Promise<
-                readonly [`0x${string}`, number, bigint, `0x${string}`]
-              >,
-              publicClient.readContract({
-                address: ROLLUP_BRIDGE_CORE_ADDRESS,
-                abi: ROLLUP_BRIDGE_CORE_ABI,
-                functionName: "getChannelPublicKey",
-                args: [BigInt(i)],
-              }) as Promise<[bigint, bigint]>,
-              publicClient.readContract({
-                address: ROLLUP_BRIDGE_CORE_ADDRESS,
-                abi: ROLLUP_BRIDGE_CORE_ABI,
-                functionName: "getChannelTargetContract",
-                args: [BigInt(i)],
-              }) as Promise<string>,
-            ]);
+          // Add all channels (not just user's channels)
+          console.log(`State Explorer: Adding channel ${i} to channels list`);
+          // Fetch remaining channel details
+          // getChannelInfo returns: [targetAddress, state, participantCount, initialRoot]
+          const [channelInfo, publicKey, targetAddress] = await Promise.all([
+            publicClient.readContract({
+              address: ROLLUP_BRIDGE_CORE_ADDRESS,
+              abi: ROLLUP_BRIDGE_CORE_ABI,
+              functionName: "getChannelInfo",
+              args: [BigInt(i)],
+            }) as Promise<
+              readonly [`0x${string}`, number, bigint, `0x${string}`]
+            >,
+            publicClient.readContract({
+              address: ROLLUP_BRIDGE_CORE_ADDRESS,
+              abi: ROLLUP_BRIDGE_CORE_ABI,
+              functionName: "getChannelPublicKey",
+              args: [BigInt(i)],
+            }) as Promise<[bigint, bigint]>,
+            publicClient.readContract({
+              address: ROLLUP_BRIDGE_CORE_ADDRESS,
+              abi: ROLLUP_BRIDGE_CORE_ABI,
+              functionName: "getChannelTargetContract",
+              args: [BigInt(i)],
+            }) as Promise<string>,
+          ]);
 
-            // channelInfo structure: [targetAddress, state, participantCount, initialRoot]
-            const state = channelInfo[1];
-            const participantCount = Number(channelInfo[2]);
+          // channelInfo structure: [targetAddress, state, participantCount, initialRoot]
+          const state = channelInfo[1];
+          const participantCount = Number(channelInfo[2]);
 
-            userChannels.push({
-              id: i,
-              state: state,
-              participantCount: participantCount,
-              participants: participants,
-              leader: leader,
-              isLeader: isLeader,
-              targetAddress: targetAddress,
-              hasPublicKey:
-                publicKey[0] !== BigInt(0) || publicKey[1] !== BigInt(0),
-            });
-          }
+          userChannels.push({
+            id: i,
+            state: state,
+            participantCount: participantCount,
+            participants: participants,
+            leader: leader,
+            isLeader: isLeader,
+            targetAddress: targetAddress,
+            hasPublicKey:
+              publicKey[0] !== BigInt(0) || publicKey[1] !== BigInt(0),
+          });
         } catch (err) {
           console.warn(`Error fetching channel ${i}:`, err);
           // Continue to next channel
