@@ -127,6 +127,15 @@ export default function UnfreezeStatePage() {
     enabled: isMounted && isConnected && isValidChannelId
   });
 
+  // Check if frost signatures are enabled for this channel
+  const { data: isFrostSignatureEnabled } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'isFrostSignatureEnabled',
+    args: isValidChannelId ? [BigInt(parsedChannelId)] : undefined,
+    enabled: isMounted && isConnected && isValidChannelId
+  });
+
   const { data: preAllocatedCount } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
@@ -441,7 +450,7 @@ export default function UnfreezeStatePage() {
     return Boolean(
       channelInfo &&
       Object.keys(finalBalances).length > 0 &&
-      isSignatureVerified &&
+      (isFrostSignatureEnabled ? isSignatureVerified : true) && // Skip signature check if frost disabled
       Number(channelInfo[1]) === 3
     );
   };
@@ -623,9 +632,15 @@ export default function UnfreezeStatePage() {
                       </div>
                       <div className="text-center p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/30">
                         <div className="text-sm text-gray-400">Signature</div>
-                        <div className={`text-xl font-bold ${isSignatureVerified ? 'text-green-400' : 'text-red-400'}`}>
-                          {isSignatureVerified ? 'Verified' : 'Not Verified'}
-                        </div>
+                        {isFrostSignatureEnabled === false ? (
+                          <div className="text-xl font-bold text-gray-400">
+                            Not Required
+                          </div>
+                        ) : (
+                          <div className={`text-xl font-bold ${isSignatureVerified ? 'text-green-400' : 'text-red-400'}`}>
+                            {isSignatureVerified ? 'Verified' : 'Not Verified'}
+                          </div>
+                        )}
                       </div>
                     </div>
                     
@@ -636,16 +651,24 @@ export default function UnfreezeStatePage() {
                       </div>
                     )}
                     
-                    {!isSignatureVerified && (
+                    {isFrostSignatureEnabled && !isSignatureVerified && (
                       <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30">
                         <p className="text-red-400 text-sm">
                           ⚠️ Signature must be verified before unfreezing. Submit proofs first.
                         </p>
                       </div>
                     )}
+
+                    {isFrostSignatureEnabled === false && (
+                      <div className="mt-4 p-4 bg-green-500/10 border border-green-500/30">
+                        <p className="text-green-400 text-sm">
+                          ✓ Frost signatures disabled. No signature verification required.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
-                  {isSignatureVerified && (
+                  {(isFrostSignatureEnabled ? isSignatureVerified : true) && (
                     <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/20">
                       <div className="p-6 border-b border-[#4fc3f7]/30">
                         <h3 className="text-xl font-semibold text-white mb-2">Final Balances</h3>
