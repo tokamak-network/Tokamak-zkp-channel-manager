@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useContractRead, useContractWrite, useWaitForTransaction, useAccount } from 'wagmi';
 import { formatUnits } from 'viem';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
@@ -16,8 +16,9 @@ import {
   getGroth16VerifierAddress
 } from '@/lib/contracts';
 import { generateClientSideProof, isClientProofGenerationSupported, getMemoryRequirement, requiresExternalDownload, getDownloadSize } from '@/lib/clientProofGeneration';
+import { getData, getLatestSnapshot } from '@/lib/realtime-db-helpers';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
-import { Unlock, Link, FileText, CheckCircle2, XCircle, Calculator, Download, Upload, Settings } from 'lucide-react';
+import { Unlock, Link, FileText, CheckCircle2, XCircle, Calculator, Download, Upload, Settings, RefreshCw } from 'lucide-react';
 
 interface FinalBalances {
   [participantAddress: string]: string;
@@ -40,6 +41,15 @@ export default function UnfreezeStatePage() {
   const [finalBalances, setFinalBalances] = useState<FinalBalances>({});
   const [balancesFile, setBalancesFile] = useState<File | null>(null);
   const [balancesError, setBalancesError] = useState('');
+  const [balancesSource, setBalancesSource] = useState<'firebase' | 'file' | null>(null);
+  const [balancesMeta, setBalancesMeta] = useState<{
+    source: 'verifiedProof' | 'snapshot';
+    snapshotId?: string;
+    sequenceNumber?: number;
+    proofId?: string;
+  } | null>(null);
+  const [isFetchingBalances, setIsFetchingBalances] = useState(false);
+  const balancesRequestRef = useRef(0);
   
   const [isGeneratingProof, setIsGeneratingProof] = useState(false);
   const [proofGenerationStatus, setProofGenerationStatus] = useState('');
@@ -160,6 +170,147 @@ export default function UnfreezeStatePage() {
     enabled: isMounted && isConnected && isValidChannelId
   });
 
+  useEffect(() => {
+    setFinalBalances({});
+    setBalancesFile(null);
+    setBalancesSource(null);
+    setBalancesMeta(null);
+    setBalancesError('');
+  }, [selectedChannelId]);
+
+  const normalizeBalances = useCallback((entries: Array<{ userAddressL1?: string; amount?: string | number | bigint }>) => {
+    const balances: FinalBalances = {};
+    entries.forEach((entry) => {
+      if (!entry?.userAddressL1) return;
+      if (entry.amount === undefined || entry.amount === null) return;
+      balances[entry.userAddressL1.toLowerCase()] = String(entry.amount);
+    });
+    return balances;
+  }, []);
+
+  const mapBalancesFromProof = useCallback(
+    (proofBalances: Array<{ participantIndex: number; balance: string }>, participants: string[]) => {
+      const balances: FinalBalances = {};
+      participants.forEach((participant, idx) => {
+        const proofEntry =
+          proofBalances.find((entry) => entry.participantIndex === idx) || proofBalances[idx];
+        if (!proofEntry?.balance) return;
+        try {
+          balances[participant.toLowerCase()] = BigInt(proofEntry.balance).toString();
+        } catch (error) {
+          console.warn(`Invalid balance for participant ${participant}:`, error);
+        }
+      });
+      return balances;
+    },
+    []
+  );
+
+  const loadBalancesFromFirebase = useCallback(async () => {
+    if (!parsedChannelId) {
+      setBalancesError('Select a valid channel first.');
+      return;
+    }
+
+    const requestId = ++balancesRequestRef.current;
+    setIsFetchingBalances(true);
+    setBalancesError('');
+
+    try {
+      const channelIdText = String(parsedChannelId);
+      const verifiedProofsData = await getData<any>(`channels/${channelIdText}/verifiedProofs`);
+      const latestSnapshot = await getLatestSnapshot(channelIdText);
+
+      let balances: FinalBalances | null = null;
+      let meta: { source: 'verifiedProof' | 'snapshot'; snapshotId?: string; sequenceNumber?: number; proofId?: string } | null = null;
+
+      if (verifiedProofsData) {
+        const verifiedProofsArray = Object.entries(verifiedProofsData)
+          .map(([key, value]: [string, any]) => ({ key, ...value }))
+          .filter((proof: any) => proof.zipFile?.content)
+          .sort((a: any, b: any) => {
+            const seqA = Number(a.sequenceNumber ?? 0);
+            const seqB = Number(b.sequenceNumber ?? 0);
+            if (seqA !== seqB) return seqA - seqB;
+            const timeA = Number(a.timestamp ?? a.submittedAt ?? 0);
+            const timeB = Number(b.timestamp ?? b.submittedAt ?? 0);
+            return timeA - timeB;
+          });
+
+        const latestProof = verifiedProofsArray[verifiedProofsArray.length - 1];
+
+        if (latestProof?.zipFile?.content) {
+          const { parseProofFromBase64Zip, analyzeProof } = await import('@/lib/proofAnalyzer');
+          const parsed = await parseProofFromBase64Zip(latestProof.zipFile.content);
+
+          if (parsed.instance && parsed.snapshot) {
+            const analysis = analyzeProof(parsed.instance, parsed.snapshot, 18);
+            const participants = (channelParticipants as string[]) || [];
+            balances = mapBalancesFromProof(analysis.balances, participants);
+            meta = {
+              source: 'verifiedProof',
+              proofId: latestProof.proofId || latestProof.key,
+              sequenceNumber: latestProof.sequenceNumber,
+            };
+          }
+        }
+      }
+
+      if ((!balances || Object.keys(balances).length === 0) && latestSnapshot?.userBalances && latestSnapshot.userBalances.length > 0) {
+        balances = normalizeBalances(latestSnapshot.userBalances);
+        meta = {
+          source: 'snapshot',
+          snapshotId: latestSnapshot.snapshotId,
+          sequenceNumber: latestSnapshot.sequenceNumber,
+        };
+      }
+
+      if (!balances || Object.keys(balances).length === 0) {
+        throw new Error('No balances found in Firebase for this channel.');
+      }
+
+      const participants = (channelParticipants as string[]) || [];
+      if (participants.length > 0) {
+        const missingParticipants = participants.filter(
+          (participant) => !balances?.[participant.toLowerCase()]
+        );
+        if (missingParticipants.length > 0) {
+          if (requestId !== balancesRequestRef.current) return;
+          setFinalBalances({});
+          setBalancesSource(null);
+          setBalancesMeta(null);
+          setBalancesError(
+            `Firebase balances missing ${missingParticipants.length} participants. Upload a JSON file or fix Firebase data.`
+          );
+          return;
+        }
+      }
+
+      if (requestId !== balancesRequestRef.current) return;
+      setFinalBalances(balances);
+      setBalancesFile(null);
+      setBalancesSource('firebase');
+      setBalancesMeta(meta);
+      setBalancesError('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load balances from Firebase';
+      if (requestId !== balancesRequestRef.current) return;
+      setFinalBalances({});
+      setBalancesSource(null);
+      setBalancesMeta(null);
+      setBalancesError(message);
+    } finally {
+      if (requestId !== balancesRequestRef.current) return;
+      setIsFetchingBalances(false);
+    }
+  }, [channelParticipants, mapBalancesFromProof, normalizeBalances, parsedChannelId]);
+
+  useEffect(() => {
+    if (isValidChannelId && channelParticipants && (channelParticipants as string[]).length > 0) {
+      void loadBalancesFromFirebase();
+    }
+  }, [channelParticipants, isValidChannelId, loadBalancesFromFirebase]);
+
   const finalBalancesArray = useMemo(() => {
     if (!channelParticipants || !finalBalances) return [];
     return (channelParticipants as string[]).map((participant: string) => {
@@ -230,6 +381,8 @@ export default function UnfreezeStatePage() {
       
       setFinalBalances(balances);
       setBalancesFile(file);
+      setBalancesSource('file');
+      setBalancesMeta(null);
     } catch (error) {
       console.error('Error parsing balances file:', error);
       setBalancesError(error instanceof Error ? error.message : 'Invalid file format');
@@ -672,11 +825,19 @@ export default function UnfreezeStatePage() {
                     <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/20">
                       <div className="p-6 border-b border-[#4fc3f7]/30">
                         <h3 className="text-xl font-semibold text-white mb-2">Final Balances</h3>
-                        <p className="text-gray-400">Upload the final balances JSON file</p>
+                        <p className="text-gray-400">Load balances from Firebase or upload a JSON file</p>
                       </div>
                       
                       <div className="p-6 space-y-6">
-                        <div className="text-center mb-6">
+                        <div className="flex flex-wrap items-center justify-center gap-3 mb-6">
+                          <button
+                            onClick={loadBalancesFromFirebase}
+                            disabled={isFetchingBalances}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            <RefreshCw className={`h-4 w-4 ${isFetchingBalances ? 'animate-spin' : ''}`} />
+                            {isFetchingBalances ? 'Loading from Firebase...' : 'Load from Firebase'}
+                          </button>
                           <button
                             onClick={handleDownloadTemplate}
                             className="inline-flex items-center gap-2 px-4 py-2 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/20 transition-colors"
@@ -687,7 +848,7 @@ export default function UnfreezeStatePage() {
                         </div>
 
                         <div className="max-w-2xl mx-auto">
-                          {!balancesFile ? (
+                          {Object.keys(finalBalances).length === 0 ? (
                             <div className="border-2 border-dashed border-gray-600 p-8 text-center hover:border-[#4fc3f7] transition-colors">
                               <input
                                 type="file"
@@ -711,14 +872,32 @@ export default function UnfreezeStatePage() {
                                 <div className="flex items-center gap-3">
                                   <CheckCircle2 className="h-12 w-12 text-green-400" />
                                   <div>
-                                    <h3 className="text-lg font-semibold text-green-200">{balancesFile.name}</h3>
-                                    <p className="text-sm text-green-400">Final balances loaded successfully</p>
+                                    <h3 className="text-lg font-semibold text-green-200">
+                                      {balancesSource === 'file' && balancesFile
+                                        ? balancesFile.name
+                                        : 'Firebase Balances'}
+                                    </h3>
+                                    <p className="text-sm text-green-400">
+                                      {balancesSource === 'firebase'
+                                        ? 'Loaded from Firebase'
+                                        : 'Final balances loaded successfully'}
+                                    </p>
+                                  {balancesSource === 'firebase' && balancesMeta && (
+                                      <p className="text-xs text-green-300 mt-1">
+                                        Source: {balancesMeta.source === 'snapshot' ? 'latest snapshot' : 'latest verified proof'}
+                                        {balancesMeta.sequenceNumber !== undefined ? ` (seq ${balancesMeta.sequenceNumber})` : ''}
+                                        {balancesMeta.proofId ? ` • ${balancesMeta.proofId}` : ''}
+                                        {balancesMeta.snapshotId ? ` • ${balancesMeta.snapshotId}` : ''}
+                                      </p>
+                                    )}
                                   </div>
                                 </div>
                                 <button
                                   onClick={() => {
                                     setBalancesFile(null);
                                     setFinalBalances({});
+                                    setBalancesSource(null);
+                                    setBalancesMeta(null);
                                   }}
                                   className="text-red-400 hover:text-red-600 p-2"
                                 >
