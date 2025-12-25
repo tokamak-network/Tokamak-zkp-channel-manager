@@ -338,7 +338,7 @@ export default function DepositTokensPage() {
     try {
       const parsedAmount = parseUnits(amount, decimals);
       const maxAmount = parseUnits('1000000', decimals); // 1 million tokens max
-      return parsedAmount > 0 && parsedAmount <= maxAmount;
+      return parsedAmount >= 0 && parsedAmount <= maxAmount;
     } catch {
       return false;
     }
