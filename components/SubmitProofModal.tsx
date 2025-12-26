@@ -5,6 +5,7 @@ import { useAccount } from 'wagmi';
 import { X, Upload, FileArchive, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 // Using API route to avoid CORS issues
 import { getData, updateData, setData } from '@/lib/realtime-db-helpers';
+import JSZip from 'jszip';
 
 interface SubmitProofModalProps {
   isOpen: boolean;
@@ -25,7 +26,119 @@ export function SubmitProofModal({ isOpen, onClose, channelId, onUploadSuccess }
 
   if (!isOpen) return null;
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Validate ZIP file structure - check for required files within 2 levels of depth
+  const validateProofZip = async (file: File): Promise<string | null> => {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const zip = await JSZip.loadAsync(arrayBuffer);
+
+      // Get all files (not directories) within 2 levels of depth
+      // Depth 0: file.json
+      // Depth 1: folder/file.json
+      // Depth 2: folder/folder/file.json
+      const MAX_DEPTH = 4;
+      const allFiles = Object.keys(zip.files).filter(name => {
+        if (name.endsWith('/')) return false; // Skip directories
+        const normalized = name.replace(/\\/g, '/');
+        const depth = normalized.split('/').length - 1; // Count folder depth
+        return depth <= MAX_DEPTH;
+      });
+
+      // Helper function to find file by name
+      const findFile = (fileName: string): string | undefined => {
+        return allFiles.find(name => {
+          const normalized = name.replace(/\\/g, '/').toLowerCase();
+          const fn = normalized.split('/').pop();
+          return fn === fileName.toLowerCase();
+        });
+      };
+
+      // 1. Check instance.json
+      const instancePath = findFile('instance.json');
+      if (!instancePath) {
+        return `Missing required file: instance.json (must be within ${MAX_DEPTH} folder levels)`;
+      }
+      const instanceFile = zip.file(instancePath);
+      if (!instanceFile) {
+        return 'Could not read instance.json';
+      }
+      try {
+        const instanceContent = await instanceFile.async('string');
+        const instanceData = JSON.parse(instanceContent);
+        
+        if (!instanceData.a_pub_user || !Array.isArray(instanceData.a_pub_user)) {
+          return 'Invalid instance.json: missing or invalid "a_pub_user" array';
+        }
+        if (!instanceData.a_pub_block || !Array.isArray(instanceData.a_pub_block)) {
+          return 'Invalid instance.json: missing or invalid "a_pub_block" array';
+        }
+        if (!instanceData.a_pub_function || !Array.isArray(instanceData.a_pub_function)) {
+          return 'Invalid instance.json: missing or invalid "a_pub_function" array';
+        }
+      } catch (parseError) {
+        return `Invalid instance.json: ${parseError instanceof Error ? parseError.message : 'Parse error'}`;
+      }
+
+      // 2. Check proof.json
+      const proofPath = findFile('proof.json');
+      if (!proofPath) {
+        return `Missing required file: proof.json (must be within ${MAX_DEPTH} folder levels)`;
+      }
+      const proofFile = zip.file(proofPath);
+      if (!proofFile) {
+        return 'Could not read proof.json';
+      }
+      try {
+        const proofContent = await proofFile.async('string');
+        const proofData = JSON.parse(proofContent);
+        
+        if (!proofData.proof_entries_part1 || !Array.isArray(proofData.proof_entries_part1)) {
+          return 'Invalid proof.json: missing or invalid "proof_entries_part1" array';
+        }
+        if (!proofData.proof_entries_part2 || !Array.isArray(proofData.proof_entries_part2)) {
+          return 'Invalid proof.json: missing or invalid "proof_entries_part2" array';
+        }
+      } catch (parseError) {
+        return `Invalid proof.json: ${parseError instanceof Error ? parseError.message : 'Parse error'}`;
+      }
+
+      // 3. Check state_snapshot.json
+      const snapshotPath = findFile('state_snapshot.json');
+      if (!snapshotPath) {
+        return `Missing required file: state_snapshot.json (must be within ${MAX_DEPTH} folder levels)`;
+      }
+      const snapshotFile = zip.file(snapshotPath);
+      if (!snapshotFile) {
+        return 'Could not read state_snapshot.json';
+      }
+      try {
+        const snapshotContent = await snapshotFile.async('string');
+        const snapshotData = JSON.parse(snapshotContent);
+        
+        if (typeof snapshotData.stateRoot !== 'string') {
+          return 'Invalid state_snapshot.json: missing or invalid "stateRoot" field';
+        }
+        if (!snapshotData.registeredKeys || !Array.isArray(snapshotData.registeredKeys)) {
+          return 'Invalid state_snapshot.json: missing or invalid "registeredKeys" array';
+        }
+        if (!snapshotData.storageEntries || !Array.isArray(snapshotData.storageEntries)) {
+          return 'Invalid state_snapshot.json: missing or invalid "storageEntries" array';
+        }
+        if (typeof snapshotData.contractAddress !== 'string') {
+          return 'Invalid state_snapshot.json: missing or invalid "contractAddress" field';
+        }
+      } catch (parseError) {
+        return `Invalid state_snapshot.json: ${parseError instanceof Error ? parseError.message : 'Parse error'}`;
+      }
+
+      // All validations passed
+      return null;
+    } catch (error) {
+      return `Failed to validate ZIP file: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       // Check if file is a ZIP file
@@ -33,6 +146,16 @@ export function SubmitProofModal({ isOpen, onClose, channelId, onUploadSuccess }
         setError('Please select a ZIP file');
         return;
       }
+
+      // Validate ZIP structure and content
+      setError('Validating file structure...');
+      const validationError = await validateProofZip(selectedFile);
+      
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
+
       setFile(selectedFile);
       setError(null);
       setSuccess(false);
@@ -156,7 +279,7 @@ export function SubmitProofModal({ isOpen, onClose, channelId, onUploadSuccess }
     e.stopPropagation();
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
@@ -166,6 +289,16 @@ export function SubmitProofModal({ isOpen, onClose, channelId, onUploadSuccess }
         setError('Please drop a ZIP file');
         return;
       }
+
+      // Validate ZIP structure and content
+      setError('Validating file structure...');
+      const validationError = await validateProofZip(droppedFile);
+      
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
+
       setFile(droppedFile);
       setError(null);
       setSuccess(false);

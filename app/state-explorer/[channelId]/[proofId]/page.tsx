@@ -11,14 +11,11 @@ import {
   CheckCircle2, 
   Clock, 
   XCircle, 
-  ArrowRight,
   User,
   Hash,
   Calendar,
-  Activity,
   Users,
   Coins,
-  Minus,
   Download,
   Play,
   FileText
@@ -29,13 +26,14 @@ import {
   ETH_TOKEN_ADDRESS,
 } from '@/lib/contracts';
 import { ERC20_ABI } from '@/lib/contracts';
-import { getData, getLatestSnapshot } from '@/lib/realtime-db-helpers';
+import { getData } from '@/lib/realtime-db-helpers';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { 
   parseProofFromBase64Zip, 
   analyzeProof, 
   type ProofAnalysisResult 
 } from '@/lib/proofAnalyzer';
+import JSZip from 'jszip';
 
 // Participant Balance Type
 interface ParticipantBalance {
@@ -389,13 +387,13 @@ export default function ProofDetailPage() {
     fetchChannelData();
   }, [publicClient, channelId]);
 
-  // Fetch participant balances
+  // Fetch participant balances - Uses state_snapshot.json from the proof
   useEffect(() => {
     const fetchBalances = async () => {
       if (!publicClient || !channel || channel.participants.length === 0) return;
 
       try {
-        // Get initial deposits
+        // Get initial deposits from contract
         const depositPromises = channel.participants.map((participant: string) =>
           publicClient.readContract({
             address: ROLLUP_BRIDGE_CORE_ADDRESS,
@@ -407,88 +405,36 @@ export default function ProofDetailPage() {
 
         const initialDeposits = await Promise.all(depositPromises);
 
-        // Get previous proof's resulting state if this is not the first proof
-        let previousProofBalances: any[] = [];
-        const currentSequenceNumber = Number(proof?.sequenceNumber || proof?.id || 0);
-        
-        if (currentSequenceNumber > 1) {
-          try {
-            // Get all verified proofs
-            const verifiedProofs = await getData<any>(`channels/${channelId}/verifiedProofs`);
-            if (verifiedProofs) {
-              const proofsArray = Array.isArray(verifiedProofs)
-                ? verifiedProofs
-                : Object.entries(verifiedProofs).map(([key, value]: [string, any]) => ({
-                    proofId: key,
-                    ...value,
-                  }));
-
-              // Find the previous proof (sequenceNumber - 1)
-              const previousProof = proofsArray.find(
-                (p: any) => (p.sequenceNumber || 0) === currentSequenceNumber - 1
-              );
-
-              if (previousProof?.zipFile?.content) {
-                try {
-                  const { parseProofFromBase64Zip, analyzeProof } = await import(
-                    "@/lib/proofAnalyzer"
-                  );
-                  const parsed = await parseProofFromBase64Zip(previousProof.zipFile.content);
-                  
-                  if (parsed.instance && parsed.snapshot) {
-                    const previousAnalysis = analyzeProof(parsed.instance, parsed.snapshot, decimals);
-                    previousProofBalances = previousAnalysis.balances;
-                  }
-                } catch (parseErr) {
-                  console.warn("Failed to parse previous proof:", parseErr);
-                }
-              }
-            }
-          } catch (err) {
-            console.warn("Failed to fetch previous proof:", err);
-          }
-        }
-
-        // Get latest snapshot (fallback if no previous proof)
-        const latestSnapshot = await getLatestSnapshot(channelId);
-
+        // Build balances from state_snapshot.json (proofAnalysis)
         const balances: ParticipantBalance[] = channel.participants.map(
           (participant: string, idx: number) => {
             const initialDeposit = (initialDeposits[idx] as bigint) || BigInt(0);
             const initialDepositFormatted = parseFloat(formatUnits(initialDeposit, decimals)).toFixed(2);
 
-            // Use previous proof's resulting balance as current balance if available
+            // Get balance from proof's state_snapshot.json
             let currentBalance = initialDepositFormatted;
+            let hasProofBalance = false;
             
-            if (previousProofBalances.length > idx && previousProofBalances[idx]) {
-              // Use previous proof's resulting state
-              const prevBalance = previousProofBalances[idx];
-              currentBalance = parseFloat(formatUnits(BigInt(prevBalance.balance), decimals)).toFixed(2);
-            } else if (latestSnapshot?.userBalances) {
-              // Fallback to latest snapshot
-              const userBalance = latestSnapshot.userBalances.find(
-                (ub: any) => ub.userAddressL1?.toLowerCase() === participant.toLowerCase()
+            if (proofAnalysis && proofAnalysis.balances) {
+              // Find balance by participant index
+              const proofBalance = proofAnalysis.balances.find(
+                (b) => b.participantIndex === idx
               );
-              if (userBalance?.amount) {
-                currentBalance = parseFloat(formatUnits(BigInt(userBalance.amount), decimals)).toFixed(2);
+              
+              if (proofBalance) {
+                currentBalance = parseFloat(proofBalance.balanceFormatted).toFixed(2);
+                hasProofBalance = true;
               }
             }
 
-            // Get new balance from proof analysis if available
-            let newBalance: string | undefined = undefined;
-            let hasChange = false;
-            
-            if (proofAnalysis && proofAnalysis.balances[idx]) {
-              const proofBalance = proofAnalysis.balances[idx];
-              newBalance = parseFloat(formatUnits(BigInt(proofBalance.balance), decimals)).toFixed(2);
-              hasChange = newBalance !== currentBalance;
-            }
+            // Check if balance changed from initial deposit
+            const hasChange = hasProofBalance && currentBalance !== initialDepositFormatted;
 
             return {
               address: participant,
               initialDeposit: initialDepositFormatted,
-              currentBalance: currentBalance, // This is the "Before" balance (from previous proof's resulting state)
-              newBalance: newBalance, // From proof file analysis (current proof's resulting state)
+              currentBalance: currentBalance, // Balance from state_snapshot.json
+              newBalance: undefined, // Not used in this simplified view
               symbol: symbol,
               decimals: decimals,
               hasChange: hasChange,
@@ -503,7 +449,7 @@ export default function ProofDetailPage() {
     };
 
     fetchBalances();
-  }, [publicClient, channel, channelId, decimals, symbol, proofAnalysis, proof]);
+  }, [publicClient, channel, channelId, decimals, symbol, proofAnalysis]);
 
   if (isLoading || !proof) {
     return (
@@ -615,12 +561,19 @@ export default function ProofDetailPage() {
 
             {participantBalances.length === 0 ? (
               <div className="text-center py-8">
-                <LoadingSpinner size="sm" />
+                {isAnalyzingProof ? (
+                  <div>
+                    <LoadingSpinner size="sm" />
+                    <p className="text-gray-400 mt-2 text-sm">Analyzing proof files...</p>
+                  </div>
+                ) : (
+                  <LoadingSpinner size="sm" />
+                )}
               </div>
             ) : (
               <div className="space-y-4">
                 {participantBalances.map((participant, index) => {
-                  const hasChange = participant.hasChange && participant.newBalance !== undefined;
+                  const balanceChanged = participant.hasChange;
                   
                   return (
                     <div
@@ -640,58 +593,51 @@ export default function ProofDetailPage() {
                         </div>
                       </div>
 
-                      {/* Balance Change Display */}
-                      {hasChange ? (
-                        <div className="grid grid-cols-1 md:grid-cols-[1fr,auto,1fr] gap-4 items-center">
-                          {/* Before - Current State Balance from main page */}
-                          <div className="bg-[#1a2347] border border-[#4fc3f7]/20 p-4 rounded">
-                            <div className="text-xs text-gray-500 mb-2">Before (Latest Approved State)</div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <Coins className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm font-medium text-gray-400">{participant.symbol}</span>
-                            </div>
-                            <div className="text-xl font-mono text-gray-300">
-                              {participant.currentBalance}
-                            </div>
+                      {/* Balance Display - From state_snapshot.json */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Initial Deposit */}
+                        <div className="bg-[#1a2347] border border-gray-600/30 p-4 rounded">
+                          <div className="text-xs text-gray-500 mb-2">Initial Deposit</div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <Coins className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm font-medium text-gray-400">{participant.symbol}</span>
                           </div>
-
-                          {/* Arrow */}
-                          <div className="flex justify-center">
-                            <ArrowRight className="w-6 h-6 text-[#4fc3f7]" />
-                          </div>
-
-                          {/* After - From proof file analysis (address only for now) */}
-                          <div className="bg-[#1a2347] border border-green-500/30 p-4 rounded">
-                            <div className="text-xs text-green-400 mb-2">After (From Proof)</div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <Coins className="w-4 h-4 text-green-400" />
-                              <span className="text-sm font-medium text-green-400">{participant.symbol}</span>
-                            </div>
-                            <div className="text-xl font-mono font-semibold text-green-400">
-                              {isAnalyzingProof ? 'Analyzing...' : (participant.newBalance || 'N/A')}
-                            </div>
+                          <div className="text-xl font-mono text-gray-400">
+                            {participant.initialDeposit}
                           </div>
                         </div>
-                      ) : (
-                        // No Change - Show current balance only
-                        <div className="bg-[#1a2347] border border-[#4fc3f7]/20 p-4 rounded">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <div className="flex items-center gap-2 mb-2">
-                                <Coins className="w-4 h-4 text-gray-400" />
-                                <span className="text-sm font-medium text-gray-400">{participant.symbol}</span>
-                              </div>
-                              <div className="text-xl font-mono text-gray-300">
-                                {participant.currentBalance}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 text-gray-500">
-                              <Minus className="w-4 h-4" />
-                              <span className="text-sm">No change</span>
-                            </div>
+
+                        {/* Current Balance from state_snapshot.json */}
+                        <div className={`bg-[#1a2347] border p-4 rounded ${
+                          balanceChanged 
+                            ? 'border-green-500/30' 
+                            : 'border-[#4fc3f7]/30'
+                        }`}>
+                          <div className={`text-xs mb-2 ${
+                            balanceChanged ? 'text-green-400' : 'text-[#4fc3f7]'
+                          }`}>
+                            Balance (from state_snapshot.json)
                           </div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <Coins className={`w-4 h-4 ${
+                              balanceChanged ? 'text-green-400' : 'text-[#4fc3f7]'
+                            }`} />
+                            <span className={`text-sm font-medium ${
+                              balanceChanged ? 'text-green-400' : 'text-[#4fc3f7]'
+                            }`}>{participant.symbol}</span>
+                          </div>
+                          <div className={`text-xl font-mono font-semibold ${
+                            balanceChanged ? 'text-green-400' : 'text-white'
+                          }`}>
+                            {isAnalyzingProof ? 'Analyzing...' : participant.currentBalance}
+                          </div>
+                          {balanceChanged && (
+                            <div className="mt-2 text-xs text-green-400/70">
+                              Changed from initial deposit
+                            </div>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
                   );
                 })}
@@ -733,20 +679,54 @@ export default function ProofDetailPage() {
                   }
 
                   try {
-                    // Convert base64 to Blob
+                    // Convert base64 to bytes
                     const base64Content = proof.zipFile.content;
                     const binaryString = atob(base64Content);
                     const bytes = new Uint8Array(binaryString.length);
                     for (let i = 0; i < binaryString.length; i++) {
                       bytes[i] = binaryString.charCodeAt(i);
                     }
-                    const blob = new Blob([bytes], { type: 'application/zip' });
+
+                    // Parse the original ZIP
+                    const originalZip = await JSZip.loadAsync(bytes);
+                    
+                    // Create a new ZIP with organized structure
+                    const newZip = new JSZip();
+                    const proofFolderName = `channel-proof-${proof.proofId || proof.id || 'unknown'}`;
+                    
+                    // Extract files and put them directly in the proof folder (flatten structure)
+                    const files = Object.keys(originalZip.files);
+                    for (const filePath of files) {
+                      const file = originalZip.files[filePath];
+                      if (!file.dir) {
+                        const content = await file.async('uint8array');
+                        
+                        // Extract just the filename (remove any folder paths)
+                        let fileName = filePath;
+                        if (filePath.includes('/')) {
+                          const parts = filePath.split('/');
+                          // Get the last non-empty part (the actual filename)
+                          for (let i = parts.length - 1; i >= 0; i--) {
+                            if (parts[i] && parts[i].trim() !== '') {
+                              fileName = parts[i];
+                              break;
+                            }
+                          }
+                        }
+                        
+                        // Add file to the new ZIP under the proof folder
+                        newZip.file(`${proofFolderName}/${fileName}`, content);
+                      }
+                    }
+
+                    // Generate the new ZIP
+                    const newZipBlob = await newZip.generateAsync({ type: 'blob' });
 
                     // Create download link
-                    const url = URL.createObjectURL(blob);
+                    const url = URL.createObjectURL(newZipBlob);
                     const link = document.createElement('a');
                     link.href = url;
-                    link.download = proof.zipFile.fileName || `proof-${proof.proofId || proof.id || 'unknown'}.zip`;
+                    link.download = `${proofFolderName}.zip`;
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);

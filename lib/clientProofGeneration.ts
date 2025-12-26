@@ -158,7 +158,7 @@ export async function generateClientSideProof(
       onProgress?.(`⚠️ Using ${actualTreeSize}-leaf circuit instead of ${treeSize}-leaf (input truncated)`);
     }
 
-    onProgress?.('Generating proof... This may take a few minutes...');
+    onProgress?.('Generating proof... Please wait a few seconds...');
 
     // Generate the proof using snarkjs
     const { proof, publicSignals } = await groth16.fullProve(

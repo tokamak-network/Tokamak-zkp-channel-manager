@@ -31,6 +31,7 @@ import {
 } from "@/lib/clientProofGeneration";
 import { useUserRolesDynamic } from "@/hooks/useUserRolesDynamic";
 import { updateData } from "@/lib/realtime-db-helpers";
+import { ALCHEMY_KEY } from "@/lib/constants";
 import {
   Settings,
   Link,
@@ -316,11 +317,20 @@ export default function InitializeStatePage() {
     enabled: isMounted && isConnected && !!channelTargetContract,
   });
 
-  // Check if channel public key is set (required for initialization)
+  // Check if channel public key is set (required for initialization when frost signatures are enabled)
   const { data: isPublicKeySet } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: "isChannelPublicKeySet",
+    args: selectedChannel ? [BigInt(selectedChannel.id)] : undefined,
+    enabled: isMounted && isConnected && !!selectedChannel,
+  });
+
+  // Check if channel has frost signatures enabled
+  const { data: isFrostSignatureEnabled } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: "isFrostSignatureEnabled",
     args: selectedChannel ? [BigInt(selectedChannel.id)] : undefined,
     enabled: isMounted && isConnected && !!selectedChannel,
   });
@@ -408,7 +418,7 @@ export default function InitializeStatePage() {
           const publicClient = createPublicClient({
             chain: sepolia,
             transport: http(
-              "https://eth-sepolia.g.alchemy.com/v2/N-Gnpjy1WvCfokwj6fiOfuAVL_At6IvE"
+              `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`
             ),
           });
 
@@ -472,7 +482,7 @@ export default function InitializeStatePage() {
           const publicClient = createPublicClient({
             chain: sepolia,
             transport: http(
-              "https://eth-sepolia.g.alchemy.com/v2/N-Gnpjy1WvCfokwj6fiOfuAVL_At6IvE"
+              `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`
             ),
           });
 
@@ -501,7 +511,7 @@ export default function InitializeStatePage() {
           const publicClient = createPublicClient({
             chain: sepolia,
             transport: http(
-              "https://eth-sepolia.g.alchemy.com/v2/N-Gnpjy1WvCfokwj6fiOfuAVL_At6IvE"
+              `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`
             ),
           });
 
@@ -975,8 +985,8 @@ export default function InitializeStatePage() {
                         </div>
                       )}
 
-                      {/* Public Key Warning */}
-                      {selectedChannel && isPublicKeySet === false && (
+                      {/* Public Key Warning (only when frost signatures are enabled) */}
+                      {selectedChannel && isFrostSignatureEnabled && isPublicKeySet === false && (
                         <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-400/50 rounded-lg">
                           <div className="flex items-center gap-2 text-yellow-400 text-sm">
                             <XCircle className="w-4 h-4" />
@@ -988,6 +998,21 @@ export default function InitializeStatePage() {
                             The channel leader must set the public key before
                             initialization. Please complete the DKG ceremony and
                             set the channel public key first.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Frost Signatures Disabled Info */}
+                      {selectedChannel && isFrostSignatureEnabled === false && (
+                        <div className="mb-4 p-3 bg-green-500/20 border border-green-400/50 rounded-lg">
+                          <div className="flex items-center gap-2 text-green-400 text-sm">
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span className="font-medium">
+                              Frost Signatures Disabled
+                            </span>
+                          </div>
+                          <p className="text-green-300 text-xs mt-1">
+                            This channel operates without frost signatures. No DKG ceremony or threshold signatures required.
                           </p>
                         </div>
                       )}
@@ -1039,7 +1064,7 @@ export default function InitializeStatePage() {
                           isGeneratingProof ||
                           selectedChannel.stats[2] !== 1 ||
                           browserCompatible === false ||
-                          isPublicKeySet === false
+                          (isFrostSignatureEnabled && isPublicKeySet === false)
                         }
                         className={`px-6 sm:px-8 py-3 sm:py-4 font-semibold text-white text-base sm:text-lg transition-all duration-300 transform ${
                           buttonClicked ? "scale-95" : "hover:scale-105"
@@ -1049,7 +1074,7 @@ export default function InitializeStatePage() {
                           isGeneratingProof ||
                           selectedChannel.stats[2] !== 1 ||
                           browserCompatible === false ||
-                          isPublicKeySet === false
+                          (isFrostSignatureEnabled && isPublicKeySet === false)
                             ? "bg-gray-600 cursor-not-allowed"
                             : "bg-[#4fc3f7] hover:bg-[#029bee] shadow-lg shadow-[#4fc3f7]/30 hover:shadow-xl hover:shadow-[#4fc3f7]/40"
                         } ${
@@ -1088,7 +1113,7 @@ export default function InitializeStatePage() {
                                   selectedChannel.stats[2]
                                 )})`}
                           </div>
-                        ) : isPublicKeySet === false ? (
+                        ) : (isFrostSignatureEnabled && isPublicKeySet === false) ? (
                           <div className="flex items-center gap-3 justify-center">
                             <XCircle className="w-5 h-5" />
                             Public Key Required - Complete DKG First
