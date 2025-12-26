@@ -48,6 +48,7 @@ import {
 import { parseProofFromBase64Zip } from "@/lib/proofAnalyzer";
 import { useSignMessage, useAccount } from "wagmi";
 import { L2_PRV_KEY_MESSAGE } from "@/lib/l2KeyMessage";
+import { ALCHEMY_KEY } from "@/lib/constants";
 
 interface TransactionBundleModalProps {
   isOpen: boolean;
@@ -141,7 +142,7 @@ export function TransactionBundleModal({
           const publicClient = createPublicClient({
             chain: sepolia,
             transport: http(
-              "https://eth-sepolia.g.alchemy.com/v2/N-Gnpjy1WvCfokwj6fiOfuAVL_At6IvE"
+              `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`
             ),
           });
 

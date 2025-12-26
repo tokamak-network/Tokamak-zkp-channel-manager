@@ -31,6 +31,7 @@ import {
 } from "@/lib/clientProofGeneration";
 import { useUserRolesDynamic } from "@/hooks/useUserRolesDynamic";
 import { updateData } from "@/lib/realtime-db-helpers";
+import { ALCHEMY_KEY } from "@/lib/constants";
 import {
   Settings,
   Link,
@@ -417,7 +418,7 @@ export default function InitializeStatePage() {
           const publicClient = createPublicClient({
             chain: sepolia,
             transport: http(
-              "https://eth-sepolia.g.alchemy.com/v2/N-Gnpjy1WvCfokwj6fiOfuAVL_At6IvE"
+              `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`
             ),
           });
 
@@ -481,7 +482,7 @@ export default function InitializeStatePage() {
           const publicClient = createPublicClient({
             chain: sepolia,
             transport: http(
-              "https://eth-sepolia.g.alchemy.com/v2/N-Gnpjy1WvCfokwj6fiOfuAVL_At6IvE"
+              `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`
             ),
           });
 
@@ -510,7 +511,7 @@ export default function InitializeStatePage() {
           const publicClient = createPublicClient({
             chain: sepolia,
             transport: http(
-              "https://eth-sepolia.g.alchemy.com/v2/N-Gnpjy1WvCfokwj6fiOfuAVL_At6IvE"
+              `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`
             ),
           });
 

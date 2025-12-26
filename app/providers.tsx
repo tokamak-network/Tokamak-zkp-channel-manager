@@ -13,6 +13,7 @@ import { ThemeProvider as OldThemeProvider } from '@/contexts/ThemeContext';
 import { ThemeProvider } from '@/components/ui/theme-toggle';
 import { ToastProvider } from '@/components/ui/toast';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
+import { ALCHEMY_KEY } from '@/lib/constants';
 
 import '@rainbow-me/rainbowkit/styles.css';
 
@@ -23,8 +24,8 @@ const { chains, publicClient } = configureChains(
     jsonRpcProvider({
       rpc: (chain) => ({
         http: chain.id === 1 
-          ? process.env.MAINNET_RPC_URL || `https://eth-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`
-          : process.env.SEPOLIA_RPC_URL || `https://eth-sepolia.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
+          ? process.env.MAINNET_RPC_URL || `https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`
+          : process.env.SEPOLIA_RPC_URL || `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`,
         webSocket: undefined, // Disable WebSocket to avoid connection issues
       }),
     }),
