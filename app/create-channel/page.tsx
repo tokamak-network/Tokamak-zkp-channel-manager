@@ -1,15 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount, useContractWrite, usePrepareContractWrite, useContractRead, useWaitForTransaction } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { 
   ROLLUP_BRIDGE_CORE_ABI, 
   ROLLUP_BRIDGE_CORE_ADDRESS, 
-  TON_TOKEN_ADDRESS,
-  USDC_TOKEN_ADDRESS,
-  USDT_TOKEN_ADDRESS 
+  TON_TOKEN_ADDRESS
 } from '@/lib/contracts';
 import { Sidebar } from '@/components/Sidebar';
 import { ClientOnly } from '@/components/ClientOnly';
@@ -20,6 +18,49 @@ import { AlertTriangle, Lightbulb, CheckCircle } from 'lucide-react';
 interface Participant {
   address: string;
 }
+
+const TOKEN_COUNT = 1;
+const isValidEthereumAddress = (addr: string) => /^0x[a-fA-F0-9]{40}$/.test(addr);
+const getMaxParticipants = (tokenCount: number) => {
+  // Maximum participants based on Merkle tree constraints (max 128 leaves total)
+  // Each participant needs one leaf per token
+  if (tokenCount === 0) return 128;
+  return Math.floor(128 / tokenCount);
+};
+
+const FROST_NEXT_STEPS = [
+  {
+    title: 'Coordinate DKG Ceremony',
+    description: 'Use the DKG Management page to coordinate the distributed key generation ceremony with all participants.',
+  },
+  {
+    title: 'Wait for Participants to Deposit',
+    description: 'All whitelisted participants need to deposit their tokens into the channel.',
+  },
+  {
+    title: 'Initialize Channel State',
+    description: "As the channel leader, you'll need to initialize the channel state once DKG and deposits are complete.",
+  },
+  {
+    title: 'Proof Operations & Close',
+    description: 'Submit aggregated proofs, collect signatures, close the channel, and allow whitelisted participants to withdraw.',
+  },
+];
+
+const STANDARD_NEXT_STEPS = [
+  {
+    title: 'Wait for Participants to Deposit',
+    description: 'All whitelisted participants need to deposit their tokens into the channel.',
+  },
+  {
+    title: 'Initialize Channel State',
+    description: 'As the channel leader, you can initialize the channel state once deposits are complete. No DKG required.',
+  },
+  {
+    title: 'Proof Operations & Close',
+    description: 'Submit aggregated proofs (no signatures needed), close the channel, and allow whitelisted participants to withdraw.',
+  },
+];
 
 export default function CreateChannelPage() {
   const router = useRouter();
@@ -53,12 +94,16 @@ export default function CreateChannelPage() {
 
   // Anyone can create channels now - no authorization required
   const isAuthorized = true;
+  const addressLower = address?.toLowerCase();
 
   // Check if user is already a channel leader
-  const isAlreadyLeader = address && (
-    (channelStats0 && channelStats0[4] && String(channelStats0[4]).toLowerCase() === address.toLowerCase() && Number(channelStats0[2]) !== 5) ||
-    (channelStats1 && channelStats1[4] && String(channelStats1[4]).toLowerCase() === address.toLowerCase() && Number(channelStats1[2]) !== 5)
-  );
+  const isActiveLeader = (stats?: any) => {
+    if (!addressLower || !stats) return false;
+    const leader = stats[4];
+    const status = stats[2];
+    return leader && String(leader).toLowerCase() === addressLower && Number(status) !== 5;
+  };
+  const isAlreadyLeader = isActiveLeader(channelStats0) || isActiveLeader(channelStats1);
 
   // Form state - default to TON token since it's the only option
   const [targetContract, setTargetContract] = useState<string>(TON_TOKEN_ADDRESS);
@@ -68,10 +113,14 @@ export default function CreateChannelPage() {
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [createdChannelId, setCreatedChannelId] = useState<string>('');
   const [txHash, setTxHash] = useState<string>('');
+  const [enableFrostSignature, setEnableFrostSignature] = useState<boolean>(true);
+  const maxParticipants = getMaxParticipants(TOKEN_COUNT);
+  const isTonContract = targetContract === TON_TOKEN_ADDRESS;
+  const showTargetContractWarning = targetContract !== '' && !isTonContract;
+  const nextSteps = enableFrostSignature ? FROST_NEXT_STEPS : STANDARD_NEXT_STEPS;
 
   // Add/Remove participants
   const addParticipant = () => {
-    const maxParticipants = getMaxParticipants(1); // Always 1 token now
     if (participants.length < maxParticipants) {
       setParticipants([...participants, { address: '' }]);
     }
@@ -94,63 +143,31 @@ export default function CreateChannelPage() {
     setTargetContract(value);
   };
 
-
-  // Validation
-  const isValidEthereumAddress = (addr: string) => /^0x[a-fA-F0-9]{40}$/.test(addr);
-  const isValidHex = (hex: string) => /^0x[a-fA-F0-9]+$/.test(hex);
-
-  // Helper function to get contract name from address
-  const getContractName = (address: string): string => {
-    switch (address.toLowerCase()) {
-      case TON_TOKEN_ADDRESS.toLowerCase():
-        return 'TON Contract';
-      case USDC_TOKEN_ADDRESS.toLowerCase():
-        return 'USDC Contract';
-      case USDT_TOKEN_ADDRESS.toLowerCase():
-        return 'USDT Contract';
-      default:
-        return 'Contract';
-    }
-  };
-
-  const getMaxParticipants = (tokenCount: number) => {
-    // Maximum participants based on Merkle tree constraints (max 128 leaves total)
-    // Each participant needs one leaf per token
-    if (tokenCount === 0) return 128;
-    return Math.floor(128 / tokenCount);
-  };
-
-  const isFormValid = () => {
-    const maxParticipants = getMaxParticipants(1);
-    
+  const isFormValid = useMemo(() => {
     return (
       isAuthorized && // User must be authorized to create channels
       !isAlreadyLeader && // Prevent creation if already leading a channel
       targetContract !== '' && // Target contract must be selected
-      targetContract === TON_TOKEN_ADDRESS && // Only TON contract allowed
+      isTonContract && // Only TON contract allowed
       participants.length >= 1 && 
       participants.length <= maxParticipants &&
       participants.every(p => isValidEthereumAddress(p.address))
     );
-  };
+  }, [isAuthorized, isAlreadyLeader, isTonContract, maxParticipants, participants, targetContract]);
 
   // Prepare contract call
-  const channelParams = isFormValid() ? {
+  const channelParams = isFormValid ? {
     targetContract: targetContract as `0x${string}`,
-    participants: participants.map(p => p.address as `0x${string}`)
+    participants: participants.map(p => p.address as `0x${string}`),
+    enableFrostSignature: enableFrostSignature
   } : undefined;
 
-  const contractConfig = channelParams ? {
+  const contractConfig = {
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'openChannel',
-    args: [channelParams],
-    enabled: isFormValid() && isConnected,
-  } : {
-    address: ROLLUP_BRIDGE_CORE_ADDRESS,
-    abi: ROLLUP_BRIDGE_CORE_ABI,
-    functionName: 'openChannel',
-    enabled: false,
+    args: channelParams ? [channelParams] : undefined,
+    enabled: Boolean(channelParams) && isConnected,
   };
 
   const { config } = usePrepareContractWrite(contractConfig as any);
@@ -182,7 +199,7 @@ export default function CreateChannelPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (createChannel && isFormValid()) {
+    if (createChannel && isFormValid) {
       createChannel();
     }
   };
@@ -254,7 +271,7 @@ export default function CreateChannelPage() {
                 </label>
                 
                 {/* Warning if non-TON contract is entered */}
-                {targetContract && targetContract !== TON_TOKEN_ADDRESS && (
+                {showTargetContractWarning && (
                   <div className="mb-4 p-3 bg-red-900/20 border border-red-500/50">
                     <div className="flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 text-red-400" />
@@ -269,7 +286,7 @@ export default function CreateChannelPage() {
                 <div className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <h4 className="font-medium text-white">Contract</h4>
-                    {targetContract === TON_TOKEN_ADDRESS && (
+                    {isTonContract && (
                       <span className="px-2 py-1 text-xs bg-green-600/20 border border-green-500/50 text-green-300 rounded">
                         ✓ TON Contract
                       </span>
@@ -284,7 +301,7 @@ export default function CreateChannelPage() {
                       placeholder="Enter TON token contract address"
                       className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] font-mono"
                     />
-                    {targetContract && targetContract !== TON_TOKEN_ADDRESS && (
+                    {showTargetContractWarning && (
                       <p className="text-red-400 text-xs mt-1 font-semibold">⚠️ Invalid: Only TON token contract is allowed</p>
                     )}
                     
@@ -330,13 +347,13 @@ export default function CreateChannelPage() {
               <div>
                 <div className="flex justify-between items-center mb-4">
                   <label className="block text-sm font-medium text-gray-300">
-                    Whitelisted Participants ({participants.length}/{getMaxParticipants(1)})
+                    Whitelisted Participants ({participants.length}/{maxParticipants})
                   </label>
                   <div className="space-x-2">
                     <button
                       type="button"
                       onClick={addParticipant}
-                      disabled={participants.length >= getMaxParticipants(1)}
+                      disabled={participants.length >= maxParticipants}
                       className="px-3 py-1 text-sm bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 transition-colors duration-200"
                     >
                       Add
@@ -380,17 +397,82 @@ export default function CreateChannelPage() {
                 </div>
                 
                 <p className="text-sm text-gray-400 mt-2">
-                  Minimum 1 whitelisted participant, maximum {getMaxParticipants(1)} whitelisted participants.
+                  Minimum 1 whitelisted participant, maximum {maxParticipants} whitelisted participants.
                 </p>
                 
               </div>
 
+              {/* Frost Signature Toggle */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-4">
+                  Frost Signature Configuration
+                </label>
+                
+                <div className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-medium text-white">Enable Frost Signatures</h4>
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="enableFrost"
+                        checked={enableFrostSignature}
+                        onChange={(e) => setEnableFrostSignature(e.target.checked)}
+                        className="w-4 h-4 text-[#4fc3f7] bg-[#0a1930] border-[#4fc3f7]/50 rounded focus:ring-[#4fc3f7] focus:ring-2"
+                      />
+                      <label htmlFor="enableFrost" className="ml-2 text-sm text-gray-300">
+                        {enableFrostSignature ? 'Enabled' : 'Disabled'}
+                      </label>
+                    </div>
+                  </div>
+                  
+                  <div className={`p-3 border rounded-lg ${enableFrostSignature 
+                    ? 'border-green-500/50 bg-green-900/20' 
+                    : 'border-gray-500/50 bg-gray-900/20'
+                  }`}>
+                    {enableFrostSignature ? (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                          <p className="text-green-300 text-sm font-medium">Frost Signatures Enabled</p>
+                        </div>
+                        <p className="text-green-200/80 text-xs">
+                          This channel will require:
+                        </p>
+                        <ul className="text-green-200/70 text-xs mt-1 ml-4 space-y-1">
+                          <li>• Distributed Key Generation (DKG) ceremony</li>
+                          <li>• Threshold signatures for proof submissions</li>
+                          <li>• Group public key setup before state initialization</li>
+                        </ul>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
+                          <p className="text-gray-300 text-sm font-medium">Frost Signatures Disabled</p>
+                        </div>
+                        <p className="text-gray-200/80 text-xs">
+                          This channel will operate without threshold signatures:
+                        </p>
+                        <ul className="text-gray-200/70 text-xs mt-1 ml-4 space-y-1">
+                          <li>• No DKG ceremony required</li>
+                          <li>• Standard proof submissions without group signatures</li>
+                          <li>• Faster channel initialization</li>
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <p className="text-sm text-gray-400 mt-2">
+                  Choose whether this channel requires frost threshold signatures for enhanced security.
+                </p>
+              </div>
 
               {/* Submit Button */}
               <div className="pt-6">
                 <button
                   type="submit"
-                  disabled={!isFormValid() || isCreating || isConfirming}
+                  disabled={!isFormValid || isCreating || isConfirming}
                   className="w-full px-6 py-3 bg-gradient-to-r from-[#4fc3f7] to-[#029bee] text-white font-medium hover:from-[#029bee] hover:to-[#4fc3f7] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4fc3f7] transition-all duration-200"
                 >
                   {isCreating 
@@ -455,34 +537,18 @@ export default function CreateChannelPage() {
             <div className="p-6">
               <h3 className="text-lg font-semibold text-white mb-4">Next Steps</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-300">
-                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
-                  <span className="text-[#4fc3f7] font-bold text-lg">1.</span>
-                  <div>
-                    <p className="font-medium text-white mb-1">Coordinate DKG Ceremony</p>
-                    <p>Use the DKG Management page to coordinate the distributed key generation ceremony with all participants.</p>
+                {nextSteps.map((step, index) => (
+                  <div
+                    key={step.title}
+                    className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20"
+                  >
+                    <span className="text-[#4fc3f7] font-bold text-lg">{index + 1}.</span>
+                    <div>
+                      <p className="font-medium text-white mb-1">{step.title}</p>
+                      <p>{step.description}</p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
-                  <span className="text-[#4fc3f7] font-bold text-lg">2.</span>
-                  <div>
-                    <p className="font-medium text-white mb-1">Wait for Participants to Deposit</p>
-                    <p>All whitelisted participants need to deposit their tokens into the channel.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
-                  <span className="text-[#4fc3f7] font-bold text-lg">3.</span>
-                  <div>
-                    <p className="font-medium text-white mb-1">Initialize Channel State</p>
-                    <p>As the channel leader, you'll need to initialize the channel state once DKG and deposits are complete.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 p-4 bg-[#0a1930]/50 border border-[#4fc3f7]/20">
-                  <span className="text-[#4fc3f7] font-bold text-lg">4.</span>
-                  <div>
-                    <p className="font-medium text-white mb-1">Proof Operations & Close</p>
-                    <p>Submit aggregated proofs, collect signatures, close the channel, and allow whitelisted participants to withdraw.</p>
-                  </div>
-                </div>
+                ))}
               </div>
 
               <div className="mt-6 p-4 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50">

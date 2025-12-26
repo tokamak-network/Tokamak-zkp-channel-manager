@@ -72,6 +72,7 @@ export default function SubmitProofPage() {
   const [signatureError, setSignatureError] = useState('');
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [isProcessingZip, setIsProcessingZip] = useState(false);
+  const [requireSignature, setRequireSignature] = useState(true);
   
   // Channel information from core contract
   const { data: channelInfo } = useContractRead({
@@ -98,6 +99,21 @@ export default function SubmitProofPage() {
     enabled: Boolean(selectedChannelId)
   });
 
+  // Check if channel has frost signatures enabled
+  const { data: isFrostSignatureEnabled } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'isFrostSignatureEnabled',
+    args: selectedChannelId ? [BigInt(selectedChannelId)] : undefined,
+    enabled: Boolean(selectedChannelId)
+  });
+
+  // Update signature requirement based on frost signature setting
+  useEffect(() => {
+    if (isFrostSignatureEnabled !== undefined) {
+      setRequireSignature(isFrostSignatureEnabled);
+    }
+  }, [isFrostSignatureEnabled]);
 
   
   // Compute final state root from the last proof's a_pub_user[10] (lower) and a_pub_user[11] (upper)
@@ -191,12 +207,17 @@ export default function SubmitProofPage() {
     address: ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS,
     abi: ROLLUP_BRIDGE_PROOF_MANAGER_ABI,
     functionName: 'submitProofAndSignature',
-    args: selectedChannelId && signature && isFormValid() ? [
+    args: selectedChannelId && isFormValid() ? [
       BigInt(selectedChannelId),
       uploadedProofs.map(p => p.data),
-      signature
+      requireSignature && signature ? signature : {
+        message: '0x0000000000000000000000000000000000000000000000000000000000000000',
+        rx: BigInt(0),
+        ry: BigInt(0),
+        z: BigInt(0)
+      }
     ] : undefined,
-    enabled: Boolean(selectedChannelId && signature && isFormValid())
+    enabled: Boolean(selectedChannelId && isFormValid())
   });
   
   const { data, write } = useContractWrite(config);
@@ -529,10 +550,20 @@ export default function SubmitProofPage() {
   
   // Form validation
   function isFormValid(): boolean {
-    return Boolean(
+    const basicRequirements = Boolean(
       selectedChannelId &&
       uploadedProofs.length > 0 &&
-      uploadedProofs.length <= 5 &&
+      uploadedProofs.length <= 5
+    );
+    
+    // If frost signatures are not required, only basic requirements matter
+    if (!requireSignature) {
+      return basicRequirements;
+    }
+    
+    // If frost signatures are required, also check signature inputs
+    return Boolean(
+      basicRequirements &&
       signatureInputs.rx &&
       signatureInputs.ry &&
       signatureInputs.z &&
@@ -843,16 +874,17 @@ export default function SubmitProofPage() {
                 </div>
               </div>
 
-              {/* Signature Input */}
-              <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/20">
-                <div className="p-6 border-b border-[#4fc3f7]/30">
-                  <h3 className="text-xl font-semibold text-white mb-2">
-                    Group Threshold Signature
-                  </h3>
-                  <p className="text-gray-400">
-                    Enter the signature components (rx, ry, z) from your off-chain signing ceremony
-                  </p>
-                </div>
+              {/* Signature Input (only shown when frost signatures are enabled) */}
+              {requireSignature ? (
+                <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/20">
+                  <div className="p-6 border-b border-[#4fc3f7]/30">
+                    <h3 className="text-xl font-semibold text-white mb-2">
+                      Group Threshold Signature
+                    </h3>
+                    <p className="text-gray-400">
+                      Enter the signature components (rx, ry, z) from your off-chain signing ceremony
+                    </p>
+                  </div>
                 
                 <div className="p-6 space-y-6">
                   {/* Message Hash Display */}
@@ -945,7 +977,22 @@ export default function SubmitProofPage() {
                     )}
                   </div>
                 </div>
-              </div>
+                </div>
+              ) : (
+                <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/20">
+                  <div className="p-6 text-center">
+                    <div className="h-16 w-16 bg-green-500/10 border border-green-500/30 flex items-center justify-center mx-auto mb-4">
+                      <CheckCircle2 className="w-8 h-8 text-green-400" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-white mb-2">
+                      No Signature Required
+                    </h3>
+                    <p className="text-gray-400">
+                      This channel operates without frost signatures. Only proof submission is required.
+                    </p>
+                  </div>
+                </div>
+              )}
               
               {/* Submit Section */}
               <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/20">
@@ -958,8 +1005,8 @@ export default function SubmitProofPage() {
                         <strong className="block mb-1">Missing Required Data</strong>
                         {!selectedChannelId && "Please enter a channel ID"}
                         {selectedChannelId && uploadedProofs.length === 0 && "Please upload at least one proof file"}
-                        {selectedChannelId && uploadedProofs.length > 0 && (!signatureInputs.rx || !signatureInputs.ry || !signatureInputs.z) && "Please enter all signature components (rx, ry, z)"}
-                        {selectedChannelId && uploadedProofs.length > 0 && signatureInputs.rx && signatureInputs.ry && signatureInputs.z && !signature && "Invalid signature values - please check your inputs"}
+                        {requireSignature && selectedChannelId && uploadedProofs.length > 0 && (!signatureInputs.rx || !signatureInputs.ry || !signatureInputs.z) && "Please enter all signature components (rx, ry, z)"}
+                        {requireSignature && selectedChannelId && uploadedProofs.length > 0 && signatureInputs.rx && signatureInputs.ry && signatureInputs.z && !signature && "Invalid signature values - please check your inputs"}
                       </div>
                     </div>
                   )}

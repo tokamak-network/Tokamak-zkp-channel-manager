@@ -36,7 +36,7 @@ export function SubmitProofModal({ isOpen, onClose, channelId, onUploadSuccess }
       // Depth 0: file.json
       // Depth 1: folder/file.json
       // Depth 2: folder/folder/file.json
-      const MAX_DEPTH = 2;
+      const MAX_DEPTH = 4;
       const allFiles = Object.keys(zip.files).filter(name => {
         if (name.endsWith('/')) return false; // Skip directories
         const normalized = name.replace(/\\/g, '/');
@@ -56,7 +56,7 @@ export function SubmitProofModal({ isOpen, onClose, channelId, onUploadSuccess }
       // 1. Check instance.json
       const instancePath = findFile('instance.json');
       if (!instancePath) {
-        return 'Missing required file: instance.json (must be within 2 folder levels)';
+        return `Missing required file: instance.json (must be within ${MAX_DEPTH} folder levels)`;
       }
       const instanceFile = zip.file(instancePath);
       if (!instanceFile) {
@@ -82,7 +82,7 @@ export function SubmitProofModal({ isOpen, onClose, channelId, onUploadSuccess }
       // 2. Check proof.json
       const proofPath = findFile('proof.json');
       if (!proofPath) {
-        return 'Missing required file: proof.json (must be within 2 folder levels)';
+        return `Missing required file: proof.json (must be within ${MAX_DEPTH} folder levels)`;
       }
       const proofFile = zip.file(proofPath);
       if (!proofFile) {
@@ -105,7 +105,7 @@ export function SubmitProofModal({ isOpen, onClose, channelId, onUploadSuccess }
       // 3. Check state_snapshot.json
       const snapshotPath = findFile('state_snapshot.json');
       if (!snapshotPath) {
-        return 'Missing required file: state_snapshot.json (must be within 2 folder levels)';
+        return `Missing required file: state_snapshot.json (must be within ${MAX_DEPTH} folder levels)`;
       }
       const snapshotFile = zip.file(snapshotPath);
       if (!snapshotFile) {

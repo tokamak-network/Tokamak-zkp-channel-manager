@@ -17,8 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ROLLUP_BRIDGE_ADDRESS, ROLLUP_BRIDGE_ABI, ETH_TOKEN_ADDRESS } from '@/lib/contracts';
 import { CreateChannelFormData } from '@/lib/types';
-import { parseParticipantAddresses, isValidAddress, timeoutToSeconds } from '@/lib/utils';
-import { AlertCircle, Users, Clock, Settings, AlertTriangle } from 'lucide-react';
+import { parseParticipantAddresses, isValidAddress } from '@/lib/utils';
+import { AlertCircle, Users, Settings } from 'lucide-react';
 
 interface CreateChannelModalProps {
   isOpen: boolean;
@@ -30,14 +30,11 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
   const [formData, setFormData] = useState<CreateChannelFormData>({
     targetContract: ETH_TOKEN_ADDRESS,
     participants: [''],
-    l2PublicKeys: [''],
-    timeout: '1',
-    timeoutUnit: 'days',
     pkx: '',
-    pky: ''
+    pky: '',
+    enableFrostSignatures: true
   });
   const [participantsText, setParticipantsText] = useState('');
-  const [l2KeysText, setL2KeysText] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Form validation
@@ -52,42 +49,25 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
       newErrors.participants = 'Maximum 50 participants allowed';
     }
 
-    // Validate L2 keys
-    const l2Keys = parseParticipantAddresses(l2KeysText);
-    if (l2Keys.length !== participants.length) {
-      newErrors.l2Keys = 'Number of L2 keys must match participants';
-    }
-
     // Validate target contract
     if (!isValidAddress(formData.targetContract)) {
       newErrors.targetContract = 'Invalid contract address';
     }
 
-    // Validate timeout
-    const timeout = parseFloat(formData.timeout);
-    if (isNaN(timeout) || timeout <= 0) {
-      newErrors.timeout = 'Timeout must be greater than 0';
-    } else if (formData.timeoutUnit === 'days' && (timeout < 1 || timeout > 365)) {
-      newErrors.timeout = 'Timeout must be between 1 and 365 days';
-    }
-
-    // Validate public key components
-    if (!formData.pkx || !formData.pky) {
-      newErrors.publicKey = 'Both PKX and PKY are required';
+    // Validate public key components (only if frost signatures are enabled)
+    if (formData.enableFrostSignatures && (!formData.pkx || !formData.pky)) {
+      newErrors.publicKey = 'Both PKX and PKY are required when frost signatures are enabled';
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // Prepare contract write with required 0.001 ETH leader bond
+  // Prepare contract write - updated for new contract structure
   const channelArgs = validateForm() ? [{
     targetContract: formData.targetContract as `0x${string}`,
     participants: parseParticipantAddresses(participantsText) as `0x${string}`[],
-    l2PublicKeys: parseParticipantAddresses(l2KeysText) as `0x${string}`[],
-    timeout: timeoutToSeconds(parseFloat(formData.timeout), formData.timeoutUnit),
-    pkx: formData.pkx ? BigInt(formData.pkx) : BigInt(0),
-    pky: formData.pky ? BigInt(formData.pky) : BigInt(0)
+    enableFrostSignature: formData.enableFrostSignatures
   }] : undefined;
 
   const contractConfig = channelArgs ? {
@@ -95,7 +75,6 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
     abi: ROLLUP_BRIDGE_ABI,
     functionName: 'openChannel',
     args: channelArgs,
-    value: BigInt('1000000000000000'), // Required 0.001 ETH leader bond (1e15 wei)
     enabled: validateForm() && !!formData.targetContract
   } : {
     address: ROLLUP_BRIDGE_ADDRESS,
@@ -122,14 +101,11 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
     setFormData({
       targetContract: ETH_TOKEN_ADDRESS,
       participants: [''],
-      l2PublicKeys: [''],
-      timeout: '1',
-      timeoutUnit: 'days',
       pkx: '',
-      pky: ''
+      pky: '',
+      enableFrostSignatures: true
     });
     setParticipantsText('');
-    setL2KeysText('');
     setErrors({});
   };
 
@@ -158,11 +134,6 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
           </DialogTitle>
           <DialogDescription>
             Set up a new ZK Rollup bridge channel with multiple participants
-            <br />
-            <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1 mt-2">
-              <AlertTriangle className="w-4 h-4" />
-              Requires 0.001 ETH leader bond deposit
-            </span>
           </DialogDescription>
         </DialogHeader>
 
@@ -220,105 +191,72 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
             )}
           </div>
 
-          {/* L2 Public Keys */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">L2 Public Keys</label>
-            <Textarea
-              placeholder="Enter L2 public keys (one per line, matching participant order)&#10;0xabcd...&#10;0xefgh...&#10;0xijkl..."
-              value={l2KeysText}
-              onChange={(e) => setL2KeysText(e.target.value)}
-              rows={4}
-              className={errors.l2Keys ? 'border-red-500' : ''}
-            />
-            <div className="text-xs text-gray-500">
-              L2 public keys must match the number and order of participants
-            </div>
-            {errors.l2Keys && (
-              <div className="text-sm text-red-500 flex items-center gap-1">
-                <AlertCircle className="h-4 w-4" />
-                {errors.l2Keys}
-              </div>
-            )}
-          </div>
 
-          {/* Timeout */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              Channel Timeout
-            </label>
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                min="1"
-                max="365"
-                placeholder="Duration"
-                value={formData.timeout}
-                onChange={(e) => setFormData(prev => ({ ...prev, timeout: e.target.value }))}
-                className={`flex-1 ${errors.timeout ? 'border-red-500' : ''}`}
-              />
-              <Select
-                value={formData.timeoutUnit}
-                onValueChange={(value: 'days') => setFormData(prev => ({ ...prev, timeoutUnit: value }))}
-              >
-                <SelectTrigger className="w-24">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="days">Days</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="text-xs text-gray-500">
-              Channel will expire after this duration. Range: 1 day - 365 days
-            </div>
-            {errors.timeout && (
-              <div className="text-sm text-red-500 flex items-center gap-1">
-                <AlertCircle className="h-4 w-4" />
-                {errors.timeout}
-              </div>
-            )}
-          </div>
-
-          {/* Group Public Key */}
+          {/* Frost Signatures Toggle */}
           <div className="space-y-2">
             <label className="text-sm font-medium flex items-center gap-2">
               <Settings className="h-4 w-4" />
-              Group Public Key
+              Frost Signatures
             </label>
-            <div className="space-y-2">
-              <Input
-                placeholder="PKX (Public Key X coordinate)"
-                value={formData.pkx}
-                onChange={(e) => setFormData(prev => ({ ...prev, pkx: e.target.value }))}
-                className={errors.publicKey ? 'border-red-500' : ''}
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="frost-signatures"
+                checked={formData.enableFrostSignatures}
+                onChange={(e) => setFormData(prev => ({ ...prev, enableFrostSignatures: e.target.checked }))}
+                className="rounded border border-gray-300 focus:ring-2 focus:ring-primary-600"
               />
-              <Input
-                placeholder="PKY (Public Key Y coordinate)"
-                value={formData.pky}
-                onChange={(e) => setFormData(prev => ({ ...prev, pky: e.target.value }))}
-                className={errors.publicKey ? 'border-red-500' : ''}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={generateDummyKeys}
-                className="text-xs"
-              >
-                Generate Test Keys
-              </Button>
+              <label htmlFor="frost-signatures" className="text-sm">
+                Enable Frost signature workflow
+              </label>
             </div>
             <div className="text-xs text-gray-500">
-              Aggregated public key for threshold signature verification
+              When enabled, channel will require DKG ceremony and threshold signatures for operations.
+              When disabled, channel operates without group signatures.
             </div>
-            {errors.publicKey && (
-              <div className="text-sm text-red-500 flex items-center gap-1">
-                <AlertCircle className="h-4 w-4" />
-                {errors.publicKey}
-              </div>
-            )}
           </div>
+
+          {/* Group Public Key (only shown when Frost signatures are enabled) */}
+          {formData.enableFrostSignatures && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Group Public Key
+              </label>
+              <div className="space-y-2">
+                <Input
+                  placeholder="PKX (Public Key X coordinate)"
+                  value={formData.pkx}
+                  onChange={(e) => setFormData(prev => ({ ...prev, pkx: e.target.value }))}
+                  className={errors.publicKey ? 'border-red-500' : ''}
+                />
+                <Input
+                  placeholder="PKY (Public Key Y coordinate)"
+                  value={formData.pky}
+                  onChange={(e) => setFormData(prev => ({ ...prev, pky: e.target.value }))}
+                  className={errors.publicKey ? 'border-red-500' : ''}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={generateDummyKeys}
+                  className="text-xs"
+                >
+                  Generate Test Keys
+                </Button>
+              </div>
+              <div className="text-xs text-gray-500">
+                Aggregated public key for threshold signature verification
+              </div>
+              {errors.publicKey && (
+                <div className="text-sm text-red-500 flex items-center gap-1">
+                  <AlertCircle className="h-4 w-4" />
+                  {errors.publicKey}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <DialogFooter>

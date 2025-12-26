@@ -22,8 +22,26 @@ interface SynthesizeL2TransferRequest {
   previousStateSnapshot?: any; // State snapshot JSON object from latest verified proof
 }
 
+async function assertPathExists(targetPath: string, kind: "file" | "dir") {
+  try {
+    const stat = await fs.stat(targetPath);
+    if (kind === "file" && !stat.isFile()) {
+      throw new Error(`Required file is not a file: ${targetPath}. Install Tokamak-zk-EVM first.`);
+    }
+    if (kind === "dir" && !stat.isDirectory()) {
+      throw new Error(`Required directory is not a directory: ${targetPath}. Install Tokamak-zk-EVM first.`);
+    }
+  } catch (err: any) {
+    if (err?.code === "ENOENT") {
+      throw new Error(`Required ${kind} not found: ${targetPath}. Install Tokamak-zk-EVM first.`);
+    }
+    throw new Error(`Failed to access required ${kind}: ${targetPath}`);
+  }
+}
+
 export async function POST(req: Request) {
-  const outputDir = path.join(process.cwd(), "tokamak-zk-evm-bin", "outputs", `transfer-${Date.now()}`);
+  const distRoot = path.join(process.cwd(), "Tokamak-Zk-EVM", "dist");
+  const outputDir = path.join(distRoot, "outputs", `transfer-${Date.now()}`);
   let previousStateSnapshotPath: string | null = null;
   
   try {
@@ -42,6 +60,8 @@ export async function POST(req: Request) {
     const l2Keys = deriveL2KeysFromSignature(signature);
     const senderKey = bytesToHex(l2Keys.privateKey);
     console.log("Derived L2 sender key from signature");
+
+    await assertPathExists(distRoot, "dir");
 
     // Create output directory
     await fs.mkdir(outputDir, { recursive: true });
@@ -65,7 +85,10 @@ export async function POST(req: Request) {
     const rpcUrl = `https://eth-sepolia.g.alchemy.com/v2/${alchemyApiKey}`;
 
     // Build command
-    const binaryPath = path.join(process.cwd(), "tokamak-zk-evm-bin", "bin", "synthesizer");
+    const binaryPath = path.join(distRoot, "bin", "synthesizer");
+    const libraryPath = path.join(distRoot, "backend-lib", "icicle", "lib");
+    await assertPathExists(binaryPath, "file");
+    await assertPathExists(libraryPath, "dir");
     const args = [
       "l2-transfer",
       "--channel-id", channelId,
@@ -91,12 +114,12 @@ export async function POST(req: Request) {
 
     // Execute binary
     const { stdout, stderr } = await execAsync(command, {
-      cwd: path.join(process.cwd(), "tokamak-zk-evm-bin"),
+      cwd: distRoot,
       timeout: 300000, // 5 minutes timeout
       env: {
         ...process.env,
         // Add library path for dynamic libraries
-        DYLD_LIBRARY_PATH: path.join(process.cwd(), "tokamak-zk-evm-bin", "backend-lib", "icicle", "lib"),
+        DYLD_LIBRARY_PATH: libraryPath,
       },
     });
 
@@ -208,4 +231,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

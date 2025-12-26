@@ -129,11 +129,9 @@ export interface TransactionStatus {
 export interface CreateChannelFormData {
   targetContract: string;
   participants: string[];
-  l2PublicKeys: string[];
-  timeout: string;
-  timeoutUnit: 'hours' | 'days';
   pkx: string;
   pky: string;
+  enableFrostSignatures: boolean;
 }
 
 // Form data for deposits
