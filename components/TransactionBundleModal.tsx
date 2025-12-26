@@ -23,6 +23,7 @@ import {
   Wallet,
   Coins,
   CheckCircle,
+  Upload,
 } from "lucide-react";
 import {
   getChannel,
@@ -32,6 +33,7 @@ import {
   getChannelParticipants,
   getData,
   getCurrentStateNumber,
+  updateData,
 } from "@/lib/realtime-db-helpers";
 import type {
   Channel,
@@ -63,7 +65,7 @@ interface BundleData {
   participants: Participant[];
 }
 
-type ModalStep = "input" | "summary" | "downloading";
+type ModalStep = "input" | "summary" | "downloading" | "proofReady";
 
 export function TransactionBundleModal({
   isOpen,
@@ -90,6 +92,9 @@ export function TransactionBundleModal({
   const [isSigning, setIsSigning] = useState(false);
   const [signature, setSignature] = useState<`0x${string}` | null>(null);
   const [signedTxData, setSignedTxData] = useState<any>(null);
+  const [includeProof, setIncludeProof] = useState(false); // Option to run prove binary
+  const [generatedZipBlob, setGeneratedZipBlob] = useState<Blob | null>(null); // Store generated ZIP for proof submission
+  const [isSubmittingProof, setIsSubmittingProof] = useState(false);
 
   // Wagmi hooks for MetaMask signing
   const { signMessageAsync } = useSignMessage();
@@ -251,6 +256,7 @@ export function TransactionBundleModal({
         amount: tokenAmount.trim(),
         useSepolia: true,
         previousStateSnapshot: previousStateSnapshot || null,
+        includeProof,
       }),
     });
 
@@ -458,20 +464,27 @@ export function TransactionBundleModal({
         previousStateSnapshot
       );
 
-      // Download the ZIP file
-      const url = URL.createObjectURL(zipBlob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `l2-transfer-channel-${selectedChannelId}.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      // If proof is included, show options instead of auto-downloading
+      if (includeProof) {
+        setGeneratedZipBlob(zipBlob);
+        setStep("proofReady");
+        setDownloadComplete(true);
+      } else {
+        // Download the ZIP file immediately
+        const url = URL.createObjectURL(zipBlob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `l2-transfer-channel-${selectedChannelId}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
 
-      setDownloadComplete(true);
-      setTimeout(() => {
-        handleClose();
-      }, 2000);
+        setDownloadComplete(true);
+        setTimeout(() => {
+          handleClose();
+        }, 2000);
+      }
     } catch (err) {
       console.error("Failed to synthesize L2 transfer:", err);
       setError(
@@ -480,6 +493,100 @@ export function TransactionBundleModal({
       setStep("summary");
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  // Handle downloading the generated ZIP file
+  const handleDownloadGeneratedZip = () => {
+    if (!generatedZipBlob || !selectedChannelId) return;
+
+    const url = URL.createObjectURL(generatedZipBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `l2-transfer-channel-${selectedChannelId}-with-proof.zip`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Handle submitting the proof to Firebase (same logic as SubmitProofModal)
+  const handleSubmitProof = async () => {
+    if (!generatedZipBlob || !selectedChannelId || !address) {
+      setError("Missing required data for proof submission");
+      return;
+    }
+
+    setIsSubmittingProof(true);
+    setError(null);
+
+    try {
+      // Step 1: Get next proof number atomically from backend
+      const proofNumberResponse = await fetch("/api/get-next-proof-number", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId: parseInt(selectedChannelId) }),
+      });
+
+      if (!proofNumberResponse.ok) {
+        const errorData = await proofNumberResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to get next proof number");
+      }
+
+      const { proofNumber, subNumber, proofId, storageProofId } =
+        await proofNumberResponse.json();
+
+      // Step 2: Upload ZIP file to Firebase Storage
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new File([generatedZipBlob], `proof-${proofId}.zip`, {
+          type: "application/zip",
+        })
+      );
+      formData.append("channelId", selectedChannelId);
+      formData.append("proofId", storageProofId);
+
+      const uploadResponse = await fetch("/api/save-proof-zip", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json().catch(() => ({}));
+        throw new Error(
+          errorData.error || errorData.details || "Upload failed"
+        );
+      }
+
+      // Step 3: Save metadata to Firebase Realtime Database
+      const proofMetadata = {
+        proofId: proofId,
+        sequenceNumber: proofNumber,
+        subNumber: subNumber,
+        submittedAt: new Date().toISOString(),
+        submitter: address,
+        timestamp: Date.now(),
+        uploadStatus: "complete",
+        status: "pending",
+        channelId: selectedChannelId,
+      };
+
+      await updateData(
+        `channels/${selectedChannelId}/submittedProofs/${storageProofId}`,
+        proofMetadata
+      );
+
+      // Success!
+      setDownloadComplete(true);
+      setTimeout(() => {
+        handleClose();
+      }, 2000);
+    } catch (err) {
+      console.error("Failed to submit proof:", err);
+      setError(err instanceof Error ? err.message : "Failed to submit proof");
+    } finally {
+      setIsSubmittingProof(false);
     }
   };
 
@@ -758,6 +865,25 @@ export function TransactionBundleModal({
                 />
               </div>
 
+              {/* Include Proof Option */}
+              <div className="flex items-center space-x-3 p-3 bg-[#0a1930]/50 border border-[#4fc3f7]/20 rounded-lg">
+                <input
+                  type="checkbox"
+                  id="includeProof"
+                  checked={includeProof}
+                  onChange={(e) => setIncludeProof(e.target.checked)}
+                  className="w-5 h-5 rounded border-[#4fc3f7]/30 bg-[#0a1930] text-[#4fc3f7] focus:ring-[#4fc3f7] focus:ring-offset-0 cursor-pointer"
+                />
+                <label htmlFor="includeProof" className="flex-1 cursor-pointer">
+                  <span className="text-sm font-medium text-white">
+                    Generate ZK Proof
+                  </span>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Include proof.json in the download (takes longer to process)
+                  </p>
+                </label>
+              </div>
+
               {/* Next State Number */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
@@ -829,7 +955,7 @@ export function TransactionBundleModal({
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center justify-between py-2 border-b border-[#4fc3f7]/10">
                     <span className="text-gray-400 text-sm flex items-center gap-2">
                       <Key className="w-4 h-4" />
                       Next State
@@ -838,6 +964,20 @@ export function TransactionBundleModal({
                       {currentStateNumber !== null
                         ? `State #${currentStateNumber}`
                         : "Loading..."}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-gray-400 text-sm flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      Generate ZK Proof
+                    </span>
+                    <span
+                      className={`font-medium ${
+                        includeProof ? "text-green-400" : "text-gray-500"
+                      }`}
+                    >
+                      {includeProof ? "Yes" : "No"}
                     </span>
                   </div>
                 </div>
@@ -852,12 +992,16 @@ export function TransactionBundleModal({
                   {isDownloading ? (
                     <>
                       <LoadingSpinner size="sm" className="mr-2" />
-                      Synthesizing...
+                      {includeProof
+                        ? "Synthesizing & Proving..."
+                        : "Synthesizing..."}
                     </>
                   ) : (
                     <>
                       <Download className="w-4 h-4 mr-2" />
-                      Synthesize & Download
+                      {includeProof
+                        ? "Synthesize, Prove & Download"
+                        : "Synthesize & Download"}
                     </>
                   )}
                 </Button>
@@ -877,8 +1021,92 @@ export function TransactionBundleModal({
             <div className="flex flex-col items-center justify-center py-8 space-y-4">
               <LoadingSpinner size="lg" />
               <p className="text-gray-400 text-sm">
-                Synthesizing L2 transfer... Please wait a few seconds.
+                {includeProof
+                  ? "Synthesizing & generating proof... This may take a few minutes."
+                  : "Synthesizing L2 transfer... Please wait a few seconds."}
               </p>
+            </div>
+          )}
+
+          {/* Proof Ready Step - Show after proof generation is complete */}
+          {step === "proofReady" && generatedZipBlob && (
+            <div className="space-y-4">
+              <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 flex items-center gap-3">
+                <CheckCircle className="w-6 h-6 text-green-400 flex-shrink-0" />
+                <div>
+                  <h4 className="text-green-400 font-medium">
+                    Proof Generated Successfully!
+                  </h4>
+                  <p className="text-gray-400 text-sm">
+                    Your L2 transfer with ZK proof is ready. You can submit it
+                    to the channel or download it.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/20 rounded p-4 space-y-3">
+                <h4 className="text-sm font-medium text-[#4fc3f7] flex items-center gap-2">
+                  <Package className="w-4 h-4" />
+                  Transaction Details
+                </h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Channel</span>
+                    <span className="text-white font-mono">
+                      #{selectedChannelId}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Recipient</span>
+                    <span className="text-white font-mono text-xs">
+                      {toAddress.slice(0, 10)}...{toAddress.slice(-8)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Amount</span>
+                    <span className="text-white">{tokenAmount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Includes Proof</span>
+                    <span className="text-green-400">Yes</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <Button
+                  onClick={handleSubmitProof}
+                  disabled={isSubmittingProof}
+                  className="w-full bg-[#4fc3f7] hover:bg-[#4fc3f7]/80 text-[#0a1930] font-medium disabled:opacity-50"
+                >
+                  {isSubmittingProof ? (
+                    <>
+                      <LoadingSpinner size="sm" className="mr-2" />
+                      Submitting Proof...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Submit Proof to Channel
+                    </>
+                  )}
+                </Button>
+                <Button
+                  onClick={handleDownloadGeneratedZip}
+                  variant="outline"
+                  className="w-full border-green-500/30 text-green-400 hover:bg-green-500/10"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download ZIP with Proof
+                </Button>
+                <Button
+                  onClick={handleClose}
+                  variant="outline"
+                  className="w-full border-[#4fc3f7]/30 text-[#4fc3f7] hover:bg-[#4fc3f7]/10"
+                >
+                  Close
+                </Button>
+              </div>
             </div>
           )}
 
