@@ -1,11 +1,14 @@
 [submodule "contracts"]
 	path = contracts
 	url = https://github.com/tokamak-network/Tokamak-zk-EVM-contracts.git
+	ignore = all
 [submodule "frost-dkg"]
 	path = frost-dkg
 	url = https://github.com/tokamak-network/threshold-signature-Frost.git
+	ignore = all
 
 [submodule "Tokamak-Zk-EVM"]
 	path = Tokamak-Zk-EVM
 	url = https://github.com/tokamak-network/Tokamak-zk-EVM.git
 	branch = dev
+	ignore = all

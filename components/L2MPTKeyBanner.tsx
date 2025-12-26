@@ -205,24 +205,59 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
                               TON
                             </span>
                           </div>
-                          <p className="text-sm text-gray-300 mb-1">MPT Key:</p>
-                          <p className="font-mono text-xs text-white break-all bg-black/30 p-2 border border-[#4fc3f7]/20">
-                            {key.accountL2.mptKey}
-                          </p>
+                          <div className="space-y-2">
+                            <div>
+                              <p className="text-sm text-gray-300 mb-1">
+                                L2 Address:
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="flex-1 font-mono text-xs text-white break-all bg-black/30 p-2 border border-[#4fc3f7]/20">
+                                  {key.accountL2.l2Address}
+                                </p>
+                                <button
+                                  onClick={() =>
+                                    copyAddressToClipboard(
+                                      key.accountL2.l2Address
+                                    )
+                                  }
+                                  className="p-2 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/30 transition-colors flex-shrink-0"
+                                  title="Copy L2 Address"
+                                >
+                                  {copiedAddress === key.accountL2.l2Address ? (
+                                    <CheckCircle2 className="w-4 h-4" />
+                                  ) : (
+                                    <Copy className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-300 mb-1">
+                                MPT Key:
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="flex-1 font-mono text-xs text-white break-all bg-black/30 p-2 border border-[#4fc3f7]/20">
+                                  {key.accountL2.mptKey}
+                                </p>
+                                <button
+                                  onClick={() =>
+                                    copyToClipboard(key.accountL2.mptKey)
+                                  }
+                                  className="p-2 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/30 transition-colors flex-shrink-0"
+                                  title="Copy MPT Key"
+                                >
+                                  {copiedKey === key.accountL2.mptKey ? (
+                                    <CheckCircle2 className="w-4 h-4" />
+                                  ) : (
+                                    <Copy className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => copyToClipboard(key.accountL2.mptKey)}
-                            className="p-2 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/30 transition-colors"
-                            title="Copy to clipboard"
-                          >
-                            {copiedKey === key.accountL2.mptKey ? (
-                              <CheckCircle2 className="w-4 h-4" />
-                            ) : (
-                              <Copy className="w-4 h-4" />
-                            )}
-                          </button>
+                        <div className="flex items-start">
                           <button
                             onClick={() => removeKey(index)}
                             className="p-2 bg-red-500/20 border border-red-500/50 text-red-400 hover:bg-red-500/30 transition-colors"
