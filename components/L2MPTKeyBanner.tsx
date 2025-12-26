@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAccount, useSignMessage } from "wagmi";
 import { Key, Calculator, AlertCircle, Copy, CheckCircle2 } from "lucide-react";
 import { L2_PRV_KEY_MESSAGE } from "@/lib/l2KeyMessage";
+import { deriveL2KeysAndAddressFromSignature, DerivedL2Account } from "@/lib/mptKeyUtils";
 interface L2MPTKeyBannerProps {
   className?: string;
 }
@@ -11,8 +12,7 @@ interface L2MPTKeyBannerProps {
 interface ComputedKey {
   channelId: number;
   slotIndex: number;
-  mptKey: string;
-  l2Address: string;
+  accountL2: DerivedL2Account; 
 }
 
 export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
@@ -32,20 +32,6 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
     setError("");
   }, [channelId]);
 
-  ("use client");
-  async function fetchMptKey(signature: `0x${string}`, slotIndex: number) {
-    const res = await fetch("/api/post-l2-mpt-key", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ signature, slotIndex }),
-    });
-    const data = await res.json();
-    return {
-      mptKey: data.mptKey,
-      l2Address: data.l2Address,
-    };
-  }
-
   const computeMPTKey = async () => {
     if (!isConnected || !address) {
       setError("Please connect your wallet first");
@@ -57,14 +43,13 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
 
     try {
       const message = L2_PRV_KEY_MESSAGE + `${channelId}`;
-      const signature = await signMessageAsync({ message });
-      const { mptKey, l2Address } = await fetchMptKey(signature, slotIndex);
+      const signature = await signMessageAsync({message});
+      const accountL2 = deriveL2KeysAndAddressFromSignature(signature, slotIndex);
 
       const newKey: ComputedKey = {
         channelId,
         slotIndex,
-        mptKey,
-        l2Address,
+        accountL2,
       };
 
       setComputedKeys((prev) => [newKey, ...prev.slice(0, 4)]); // Keep only 5 most recent
@@ -207,7 +192,7 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
                 <div className="space-y-2">
                   {computedKeys.map((key, index) => (
                     <div
-                      key={`${key.mptKey}-${index}`}
+                      key={`${key.accountL2.mptKey}-${index}`}
                       className="bg-[#0a1930]/80 border border-[#4fc3f7]/30 p-4"
                     >
                       <div className="flex items-start justify-between gap-4">
@@ -227,16 +212,18 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
                               </p>
                               <div className="flex items-center gap-2">
                                 <p className="flex-1 font-mono text-xs text-white break-all bg-black/30 p-2 border border-[#4fc3f7]/20">
-                                  {key.l2Address}
+                                  {key.accountL2.l2Address}
                                 </p>
                                 <button
                                   onClick={() =>
-                                    copyAddressToClipboard(key.l2Address)
+                                    copyAddressToClipboard(
+                                      key.accountL2.l2Address
+                                    )
                                   }
                                   className="p-2 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/30 transition-colors flex-shrink-0"
                                   title="Copy L2 Address"
                                 >
-                                  {copiedAddress === key.l2Address ? (
+                                  {copiedAddress === key.accountL2.l2Address ? (
                                     <CheckCircle2 className="w-4 h-4" />
                                   ) : (
                                     <Copy className="w-4 h-4" />
@@ -250,14 +237,16 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
                               </p>
                               <div className="flex items-center gap-2">
                                 <p className="flex-1 font-mono text-xs text-white break-all bg-black/30 p-2 border border-[#4fc3f7]/20">
-                                  {key.mptKey}
+                                  {key.accountL2.mptKey}
                                 </p>
                                 <button
-                                  onClick={() => copyToClipboard(key.mptKey)}
+                                  onClick={() =>
+                                    copyToClipboard(key.accountL2.mptKey)
+                                  }
                                   className="p-2 bg-[#4fc3f7]/20 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/30 transition-colors flex-shrink-0"
                                   title="Copy MPT Key"
                                 >
-                                  {copiedKey === key.mptKey ? (
+                                  {copiedKey === key.accountL2.mptKey ? (
                                     <CheckCircle2 className="w-4 h-4" />
                                   ) : (
                                     <Copy className="w-4 h-4" />

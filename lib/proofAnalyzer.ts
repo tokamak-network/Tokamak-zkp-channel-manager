@@ -6,6 +6,8 @@
  * - Participant balance changes
  */
 
+import type { JSZipObject } from 'jszip';
+
 export interface InstanceData {
   a_pub_user: string[];
   a_pub_block: string[];
@@ -159,7 +161,7 @@ export async function parseProofFromBase64Zip(
     const zip = await JSZip.loadAsync(bytes);
     
     // Helper function to find file by name (regardless of folder path)
-    const findFileByName = (fileName: string): ReturnType<typeof zip.file>[0] | null => {
+    const findFileByName = (fileName: string): JSZipObject | null => {
       const allFiles = Object.keys(zip.files);
       for (const filePath of allFiles) {
         // Get just the filename from the path
