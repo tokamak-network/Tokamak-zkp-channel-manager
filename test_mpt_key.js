@@ -1,9 +1,10 @@
 const { createPublicClient, http } = require('viem');
 const { sepolia } = require('viem/chains');
+const { ALCHEMY_KEY } = require('./lib/constants');
 
 const publicClient = createPublicClient({
   chain: sepolia,
-  transport: http('https://eth-sepolia.g.alchemy.com/v2/N-Gnpjy1WvCfokwj6fiOfuAVL_At6IvE')
+  transport: http(`https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`)
 });
 
 const ROLLUP_BRIDGE_ADDRESS = '0x23f7b07686866d5bcbfc6c0815aeb02bcbd1ac46';

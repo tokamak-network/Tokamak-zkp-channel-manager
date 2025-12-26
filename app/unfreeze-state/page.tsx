@@ -18,6 +18,7 @@ import {
 import { generateClientSideProof, isClientProofGenerationSupported, getMemoryRequirement, requiresExternalDownload, getDownloadSize } from '@/lib/clientProofGeneration';
 import { getData, getLatestSnapshot } from '@/lib/realtime-db-helpers';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
+import { ALCHEMY_KEY } from '@/lib/constants';
 import { Unlock, Link, FileText, CheckCircle2, XCircle, Calculator, Download, Upload, Settings, RefreshCw } from 'lucide-react';
 
 interface FinalBalances {
@@ -428,7 +429,7 @@ export default function UnfreezeStatePage() {
           
           const publicClient = createPublicClient({
             chain: sepolia,
-            transport: http('https://eth-sepolia.g.alchemy.com/v2/N-Gnpjy1WvCfokwj6fiOfuAVL_At6IvE')
+            transport: http(`https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`)
           });
           
           const result = await publicClient.readContract({
@@ -476,7 +477,7 @@ export default function UnfreezeStatePage() {
           
           const publicClient = createPublicClient({
             chain: sepolia,
-            transport: http('https://eth-sepolia.g.alchemy.com/v2/N-Gnpjy1WvCfokwj6fiOfuAVL_At6IvE')
+            transport: http(`https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`)
           });
           
           const l2MptKeyResult = await publicClient.readContract({

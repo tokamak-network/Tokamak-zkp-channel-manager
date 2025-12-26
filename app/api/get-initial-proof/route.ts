@@ -10,13 +10,16 @@ import {
   ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS,
   ROLLUP_BRIDGE_CORE_ADDRESS,
 } from "@/lib/contracts";
+import { ALCHEMY_KEY } from "@/lib/constants";
 
 // Create a public client for reading blockchain data
 function getPublicClient() {
-  const alchemyUrl = process.env.NEXT_PUBLIC_ALCHEMY_SEPOLIA_URL;
+  const envRpcUrl = process.env.NEXT_PUBLIC_ALCHEMY_SEPOLIA_URL;
+  const alchemyUrl =
+    envRpcUrl || (ALCHEMY_KEY ? `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}` : "");
   if (!alchemyUrl) {
     throw new Error(
-      "NEXT_PUBLIC_ALCHEMY_SEPOLIA_URL environment variable is not set"
+      "NEXT_PUBLIC_ALCHEMY_SEPOLIA_URL or NEXT_PUBLIC_ALCHEMY_API_KEY environment variable is not set"
     );
   }
 
