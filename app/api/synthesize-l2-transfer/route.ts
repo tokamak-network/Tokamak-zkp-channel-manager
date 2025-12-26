@@ -6,6 +6,7 @@ import path from "path";
 import JSZip from "jszip";
 import { bytesToHex } from "@ethereumjs/util";
 import { deriveL2KeysFromSignature } from "@/Tokamak-Zk-EVM/packages/frontend/synthesizer/src/TokamakL2JS/utils/web.ts";
+import { ALCHEMY_KEY } from "@/lib/constants";
 
 const execAsync = promisify(exec);
 
@@ -78,11 +79,10 @@ export async function POST(req: Request) {
     }
 
     // Build RPC URL from environment variable
-    const alchemyApiKey = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY;
-    if (!alchemyApiKey) {
+    if (!ALCHEMY_KEY) {
       throw new Error("NEXT_PUBLIC_ALCHEMY_API_KEY environment variable is not set");
     }
-    const rpcUrl = `https://eth-sepolia.g.alchemy.com/v2/${alchemyApiKey}`;
+    const rpcUrl = `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`;
 
     // Build command
     const binaryPath = path.join(distRoot, "bin", "synthesizer");
