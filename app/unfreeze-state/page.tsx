@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useContractRead, useContractWrite, useWaitForTransaction, useAccount } from 'wagmi';
 import { formatUnits } from 'viem';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
@@ -16,10 +16,9 @@ import {
   getGroth16VerifierAddress
 } from '@/lib/contracts';
 import { generateClientSideProof, isClientProofGenerationSupported, getMemoryRequirement, requiresExternalDownload, getDownloadSize } from '@/lib/clientProofGeneration';
-import { getData, getLatestSnapshot } from '@/lib/realtime-db-helpers';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { ALCHEMY_KEY } from '@/lib/constants';
-import { Unlock, Link, FileText, CheckCircle2, XCircle, Calculator, Download, Upload, Settings, RefreshCw } from 'lucide-react';
+import { Unlock, Link, FileText, CheckCircle2, XCircle, Calculator, Upload, Settings } from 'lucide-react';
 
 interface FinalBalances {
   [participantAddress: string]: string;
@@ -31,6 +30,15 @@ interface ChannelFinalizationProof {
   pC: [bigint, bigint, bigint, bigint];
 }
 
+interface StateSnapshotFile {
+  channelId?: number;
+  stateRoot: string;
+  registeredKeys: string[];
+  storageEntries: Array<{ key: string; value: string }>;
+  contractAddress?: string;
+  preAllocatedLeaves?: Array<{ key: string; value: string }>;
+}
+
 export default function UnfreezeStatePage() {
   const { isConnected, address } = useAccount();
   const [isMounted, setIsMounted] = useState(false);
@@ -40,17 +48,10 @@ export default function UnfreezeStatePage() {
   const [selectedChannelId, setSelectedChannelId] = useState<string>('');
   const [manualChannelInput, setManualChannelInput] = useState<string>('');
   const [finalBalances, setFinalBalances] = useState<FinalBalances>({});
-  const [balancesFile, setBalancesFile] = useState<File | null>(null);
-  const [balancesError, setBalancesError] = useState('');
-  const [balancesSource, setBalancesSource] = useState<'firebase' | 'file' | null>(null);
-  const [balancesMeta, setBalancesMeta] = useState<{
-    source: 'verifiedProof' | 'snapshot';
-    snapshotId?: string;
-    sequenceNumber?: number;
-    proofId?: string;
-  } | null>(null);
-  const [isFetchingBalances, setIsFetchingBalances] = useState(false);
-  const balancesRequestRef = useRef(0);
+  const [snapshotFile, setSnapshotFile] = useState<File | null>(null);
+  const [snapshotData, setSnapshotData] = useState<StateSnapshotFile | null>(null);
+  const [snapshotError, setSnapshotError] = useState('');
+  const [isSnapshotProcessing, setIsSnapshotProcessing] = useState(false);
   
   const [isGeneratingProof, setIsGeneratingProof] = useState(false);
   const [proofGenerationStatus, setProofGenerationStatus] = useState('');
@@ -155,14 +156,6 @@ export default function UnfreezeStatePage() {
     enabled: isMounted && isConnected && !!channelTargetContract
   });
 
-  const { data: preAllocatedKeys } = useContractRead({
-    address: ROLLUP_BRIDGE_CORE_ADDRESS,
-    abi: ROLLUP_BRIDGE_CORE_ABI,
-    functionName: 'getPreAllocatedKeys',
-    args: channelTargetContract ? [channelTargetContract] : undefined,
-    enabled: isMounted && isConnected && !!channelTargetContract
-  });
-
   const { data: totalDeposits } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
@@ -173,152 +166,162 @@ export default function UnfreezeStatePage() {
 
   useEffect(() => {
     setFinalBalances({});
-    setBalancesFile(null);
-    setBalancesSource(null);
-    setBalancesMeta(null);
-    setBalancesError('');
+    setSnapshotFile(null);
+    setSnapshotData(null);
+    setSnapshotError('');
+    setIsSnapshotProcessing(false);
   }, [selectedChannelId]);
 
-  const normalizeBalances = useCallback((entries: Array<{ userAddressL1?: string; amount?: string | number | bigint }>) => {
-    const balances: FinalBalances = {};
-    entries.forEach((entry) => {
-      if (!entry?.userAddressL1) return;
-      if (entry.amount === undefined || entry.amount === null) return;
-      balances[entry.userAddressL1.toLowerCase()] = String(entry.amount);
-    });
-    return balances;
+  const normalizeBalanceString = useCallback((value: string) => {
+    const trimmed = value.trim();
+    return trimmed.toLowerCase() === '0x' ? '0' : trimmed;
   }, []);
 
-  const mapBalancesFromProof = useCallback(
-    (proofBalances: Array<{ participantIndex: number; balance: string }>, participants: string[]) => {
-      const balances: FinalBalances = {};
-      participants.forEach((participant, idx) => {
-        const proofEntry =
-          proofBalances.find((entry) => entry.participantIndex === idx) || proofBalances[idx];
-        if (!proofEntry?.balance) return;
-        try {
-          balances[participant.toLowerCase()] = BigInt(proofEntry.balance).toString();
-        } catch (error) {
-          console.warn(`Invalid balance for participant ${participant}:`, error);
-        }
-      });
-      return balances;
-    },
-    []
-  );
+  const normalizeStorageKey = useCallback((key: string) => {
+    const trimmed = key.trim();
+    if (!trimmed) return '';
+    const raw = trimmed.toLowerCase().startsWith('0x') ? trimmed.slice(2) : trimmed;
+    const padded = raw.length < 64 ? raw.padStart(64, '0') : raw;
+    return `0x${padded}`.toLowerCase();
+  }, []);
 
-  const loadBalancesFromFirebase = useCallback(async () => {
-    if (!parsedChannelId) {
-      setBalancesError('Select a valid channel first.');
-      return;
+  const normalizeSnapshotValue = useCallback((value: string) => {
+    const normalized = normalizeBalanceString(String(value));
+    if (!normalized) return '0';
+    return BigInt(normalized).toString();
+  }, [normalizeBalanceString]);
+
+  const buildStorageValueMap = useCallback((snapshot: StateSnapshotFile) => {
+    const valuesByKey = new Map<string, string>();
+
+    snapshot.storageEntries.forEach((entry) => {
+      if (!entry?.key) return;
+      const normalizedKey = normalizeStorageKey(entry.key);
+      if (!normalizedKey) return;
+      valuesByKey.set(normalizedKey, normalizeSnapshotValue(entry.value));
+    });
+
+    if (snapshot.preAllocatedLeaves) {
+      snapshot.preAllocatedLeaves.forEach((leaf) => {
+        if (!leaf?.key) return;
+        const normalizedKey = normalizeStorageKey(leaf.key);
+        if (!normalizedKey || valuesByKey.has(normalizedKey)) return;
+        valuesByKey.set(normalizedKey, normalizeSnapshotValue(leaf.value));
+      });
     }
 
-    const requestId = ++balancesRequestRef.current;
-    setIsFetchingBalances(true);
-    setBalancesError('');
+    return valuesByKey;
+  }, [normalizeSnapshotValue, normalizeStorageKey]);
 
-    try {
-      const channelIdText = String(parsedChannelId);
-      const verifiedProofsData = await getData<any>(`channels/${channelIdText}/verifiedProofs`);
-      const latestSnapshot = await getLatestSnapshot(channelIdText);
+  const resolveFinalBalancesFromSnapshot = useCallback(
+    async (snapshot: StateSnapshotFile, participants: string[], channelId: number) => {
+      const valuesByKey = buildStorageValueMap(snapshot);
+      const balances: FinalBalances = {};
+      const missingParticipants: string[] = [];
 
-      let balances: FinalBalances | null = null;
-      let meta: { source: 'verifiedProof' | 'snapshot'; snapshotId?: string; sequenceNumber?: number; proofId?: string } | null = null;
+      const { createPublicClient, http } = await import('viem');
+      const { sepolia } = await import('viem/chains');
 
-      if (verifiedProofsData) {
-        const verifiedProofsArray = Object.entries(verifiedProofsData)
-          .map(([key, value]: [string, any]) => ({ key, ...value }))
-          .filter((proof: any) => proof.zipFile?.content)
-          .sort((a: any, b: any) => {
-            const seqA = Number(a.sequenceNumber ?? 0);
-            const seqB = Number(b.sequenceNumber ?? 0);
-            if (seqA !== seqB) return seqA - seqB;
-            const timeA = Number(a.timestamp ?? a.submittedAt ?? 0);
-            const timeB = Number(b.timestamp ?? b.submittedAt ?? 0);
-            return timeA - timeB;
-          });
+      const publicClient = createPublicClient({
+        chain: sepolia,
+        transport: http(`https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`)
+      });
 
-        const latestProof = verifiedProofsArray[verifiedProofsArray.length - 1];
+      const results = await Promise.all(
+        participants.map(async (participant) => {
+          try {
+            const l2MptKey = await publicClient.readContract({
+              address: ROLLUP_BRIDGE_CORE_ADDRESS,
+              abi: ROLLUP_BRIDGE_CORE_ABI,
+              functionName: 'getL2MptKey',
+              args: [BigInt(channelId), participant as `0x${string}`]
+            }) as bigint;
 
-        if (latestProof?.zipFile?.content) {
-          const { parseProofFromBase64Zip, analyzeProof } = await import('@/lib/proofAnalyzer');
-          const parsed = await parseProofFromBase64Zip(latestProof.zipFile.content);
-
-          if (parsed.instance && parsed.snapshot) {
-            const analysis = analyzeProof(parsed.instance, parsed.snapshot, 18);
-            const participants = (channelParticipants as string[]) || [];
-            balances = mapBalancesFromProof(analysis.balances, participants);
-            meta = {
-              source: 'verifiedProof',
-              proofId: latestProof.proofId || latestProof.key,
-              sequenceNumber: latestProof.sequenceNumber,
-            };
+            const keyHex = `0x${l2MptKey.toString(16).padStart(64, '0')}`;
+            return { participant, key: normalizeStorageKey(keyHex) };
+          } catch (error) {
+            console.error(`Failed to fetch L2 MPT key for ${participant}:`, error);
+            return { participant, key: '' };
           }
-        }
-      }
+        })
+      );
 
-      if ((!balances || Object.keys(balances).length === 0) && latestSnapshot?.userBalances && latestSnapshot.userBalances.length > 0) {
-        balances = normalizeBalances(latestSnapshot.userBalances);
-        meta = {
-          source: 'snapshot',
-          snapshotId: latestSnapshot.snapshotId,
-          sequenceNumber: latestSnapshot.sequenceNumber,
-        };
-      }
-
-      if (!balances || Object.keys(balances).length === 0) {
-        throw new Error('No balances found in Firebase for this channel.');
-      }
-
-      const participants = (channelParticipants as string[]) || [];
-      if (participants.length > 0) {
-        const missingParticipants = participants.filter(
-          (participant) => !balances?.[participant.toLowerCase()]
-        );
-        if (missingParticipants.length > 0) {
-          if (requestId !== balancesRequestRef.current) return;
-          setFinalBalances({});
-          setBalancesSource(null);
-          setBalancesMeta(null);
-          setBalancesError(
-            `Firebase balances missing ${missingParticipants.length} participants. Upload a JSON file or fix Firebase data.`
-          );
+      results.forEach(({ participant, key }) => {
+        if (!key) {
+          missingParticipants.push(participant);
           return;
         }
+        const balanceValue = valuesByKey.get(key);
+        if (!balanceValue) {
+          missingParticipants.push(participant);
+          return;
+        }
+        balances[participant.toLowerCase()] = balanceValue;
+      });
+
+      if (missingParticipants.length > 0) {
+        throw new Error(`state_snapshot.json missing balances for ${missingParticipants.length} participants.`);
       }
 
-      if (requestId !== balancesRequestRef.current) return;
-      setFinalBalances(balances);
-      setBalancesFile(null);
-      setBalancesSource('firebase');
-      setBalancesMeta(meta);
-      setBalancesError('');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load balances from Firebase';
-      if (requestId !== balancesRequestRef.current) return;
-      setFinalBalances({});
-      setBalancesSource(null);
-      setBalancesMeta(null);
-      setBalancesError(message);
-    } finally {
-      if (requestId !== balancesRequestRef.current) return;
-      setIsFetchingBalances(false);
-    }
-  }, [channelParticipants, mapBalancesFromProof, normalizeBalances, parsedChannelId]);
+      return balances;
+    },
+    [buildStorageValueMap, normalizeStorageKey]
+  );
 
   useEffect(() => {
-    if (isValidChannelId && channelParticipants && (channelParticipants as string[]).length > 0) {
-      void loadBalancesFromFirebase();
-    }
-  }, [channelParticipants, isValidChannelId, loadBalancesFromFirebase]);
+    if (!snapshotData || !channelParticipants || !parsedChannelId) return;
+    const participants = channelParticipants as string[];
+    if (participants.length === 0) return;
+
+    setIsSnapshotProcessing(true);
+    setSnapshotError('');
+
+    resolveFinalBalancesFromSnapshot(snapshotData, participants, parsedChannelId)
+      .then((balances) => {
+        setFinalBalances(balances);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : 'Failed to resolve balances from snapshot';
+        setFinalBalances({});
+        setSnapshotError(message);
+      })
+      .finally(() => {
+        setIsSnapshotProcessing(false);
+      });
+  }, [channelParticipants, parsedChannelId, resolveFinalBalancesFromSnapshot, snapshotData]);
 
   const finalBalancesArray = useMemo(() => {
     if (!channelParticipants || !finalBalances) return [];
     return (channelParticipants as string[]).map((participant: string) => {
       const balance = finalBalances[participant.toLowerCase()] || finalBalances[participant] || '0';
-      return BigInt(balance);
+      return BigInt(normalizeBalanceString(balance));
     });
-  }, [channelParticipants, finalBalances]);
+  }, [channelParticipants, finalBalances, normalizeBalanceString]);
+
+  const displaySnapshotEntries = useMemo(() => {
+    if (!snapshotData || !snapshotData.registeredKeys) return [];
+
+    const formatShort = (value: bigint) => {
+      const full = formatUnits(value, 18);
+      const [whole, fraction] = full.split('.');
+      if (!fraction) return full;
+      const trimmed = fraction.slice(0, 6).replace(/0+$/, '');
+      return trimmed ? `${whole}.${trimmed}` : whole;
+    };
+
+    const valuesByKey = buildStorageValueMap(snapshotData);
+
+    return snapshotData.registeredKeys.map((key) => {
+      const normalizedKey = normalizeStorageKey(key);
+      const value = valuesByKey.get(normalizedKey) ?? '0';
+      const wei = BigInt(normalizeBalanceString(value) || '0');
+      return {
+        key,
+        value,
+        formatted: formatShort(wei),
+      };
+    });
+  }, [buildStorageValueMap, normalizeBalanceString, normalizeStorageKey, snapshotData]);
 
   const { write: verifyFinalBalances, data: verifyData } = useContractWrite({
     address: ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS,
@@ -361,161 +364,119 @@ export default function UnfreezeStatePage() {
     }
   };
 
-  const handleBalancesFileUpload = async (file: File) => {
+  const handleSnapshotFileUpload = async (file: File) => {
     try {
-      setBalancesError('');
+      setSnapshotError('');
       const text = await file.text();
       const jsonData = JSON.parse(text);
-      
+
       if (typeof jsonData !== 'object' || jsonData === null) {
         throw new Error('Invalid JSON format');
       }
-      
-      const balances: FinalBalances = {};
-      for (const [participant, balance] of Object.entries(jsonData)) {
-        if (participant.startsWith('_')) continue;
-        if (typeof balance !== 'string') {
-          throw new Error(`Invalid balance for participant ${participant}`);
-        }
-        balances[participant.toLowerCase()] = balance;
+
+      if (!Array.isArray(jsonData.registeredKeys) || !Array.isArray(jsonData.storageEntries)) {
+        throw new Error('Invalid state_snapshot.json: missing registeredKeys or storageEntries');
       }
-      
-      setFinalBalances(balances);
-      setBalancesFile(file);
-      setBalancesSource('file');
-      setBalancesMeta(null);
+
+      if (typeof jsonData.stateRoot !== 'string') {
+        throw new Error('Invalid state_snapshot.json: missing stateRoot');
+      }
+
+      if (jsonData.channelId && parsedChannelId && Number(jsonData.channelId) !== Number(parsedChannelId)) {
+        throw new Error(`Snapshot channelId (${jsonData.channelId}) does not match selected channel (${parsedChannelId})`);
+      }
+
+      const registeredKeys = jsonData.registeredKeys.map((key: unknown) => {
+        if (typeof key !== 'string') {
+          throw new Error('Invalid registeredKeys entry in state_snapshot.json');
+        }
+        return key;
+      });
+
+      const storageEntries = jsonData.storageEntries.map((entry: any) => {
+        if (!entry || typeof entry !== 'object') {
+          throw new Error('Invalid storageEntries entry in state_snapshot.json');
+        }
+        if (typeof entry.key !== 'string' || typeof entry.value !== 'string') {
+          throw new Error('Invalid storageEntries entry in state_snapshot.json');
+        }
+        return { key: entry.key, value: entry.value };
+      });
+
+      const preAllocatedLeaves = Array.isArray(jsonData.preAllocatedLeaves)
+        ? jsonData.preAllocatedLeaves.map((leaf: any) => {
+            if (!leaf || typeof leaf !== 'object') return null;
+            if (typeof leaf.key !== 'string' || typeof leaf.value !== 'string') return null;
+            return { key: leaf.key, value: leaf.value };
+          }).filter(Boolean)
+        : undefined;
+
+      const snapshot: StateSnapshotFile = {
+        channelId: jsonData.channelId,
+        stateRoot: jsonData.stateRoot,
+        registeredKeys,
+        storageEntries,
+        contractAddress: jsonData.contractAddress,
+        preAllocatedLeaves
+      };
+
+      buildStorageValueMap(snapshot);
+
+      setSnapshotFile(file);
+      setSnapshotData(snapshot);
+      setFinalBalances({});
     } catch (error) {
-      console.error('Error parsing balances file:', error);
-      setBalancesError(error instanceof Error ? error.message : 'Invalid file format');
+      console.error('Error parsing state_snapshot.json:', error);
+      setSnapshotError(error instanceof Error ? error.message : 'Invalid file format');
+      setSnapshotFile(null);
+      setSnapshotData(null);
+      setFinalBalances({});
     }
   };
 
-  // R_MOD constant from BridgeProofManager contract
-  const R_MOD = BigInt('0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001');
-
   const generateGroth16Proof = async () => {
-    if (!parsedChannelId || !channelParticipants || !channelTreeSize || !finalStateRoot || !channelTargetContract) {
+    if (!parsedChannelId || !channelParticipants || !channelTreeSize || !finalStateRoot) {
       throw new Error('Missing channel data');
     }
+    if (!snapshotData) {
+      throw new Error('Upload state_snapshot.json before generating proof');
+    }
 
-    setProofGenerationStatus('Collecting channel data...');
-    
-    const participantCount = (channelParticipants as string[]).length;
     const treeSize = Number(channelTreeSize);
-    const preAllocCount = preAllocatedCount ? Number(preAllocatedCount) : 0;
-    
+
     if (![16, 32, 64, 128].includes(treeSize)) {
       throw new Error(`Unsupported tree size: ${treeSize}`);
     }
-    
-    setProofGenerationStatus(`Collecting data for ${treeSize}-leaf merkle tree (${preAllocCount} pre-allocated + ${participantCount} participants)...`);
-    
-    // Collect storage keys (L2 MPT keys) and values (final balances)
-    // Following the contract logic: pre-allocated leaves FIRST, then participant data
-    const storageKeysL2MPT: string[] = [];
-    const storageValues: string[] = [];
-    
-    // STEP 1: Add pre-allocated leaves data FIRST (matching contract logic)
-    if (preAllocCount > 0 && preAllocatedKeys && channelTargetContract) {
-      setProofGenerationStatus(`Fetching ${preAllocCount} pre-allocated leaves...`);
-      
-      for (let i = 0; i < (preAllocatedKeys as `0x${string}`[]).length; i++) {
-        const key = (preAllocatedKeys as `0x${string}`[])[i];
-        
-        try {
-          // Get pre-allocated leaf value directly from contract using viem
-          const { createPublicClient, http } = await import('viem');
-          const { sepolia } = await import('viem/chains');
-          
-          const publicClient = createPublicClient({
-            chain: sepolia,
-            transport: http(`https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`)
-          });
-          
-          const result = await publicClient.readContract({
-            address: ROLLUP_BRIDGE_CORE_ADDRESS,
-            abi: ROLLUP_BRIDGE_CORE_ABI,
-            functionName: 'getPreAllocatedLeaf',
-            args: [channelTargetContract, key]
-          }) as [bigint, boolean];
-          
-          const [value, exists] = result;
-          
-          if (exists) {
-            // Apply modulo R_MOD as the contract does
-            const modedKey = (BigInt(key) % R_MOD).toString();
-            const modedValue = (value % R_MOD).toString();
-            
-            storageKeysL2MPT.push(modedKey);
-            storageValues.push(modedValue);
-            
-            console.log(`Pre-allocated leaf ${i}: key=${key} -> ${modedKey}, value=${value.toString()} -> ${modedValue}`);
-          }
-        } catch (error) {
-          console.error(`Failed to fetch pre-allocated leaf for key ${key}:`, error);
-          // Continue without throwing - some pre-allocated keys might not exist
-          console.log(`Skipping pre-allocated leaf ${i} (doesn't exist or failed to fetch)`);
-        }
-      }
+
+    if (snapshotData.registeredKeys.length > treeSize) {
+      throw new Error(`registeredKeys length (${snapshotData.registeredKeys.length}) exceeds tree size ${treeSize}`);
     }
-    
-    // STEP 2: Add participant data AFTER pre-allocated leaves (matching contract logic)
-    setProofGenerationStatus(`Processing ${participantCount} participants...`);
-    
-    for (let i = 0; i < (channelParticipants as string[]).length && storageKeysL2MPT.length < treeSize; i++) {
-      const participant = (channelParticipants as string[])[i];
-      
-      setProofGenerationStatus(`Processing participant ${i + 1} of ${participantCount}...`);
-      
-      let l2MptKey = '0';
-      
-      try {
-        // Get L2 MPT key directly from contract
-        try {
-          const { createPublicClient, http } = await import('viem');
-          const { sepolia } = await import('viem/chains');
-          
-          const publicClient = createPublicClient({
-            chain: sepolia,
-            transport: http(`https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`)
-          });
-          
-          const l2MptKeyResult = await publicClient.readContract({
-            address: ROLLUP_BRIDGE_CORE_ADDRESS,
-            abi: ROLLUP_BRIDGE_CORE_ABI,
-            functionName: 'getL2MptKey',
-            args: [BigInt(parsedChannelId), participant as `0x${string}`]
-          }) as bigint;
-          
-          l2MptKey = l2MptKeyResult.toString();
-        } catch (keyError) {
-          console.error(`L2 MPT key fetch failed for ${participant}:`, keyError);
-          // Use default value
-          l2MptKey = '0';
-        }
-        
-        const finalBalance = finalBalances[participant.toLowerCase()] || finalBalances[participant] || '0';
-        
-        // Apply modulo R_MOD as the contract does
-        const modedL2MptKey = l2MptKey !== '0' ? (BigInt(l2MptKey) % R_MOD).toString() : '0';
-        const modedBalance = finalBalance !== '0' ? (BigInt(finalBalance) % R_MOD).toString() : '0';
-        
-        storageKeysL2MPT.push(modedL2MptKey);
-        storageValues.push(modedBalance);
-        
-        console.log(`Participant ${i}: key=${l2MptKey} -> ${modedL2MptKey}, balance=${finalBalance} -> ${modedBalance}`);
-      } catch (error) {
-        console.error(`Failed to get data for ${participant}:`, error);
-        throw error;
+
+    setProofGenerationStatus('Preparing state snapshot data...');
+
+    const valuesByKey = buildStorageValueMap(snapshotData);
+    const storageKeysL2MPT = snapshotData.registeredKeys.slice();
+    const missingKeys: string[] = [];
+
+    const storageValues = snapshotData.registeredKeys.map((key) => {
+      const normalizedKey = normalizeStorageKey(key);
+      const value = valuesByKey.get(normalizedKey);
+      if (!value) {
+        missingKeys.push(key);
+        return '0';
       }
+      return value;
+    });
+
+    if (missingKeys.length > 0) {
+      console.warn(`Missing ${missingKeys.length} storage entries in state_snapshot.json`, missingKeys);
     }
-    
-    // STEP 3: Fill remaining entries with zeros (matching contract logic)
+
     while (storageKeysL2MPT.length < treeSize) {
       storageKeysL2MPT.push('0');
       storageValues.push('0');
     }
-    
+
     setProofGenerationStatus('Preparing circuit input...');
     
     const circuitInput = {
@@ -524,8 +485,9 @@ export default function UnfreezeStatePage() {
       treeSize: treeSize
     };
     
-    console.log('Circuit Input for Final Balances:', circuitInput);
+    console.log('Circuit Input for State Snapshot:', circuitInput);
     console.log('Final State Root:', finalStateRoot);
+    console.log('Snapshot State Root:', snapshotData.stateRoot);
     
     const memoryReq = getMemoryRequirement(treeSize);
     const needsDownload = requiresExternalDownload(treeSize);
@@ -550,13 +512,13 @@ export default function UnfreezeStatePage() {
     console.log('Generated Public Signals:', result.publicSignals);
     console.log('Storage Keys L2 MPT:', storageKeysL2MPT);
     console.log('Storage Values:', storageValues);
-    console.log('Final Balances:', finalBalances);
+    console.log('State Snapshot:', snapshotData);
     console.log('Channel Participants:', channelParticipants);
     
     if (computedMerkleRoot.toLowerCase() !== expectedFinalStateRoot.toLowerCase()) {
       console.warn(`⚠️  WARNING: Computed merkle root ${computedMerkleRoot} does not match expected final state root ${expectedFinalStateRoot}`);
       console.warn(`⚠️  This will likely cause the contract verification to fail.`);
-      console.warn(`⚠️  The issue is that the final balances don't produce the expected final state root.`);
+      console.warn(`⚠️  The issue is that the snapshot balances don't produce the expected final state root.`);
       console.warn(`⚠️  Proceeding anyway to see contract error details...`);
       // throw new Error(`Proof validation failed: Computed merkle root ${computedMerkleRoot} does not match expected final state root ${expectedFinalStateRoot}`);
     }
@@ -564,10 +526,13 @@ export default function UnfreezeStatePage() {
     setProofGenerationStatus('Proof generated and validated successfully!');
     
     return {
-      pA: result.proof.pA as [bigint, bigint, bigint, bigint],
-      pB: result.proof.pB as [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint],
-      pC: result.proof.pC as [bigint, bigint, bigint, bigint]
-    };
+      proof: {
+        pA: result.proof.pA as [bigint, bigint, bigint, bigint],
+        pB: result.proof.pB as [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint],
+        pC: result.proof.pC as [bigint, bigint, bigint, bigint]
+      },
+      publicInput: result.publicSignals.map(str => BigInt(str)),
+    }
   };
 
   const handleUnfreezeState = async () => {
@@ -576,7 +541,7 @@ export default function UnfreezeStatePage() {
     setIsGeneratingProof(true);
     
     try {
-      const proof = await generateGroth16Proof();
+      const {proof, publicInput} = await generateGroth16Proof();
       setGeneratedProof(proof);
       
       setProofGenerationStatus('Submitting to blockchain...');
@@ -603,39 +568,13 @@ export default function UnfreezeStatePage() {
   const isFormValid = () => {
     return Boolean(
       channelInfo &&
+      snapshotData &&
       Object.keys(finalBalances).length > 0 &&
+      !snapshotError &&
+      !isSnapshotProcessing &&
       (isFrostSignatureEnabled ? isSignatureVerified : true) && // Skip signature check if frost disabled
       Number(channelInfo[1]) === 3
     );
-  };
-
-  const handleDownloadTemplate = () => {
-    const participants = channelParticipants as string[] || [];
-    const template: any = {};
-    
-    participants.forEach(participant => {
-      template[participant] = "0";
-    });
-    
-    template["_template_info"] = {
-      "description": "Final balances template for unfreeze state",
-      "format": "{ participantAddress: balance }",
-      "notes": [
-        "Replace balance values with actual final balances in wei",
-        "Total balances must equal total deposits for the channel",
-        "Balances should be in wei (smallest unit) as decimal strings"
-      ]
-    };
-    
-    const blob = new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `final-balances-channel-${parsedChannelId || 'template'}-${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   if (!isMounted) {
@@ -825,46 +764,28 @@ export default function UnfreezeStatePage() {
                   {(isFrostSignatureEnabled ? isSignatureVerified : true) && (
                     <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/20">
                       <div className="p-6 border-b border-[#4fc3f7]/30">
-                        <h3 className="text-xl font-semibold text-white mb-2">Final Balances</h3>
-                        <p className="text-gray-400">Load balances from Firebase or upload a JSON file</p>
+                        <h3 className="text-xl font-semibold text-white mb-2">State Snapshot</h3>
+                        <p className="text-gray-400">Upload state_snapshot.json to load balances for proof generation</p>
                       </div>
                       
                       <div className="p-6 space-y-6">
-                        <div className="flex flex-wrap items-center justify-center gap-3 mb-6">
-                          <button
-                            onClick={loadBalancesFromFirebase}
-                            disabled={isFetchingBalances}
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                          >
-                            <RefreshCw className={`h-4 w-4 ${isFetchingBalances ? 'animate-spin' : ''}`} />
-                            {isFetchingBalances ? 'Loading from Firebase...' : 'Load from Firebase'}
-                          </button>
-                          <button
-                            onClick={handleDownloadTemplate}
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-[#4fc3f7]/10 border border-[#4fc3f7]/50 text-[#4fc3f7] hover:bg-[#4fc3f7]/20 transition-colors"
-                          >
-                            <Download className="h-4 w-4" />
-                            Download Template
-                          </button>
-                        </div>
-
                         <div className="max-w-2xl mx-auto">
-                          {Object.keys(finalBalances).length === 0 ? (
+                          {!snapshotData ? (
                             <div className="border-2 border-dashed border-gray-600 p-8 text-center hover:border-[#4fc3f7] transition-colors">
                               <input
                                 type="file"
                                 accept=".json"
                                 onChange={(e) => {
                                   const file = e.target.files?.[0];
-                                  if (file) handleBalancesFileUpload(file);
+                                  if (file) handleSnapshotFileUpload(file);
                                 }}
                                 className="hidden"
-                                id="balances-file"
+                                id="snapshot-file"
                               />
-                              <label htmlFor="balances-file" className="cursor-pointer">
+                              <label htmlFor="snapshot-file" className="cursor-pointer">
                                 <Upload className="mx-auto h-16 w-16 mb-4 text-gray-400" />
-                                <p className="text-lg font-medium text-white mb-2">Click to upload final balances</p>
-                                <p className="text-sm text-gray-400">Upload JSON file with final balances for all participants</p>
+                                <p className="text-lg font-medium text-white mb-2">Click to upload state_snapshot.json</p>
+                                <p className="text-sm text-gray-400">Use the snapshot file generated from the channel state</p>
                               </label>
                             </div>
                           ) : (
@@ -874,31 +795,32 @@ export default function UnfreezeStatePage() {
                                   <CheckCircle2 className="h-12 w-12 text-green-400" />
                                   <div>
                                     <h3 className="text-lg font-semibold text-green-200">
-                                      {balancesSource === 'file' && balancesFile
-                                        ? balancesFile.name
-                                        : 'Firebase Balances'}
+                                      {snapshotFile ? snapshotFile.name : 'state_snapshot.json'}
                                     </h3>
                                     <p className="text-sm text-green-400">
-                                      {balancesSource === 'firebase'
-                                        ? 'Loaded from Firebase'
-                                        : 'Final balances loaded successfully'}
+                                      {isSnapshotProcessing
+                                        ? 'Resolving participant balances...'
+                                        : 'State snapshot loaded successfully'}
                                     </p>
-                                  {balancesSource === 'firebase' && balancesMeta && (
+                                    {snapshotData.channelId !== undefined && (
                                       <p className="text-xs text-green-300 mt-1">
-                                        Source: {balancesMeta.source === 'snapshot' ? 'latest snapshot' : 'latest verified proof'}
-                                        {balancesMeta.sequenceNumber !== undefined ? ` (seq ${balancesMeta.sequenceNumber})` : ''}
-                                        {balancesMeta.proofId ? ` • ${balancesMeta.proofId}` : ''}
-                                        {balancesMeta.snapshotId ? ` • ${balancesMeta.snapshotId}` : ''}
+                                        Channel: {snapshotData.channelId}
+                                      </p>
+                                    )}
+                                    {snapshotData.stateRoot && (
+                                      <p className="text-xs text-green-300 mt-1 break-all">
+                                        State root: {snapshotData.stateRoot}
                                       </p>
                                     )}
                                   </div>
                                 </div>
                                 <button
                                   onClick={() => {
-                                    setBalancesFile(null);
+                                    setSnapshotFile(null);
+                                    setSnapshotData(null);
                                     setFinalBalances({});
-                                    setBalancesSource(null);
-                                    setBalancesMeta(null);
+                                    setSnapshotError('');
+                                    setIsSnapshotProcessing(false);
                                   }}
                                   className="text-red-400 hover:text-red-600 p-2"
                                 >
@@ -907,13 +829,33 @@ export default function UnfreezeStatePage() {
                               </div>
                               
                               <div className="text-sm text-gray-300">
+                                <p>Registered keys: {snapshotData.registeredKeys.length}</p>
+                                <p>Storage entries: {snapshotData.storageEntries.length}</p>
                                 <p>Participants with balances: {Object.keys(finalBalances).length}</p>
                               </div>
+                              {displaySnapshotEntries.length > 0 && (
+                                <div className="mt-4 border border-green-700/50">
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 px-3 py-2 text-xs uppercase text-green-300/80 bg-green-900/30">
+                                    <div>Registered Key</div>
+                                    <div className="text-right">Value (wei)</div>
+                                    <div className="text-right">Value (token)</div>
+                                  </div>
+                                  <div className="max-h-64 overflow-auto divide-y divide-green-800/40">
+                                    {displaySnapshotEntries.map((row) => (
+                                      <div key={row.key} className="grid grid-cols-1 sm:grid-cols-3 gap-2 px-3 py-2 text-xs text-green-100">
+                                        <div className="font-mono break-all">{row.key}</div>
+                                        <div className="font-mono text-right break-all">{row.value}</div>
+                                        <div className="text-right">{row.formatted}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
-                          {balancesError && (
+                          {snapshotError && (
                             <div className="mt-4 p-4 bg-red-900/20 border border-red-700">
-                              <p className="text-red-400 text-sm">{balancesError}</p>
+                              <p className="text-red-400 text-sm">{snapshotError}</p>
                             </div>
                           )}
                         </div>

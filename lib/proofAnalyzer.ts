@@ -105,7 +105,7 @@ export function extractParticipantBalances(
 }> {
   return snapshotData.storageEntries.map((entry) => {
     // Convert hex balance to decimal
-    const balanceWei = BigInt(entry.value);
+    const balanceWei = entry.value === '0x' ? 0n : BigInt(entry.value);
     const balanceEth = Number(balanceWei) / Math.pow(10, decimals);
     
     return {
