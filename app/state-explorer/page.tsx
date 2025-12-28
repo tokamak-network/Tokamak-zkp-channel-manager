@@ -403,6 +403,12 @@ function StateExplorerDetailView({
   const publicClient = usePublicClient();
   const VISIBLE_PARTICIPANTS_COLLAPSED = 3;
 
+  // Calculate isLeader in real-time based on current userAddress
+  // This ensures the leader status updates when wallet is switched
+  const isLeader = userAddress && channel.leader 
+    ? userAddress.toLowerCase() === channel.leader.toLowerCase() 
+    : false;
+
   // Get token info (decimals, symbol)
   const isETH =
     channel.targetAddress === ETH_TOKEN_ADDRESS ||
@@ -695,7 +701,7 @@ function StateExplorerDetailView({
   // SECURITY: This operation is now performed on the backend via API route
   // to ensure atomic transactions and prevent race conditions
   const handleVerifyProof = async (proof: ProofData) => {
-    if (!channel.isLeader || !proof.key || !proof.sequenceNumber) {
+    if (!isLeader || !proof.key || !proof.sequenceNumber) {
       return;
     }
 
@@ -735,6 +741,52 @@ function StateExplorerDetailView({
       );
     } finally {
       setIsVerifying(null);
+    }
+  };
+
+  // Handle proof deletion
+  const [isDeletingProof, setIsDeletingProof] = useState<string | null>(null);
+
+  const handleDeleteProof = async (proof: ProofData) => {
+    if (!proof.key) {
+      alert("Cannot delete proof: missing key");
+      return;
+    }
+
+    setIsDeletingProof(proof.key as string);
+
+    try {
+      const response = await fetch("/api/delete-proof", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          channelId: channel.id,
+          proofKey: proof.key,
+          userAddress: userAddress,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to delete proof");
+      }
+
+      const result = await response.json();
+      console.log("Proof deleted successfully:", result);
+
+      // Refresh proofs list
+      await fetchAllChannelData(true);
+    } catch (error) {
+      console.error("Error deleting proof:", error);
+      alert(
+        `Failed to delete proof: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    } finally {
+      setIsDeletingProof(null);
     }
   };
 
@@ -914,7 +966,7 @@ function StateExplorerDetailView({
                     <h2 className="text-xl font-semibold text-white font-mono">
                       Channel #{channel.id}
                     </h2>
-                    {channel.isLeader && (
+                    {isLeader && (
                       <span className="bg-amber-500/20 text-amber-400 text-xs px-2 py-0.5 rounded font-medium">
                         LEADER
                       </span>
@@ -1585,7 +1637,7 @@ function StateExplorerDetailView({
             )}
 
             {/* Pending Proofs Approval Section (Leader Only) */}
-            {channel.isLeader &&
+            {isLeader &&
               proofs.filter((p) => p.status === "pending").length > 0 && (
                 <div className="mb-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-amber-500/50 p-6 shadow-lg">
                   <div className="flex items-center gap-3 mb-4">
@@ -1718,9 +1770,12 @@ function StateExplorerDetailView({
                   <ProofCard
                     key={proof.id || proof.key}
                     proof={proof}
-                    isLeader={channel.isLeader}
+                    isLeader={isLeader}
                     onVerify={handleVerifyProof}
                     isVerifying={isVerifying === proof.key}
+                    onDelete={handleDeleteProof}
+                    isDeleting={isDeletingProof === proof.key}
+                    userAddress={userAddress}
                   />
                 ))}
               </div>
