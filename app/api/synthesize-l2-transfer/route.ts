@@ -86,22 +86,22 @@ export async function POST(req: Request) {
     // Create output directory
     await fs.mkdir(outputDir, { recursive: true });
 
-    // // If previousStateSnapshot is provided, save it to a temporary file
-    // if (previousStateSnapshot) {
-    //   previousStateSnapshotPath = path.join(
-    //     outputDir,
-    //     "previous_state_snapshot.json"
-    //   );
-    //   await fs.writeFile(
-    //     previousStateSnapshotPath,
-    //     JSON.stringify(previousStateSnapshot, null, 2),
-    //     "utf-8"
-    //   );
-    //   console.log(
-    //     "Saved previous state snapshot to:",
-    //     previousStateSnapshotPath
-    //   );
-    // }
+    // If previousStateSnapshot is provided, save it to a temporary file
+    if (previousStateSnapshot) {
+      previousStateSnapshotPath = path.join(
+        outputDir,
+        "previous_state_snapshot.json"
+      );
+      await fs.writeFile(
+        previousStateSnapshotPath,
+        JSON.stringify(previousStateSnapshot, null, 2),
+        "utf-8"
+      );
+      console.log(
+        "Saved previous state snapshot to:",
+        previousStateSnapshotPath
+      );
+    }
 
     // Build RPC URL from environment variable
     if (!ALCHEMY_KEY) {
