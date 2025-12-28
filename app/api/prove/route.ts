@@ -85,7 +85,7 @@ export async function POST(req: Request) {
         ...process.env,
         // Add library path for dynamic libraries
         DYLD_LIBRARY_PATH: libraryPath,
-        ICICLE_BACKEND_INSTALL_DIR: path.join(libraryPath, "backend"),
+        // ICICLE_BACKEND_INSTALL_DIR: path.join(libraryPath, "backend"),
       },
     });
 

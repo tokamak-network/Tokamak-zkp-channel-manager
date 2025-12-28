@@ -16,6 +16,7 @@ import {
   getGroth16VerifierAddress
 } from '@/lib/contracts';
 import { generateClientSideProof, isClientProofGenerationSupported, getMemoryRequirement, requiresExternalDownload, getDownloadSize } from '@/lib/clientProofGeneration';
+import { fetchChannelDataFromContract } from '@/lib/contract-helpers';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { ALCHEMY_KEY } from '@/lib/constants';
 import { Unlock, Link, FileText, CheckCircle2, XCircle, Calculator, Upload, Settings } from 'lucide-react';
@@ -48,10 +49,15 @@ export default function UnfreezeStatePage() {
   const [selectedChannelId, setSelectedChannelId] = useState<string>('');
   const [manualChannelInput, setManualChannelInput] = useState<string>('');
   const [finalBalances, setFinalBalances] = useState<FinalBalances>({});
-  const [snapshotFile, setSnapshotFile] = useState<File | null>(null);
-  const [snapshotData, setSnapshotData] = useState<StateSnapshotFile | null>(null);
-  const [snapshotError, setSnapshotError] = useState('');
-  const [isSnapshotProcessing, setIsSnapshotProcessing] = useState(false);
+  const [contractRegisteredKeys, setContractRegisteredKeys] = useState<string[]>([]);
+  const [contractRegisteredKeysError, setContractRegisteredKeysError] = useState('');
+  const [isContractDataLoading, setIsContractDataLoading] = useState(false);
+  const [finalSnapshotFile, setFinalSnapshotFile] = useState<File | null>(null);
+  const [finalSnapshotData, setFinalSnapshotData] = useState<StateSnapshotFile | null>(null);
+  const [finalSnapshotError, setFinalSnapshotError] = useState('');
+  const [isFinalSnapshotProcessing, setIsFinalSnapshotProcessing] = useState(false);
+  const [permutation, setPermutation] = useState<number[]>([]);
+  const [permutationError, setPermutationError] = useState('');
   
   const [isGeneratingProof, setIsGeneratingProof] = useState(false);
   const [proofGenerationStatus, setProofGenerationStatus] = useState('');
@@ -166,11 +172,39 @@ export default function UnfreezeStatePage() {
 
   useEffect(() => {
     setFinalBalances({});
-    setSnapshotFile(null);
-    setSnapshotData(null);
-    setSnapshotError('');
-    setIsSnapshotProcessing(false);
+    setContractRegisteredKeys([]);
+    setContractRegisteredKeysError('');
+    setIsContractDataLoading(false);
+    setFinalSnapshotFile(null);
+    setFinalSnapshotData(null);
+    setFinalSnapshotError('');
+    setIsFinalSnapshotProcessing(false);
+    setPermutation([]);
+    setPermutationError('');
   }, [selectedChannelId]);
+
+  useEffect(() => {
+    if (!isMounted || !isConnected || !isValidChannelId || !parsedChannelId) return;
+
+    setIsContractDataLoading(true);
+    setContractRegisteredKeysError('');
+
+    fetchChannelDataFromContract(String(parsedChannelId))
+      .then((channelData) => {
+        const keys = Array.isArray(channelData.registeredKeys)
+          ? channelData.registeredKeys.map((key) => String(key))
+          : [];
+        setContractRegisteredKeys(keys);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : 'Failed to fetch channel data from contract';
+        setContractRegisteredKeys([]);
+        setContractRegisteredKeysError(message);
+      })
+      .finally(() => {
+        setIsContractDataLoading(false);
+      });
+  }, [isMounted, isConnected, isValidChannelId, parsedChannelId]);
 
   const normalizeBalanceString = useCallback((value: string) => {
     const trimmed = value.trim();
@@ -269,26 +303,26 @@ export default function UnfreezeStatePage() {
   );
 
   useEffect(() => {
-    if (!snapshotData || !channelParticipants || !parsedChannelId) return;
+    if (!finalSnapshotData || !channelParticipants || !parsedChannelId) return;
     const participants = channelParticipants as string[];
     if (participants.length === 0) return;
 
-    setIsSnapshotProcessing(true);
-    setSnapshotError('');
+    setIsFinalSnapshotProcessing(true);
+    setFinalSnapshotError('');
 
-    resolveFinalBalancesFromSnapshot(snapshotData, participants, parsedChannelId)
+    resolveFinalBalancesFromSnapshot(finalSnapshotData, participants, parsedChannelId)
       .then((balances) => {
         setFinalBalances(balances);
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : 'Failed to resolve balances from snapshot';
         setFinalBalances({});
-        setSnapshotError(message);
+        setFinalSnapshotError(message);
       })
       .finally(() => {
-        setIsSnapshotProcessing(false);
+        setIsFinalSnapshotProcessing(false);
       });
-  }, [channelParticipants, parsedChannelId, resolveFinalBalancesFromSnapshot, snapshotData]);
+  }, [channelParticipants, parsedChannelId, resolveFinalBalancesFromSnapshot, finalSnapshotData]);
 
   const finalBalancesArray = useMemo(() => {
     if (!channelParticipants || !finalBalances) return [];
@@ -298,8 +332,8 @@ export default function UnfreezeStatePage() {
     });
   }, [channelParticipants, finalBalances, normalizeBalanceString]);
 
-  const displaySnapshotEntries = useMemo(() => {
-    if (!snapshotData || !snapshotData.registeredKeys) return [];
+  const displayFinalSnapshotEntries = useMemo(() => {
+    if (!finalSnapshotData || !finalSnapshotData.registeredKeys) return [];
 
     const formatShort = (value: bigint) => {
       const full = formatUnits(value, 18);
@@ -309,9 +343,9 @@ export default function UnfreezeStatePage() {
       return trimmed ? `${whole}.${trimmed}` : whole;
     };
 
-    const valuesByKey = buildStorageValueMap(snapshotData);
+    const valuesByKey = buildStorageValueMap(finalSnapshotData);
 
-    return snapshotData.registeredKeys.map((key) => {
+    return finalSnapshotData.registeredKeys.map((key) => {
       const normalizedKey = normalizeStorageKey(key);
       const value = valuesByKey.get(normalizedKey) ?? '0';
       const wei = BigInt(normalizeBalanceString(value) || '0');
@@ -321,7 +355,7 @@ export default function UnfreezeStatePage() {
         formatted: formatShort(wei),
       };
     });
-  }, [buildStorageValueMap, normalizeBalanceString, normalizeStorageKey, snapshotData]);
+  }, [buildStorageValueMap, normalizeBalanceString, normalizeStorageKey, finalSnapshotData]);
 
   const { write: verifyFinalBalances, data: verifyData } = useContractWrite({
     address: ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS,
@@ -364,82 +398,188 @@ export default function UnfreezeStatePage() {
     }
   };
 
-  const handleSnapshotFileUpload = async (file: File) => {
+  const parseSnapshotFile = useCallback(async (file: File) => {
+    const text = await file.text();
+    const jsonData = JSON.parse(text);
+
+    if (typeof jsonData !== 'object' || jsonData === null) {
+      throw new Error('Invalid JSON format');
+    }
+
+    if (!Array.isArray(jsonData.registeredKeys) || !Array.isArray(jsonData.storageEntries)) {
+      throw new Error('Invalid state_snapshot.json: missing registeredKeys or storageEntries');
+    }
+
+    if (typeof jsonData.stateRoot !== 'string') {
+      throw new Error('Invalid state_snapshot.json: missing stateRoot');
+    }
+
+    if (jsonData.channelId && parsedChannelId && Number(jsonData.channelId) !== Number(parsedChannelId)) {
+      throw new Error(`Snapshot channelId (${jsonData.channelId}) does not match selected channel (${parsedChannelId})`);
+    }
+
+    const registeredKeys = jsonData.registeredKeys.map((key: unknown) => {
+      if (typeof key !== 'string') {
+        throw new Error('Invalid registeredKeys entry in state_snapshot.json');
+      }
+      return key;
+    });
+
+    const storageEntries = jsonData.storageEntries.map((entry: any) => {
+      if (!entry || typeof entry !== 'object') {
+        throw new Error('Invalid storageEntries entry in state_snapshot.json');
+      }
+      if (typeof entry.key !== 'string' || typeof entry.value !== 'string') {
+        throw new Error('Invalid storageEntries entry in state_snapshot.json');
+      }
+      return { key: entry.key, value: entry.value };
+    });
+
+    const preAllocatedLeaves = Array.isArray(jsonData.preAllocatedLeaves)
+      ? jsonData.preAllocatedLeaves.map((leaf: any) => {
+          if (!leaf || typeof leaf !== 'object') return null;
+          if (typeof leaf.key !== 'string' || typeof leaf.value !== 'string') return null;
+          return { key: leaf.key, value: leaf.value };
+        }).filter(Boolean)
+      : undefined;
+
+    const snapshot: StateSnapshotFile = {
+      channelId: jsonData.channelId,
+      stateRoot: jsonData.stateRoot,
+      registeredKeys,
+      storageEntries,
+      contractAddress: jsonData.contractAddress,
+      preAllocatedLeaves
+    };
+
+    buildStorageValueMap(snapshot);
+
+    return snapshot;
+  }, [buildStorageValueMap, parsedChannelId]);
+
+  const handleFinalSnapshotFileUpload = async (file: File) => {
     try {
-      setSnapshotError('');
-      const text = await file.text();
-      const jsonData = JSON.parse(text);
-
-      if (typeof jsonData !== 'object' || jsonData === null) {
-        throw new Error('Invalid JSON format');
-      }
-
-      if (!Array.isArray(jsonData.registeredKeys) || !Array.isArray(jsonData.storageEntries)) {
-        throw new Error('Invalid state_snapshot.json: missing registeredKeys or storageEntries');
-      }
-
-      if (typeof jsonData.stateRoot !== 'string') {
-        throw new Error('Invalid state_snapshot.json: missing stateRoot');
-      }
-
-      if (jsonData.channelId && parsedChannelId && Number(jsonData.channelId) !== Number(parsedChannelId)) {
-        throw new Error(`Snapshot channelId (${jsonData.channelId}) does not match selected channel (${parsedChannelId})`);
-      }
-
-      const registeredKeys = jsonData.registeredKeys.map((key: unknown) => {
-        if (typeof key !== 'string') {
-          throw new Error('Invalid registeredKeys entry in state_snapshot.json');
-        }
-        return key;
-      });
-
-      const storageEntries = jsonData.storageEntries.map((entry: any) => {
-        if (!entry || typeof entry !== 'object') {
-          throw new Error('Invalid storageEntries entry in state_snapshot.json');
-        }
-        if (typeof entry.key !== 'string' || typeof entry.value !== 'string') {
-          throw new Error('Invalid storageEntries entry in state_snapshot.json');
-        }
-        return { key: entry.key, value: entry.value };
-      });
-
-      const preAllocatedLeaves = Array.isArray(jsonData.preAllocatedLeaves)
-        ? jsonData.preAllocatedLeaves.map((leaf: any) => {
-            if (!leaf || typeof leaf !== 'object') return null;
-            if (typeof leaf.key !== 'string' || typeof leaf.value !== 'string') return null;
-            return { key: leaf.key, value: leaf.value };
-          }).filter(Boolean)
-        : undefined;
-
-      const snapshot: StateSnapshotFile = {
-        channelId: jsonData.channelId,
-        stateRoot: jsonData.stateRoot,
-        registeredKeys,
-        storageEntries,
-        contractAddress: jsonData.contractAddress,
-        preAllocatedLeaves
-      };
-
-      buildStorageValueMap(snapshot);
-
-      setSnapshotFile(file);
-      setSnapshotData(snapshot);
+      setFinalSnapshotError('');
+      const snapshot = await parseSnapshotFile(file);
+      setFinalSnapshotFile(file);
+      setFinalSnapshotData(snapshot);
       setFinalBalances({});
+      setIsFinalSnapshotProcessing(false);
     } catch (error) {
-      console.error('Error parsing state_snapshot.json:', error);
-      setSnapshotError(error instanceof Error ? error.message : 'Invalid file format');
-      setSnapshotFile(null);
-      setSnapshotData(null);
+      console.error('Error parsing final state_snapshot.json:', error);
+      setFinalSnapshotError(error instanceof Error ? error.message : 'Invalid file format');
+      setFinalSnapshotFile(null);
+      setFinalSnapshotData(null);
       setFinalBalances({});
+      setIsFinalSnapshotProcessing(false);
     }
   };
+
+  const buildPermutation = useCallback(
+    (initialKeysRaw: string[], finalSnapshot: StateSnapshotFile) => {
+      const finalKeysRaw = finalSnapshot.registeredKeys;
+      const treeSize = initialKeysRaw.length;
+
+      if (treeSize === 0) {
+        throw new Error('No registeredKeys found for the selected channel.');
+      }
+
+      if (finalKeysRaw.length !== treeSize) {
+        throw new Error(`registeredKeys length mismatch between contract (${treeSize}) and final (${finalKeysRaw.length}) snapshots.`);
+      }
+
+      const initialKeys = initialKeysRaw.map((key) => normalizeStorageKey(String(key)));
+      const finalKeys = finalKeysRaw.map((key) => normalizeStorageKey(key));
+
+      const initialKeySet = new Set<string>();
+      const duplicateInitialKeys = new Set<string>();
+      initialKeys.forEach((key) => {
+        if (!key) {
+          duplicateInitialKeys.add('');
+          return;
+        }
+        if (initialKeySet.has(key)) {
+          duplicateInitialKeys.add(key);
+        }
+        initialKeySet.add(key);
+      });
+
+      if (duplicateInitialKeys.size > 0) {
+        throw new Error('Contract registeredKeys contain duplicate or empty entries.');
+      }
+
+      const finalIndexByKey = new Map<string, number>();
+      const duplicateFinalKeys = new Set<string>();
+      finalKeys.forEach((key, index) => {
+        if (!key) {
+          duplicateFinalKeys.add('');
+          return;
+        }
+        if (finalIndexByKey.has(key)) {
+          duplicateFinalKeys.add(key);
+          return;
+        }
+        finalIndexByKey.set(key, index);
+      });
+
+      if (duplicateFinalKeys.size > 0) {
+        throw new Error('Final snapshot contains duplicate or empty registeredKeys.');
+      }
+
+      const permutation: number[] = [];
+      const missingKeys: string[] = [];
+
+      initialKeys.forEach((key, index) => {
+        const finalIndex = finalIndexByKey.get(key);
+        if (finalIndex === undefined) {
+          missingKeys.push(String(initialKeysRaw[index]));
+          return;
+        }
+        permutation.push(finalIndex);
+      });
+
+      if (missingKeys.length > 0) {
+        throw new Error(`Final snapshot missing ${missingKeys.length} registeredKeys from contract data.`);
+      }
+
+      const uniqueIndices = new Set(permutation);
+      if (uniqueIndices.size !== treeSize) {
+        throw new Error('Permutation contains duplicate indices.');
+      }
+
+      const invalidIndex = permutation.find((value) => value < 0 || value >= treeSize);
+      if (invalidIndex !== undefined) {
+        throw new Error(`Permutation index out of range: ${invalidIndex}`);
+      }
+
+      return permutation;
+    },
+    [normalizeStorageKey]
+  );
+
+  useEffect(() => {
+    setPermutation([]);
+    setPermutationError('');
+    if (!finalSnapshotData || contractRegisteredKeys.length === 0) return;
+    try {
+      const nextPermutation = buildPermutation(contractRegisteredKeys, finalSnapshotData);
+      setPermutation(nextPermutation);
+    } catch (error) {
+      setPermutationError(error instanceof Error ? error.message : 'Failed to generate permutation');
+    }
+  }, [contractRegisteredKeys, finalSnapshotData, buildPermutation]);
+
+  const permutationArgs = useMemo(
+    () => permutation.map((value) => BigInt(value)),
+    [permutation]
+  );
 
   const generateGroth16Proof = async () => {
     if (!parsedChannelId || !channelParticipants || !channelTreeSize || !finalStateRoot) {
       throw new Error('Missing channel data');
     }
-    if (!snapshotData) {
-      throw new Error('Upload state_snapshot.json before generating proof');
+    if (!finalSnapshotData) {
+      throw new Error('Upload final state_snapshot.json before generating proof');
     }
 
     const treeSize = Number(channelTreeSize);
@@ -448,17 +588,17 @@ export default function UnfreezeStatePage() {
       throw new Error(`Unsupported tree size: ${treeSize}`);
     }
 
-    if (snapshotData.registeredKeys.length > treeSize) {
-      throw new Error(`registeredKeys length (${snapshotData.registeredKeys.length}) exceeds tree size ${treeSize}`);
+    if (finalSnapshotData.registeredKeys.length > treeSize) {
+      throw new Error(`registeredKeys length (${finalSnapshotData.registeredKeys.length}) exceeds tree size ${treeSize}`);
     }
 
     setProofGenerationStatus('Preparing state snapshot data...');
 
-    const valuesByKey = buildStorageValueMap(snapshotData);
-    const storageKeysL2MPT = snapshotData.registeredKeys.slice();
+    const valuesByKey = buildStorageValueMap(finalSnapshotData);
+    const storageKeysL2MPT = finalSnapshotData.registeredKeys.slice();
     const missingKeys: string[] = [];
 
-    const storageValues = snapshotData.registeredKeys.map((key) => {
+    const storageValues = finalSnapshotData.registeredKeys.map((key) => {
       const normalizedKey = normalizeStorageKey(key);
       const value = valuesByKey.get(normalizedKey);
       if (!value) {
@@ -487,7 +627,7 @@ export default function UnfreezeStatePage() {
     
     console.log('Circuit Input for State Snapshot:', circuitInput);
     console.log('Final State Root:', finalStateRoot);
-    console.log('Snapshot State Root:', snapshotData.stateRoot);
+    console.log('Snapshot State Root:', finalSnapshotData.stateRoot);
     
     const memoryReq = getMemoryRequirement(treeSize);
     const needsDownload = requiresExternalDownload(treeSize);
@@ -512,7 +652,7 @@ export default function UnfreezeStatePage() {
     console.log('Generated Public Signals:', result.publicSignals);
     console.log('Storage Keys L2 MPT:', storageKeysL2MPT);
     console.log('Storage Values:', storageValues);
-    console.log('State Snapshot:', snapshotData);
+    console.log('State Snapshot:', finalSnapshotData);
     console.log('Channel Participants:', channelParticipants);
     
     if (computedMerkleRoot.toLowerCase() !== expectedFinalStateRoot.toLowerCase()) {
@@ -531,7 +671,6 @@ export default function UnfreezeStatePage() {
         pB: result.proof.pB as [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint],
         pC: result.proof.pC as [bigint, bigint, bigint, bigint]
       },
-      publicInput: result.publicSignals.map(str => BigInt(str)),
     }
   };
 
@@ -541,7 +680,7 @@ export default function UnfreezeStatePage() {
     setIsGeneratingProof(true);
     
     try {
-      const {proof, publicInput} = await generateGroth16Proof();
+      const { proof } = await generateGroth16Proof();
       setGeneratedProof(proof);
       
       setProofGenerationStatus('Submitting to blockchain...');
@@ -550,6 +689,7 @@ export default function UnfreezeStatePage() {
         args: [
           BigInt(parsedChannelId!),
           finalBalancesArray,
+          permutationArgs,
           proof
         ]
       });
@@ -568,10 +708,15 @@ export default function UnfreezeStatePage() {
   const isFormValid = () => {
     return Boolean(
       channelInfo &&
-      snapshotData &&
+      contractRegisteredKeys.length > 0 &&
+      finalSnapshotData &&
       Object.keys(finalBalances).length > 0 &&
-      !snapshotError &&
-      !isSnapshotProcessing &&
+      !contractRegisteredKeysError &&
+      !isContractDataLoading &&
+      !finalSnapshotError &&
+      !permutationError &&
+      permutation.length === contractRegisteredKeys.length &&
+      !isFinalSnapshotProcessing &&
       (isFrostSignatureEnabled ? isSignatureVerified : true) && // Skip signature check if frost disabled
       Number(channelInfo[1]) === 3
     );
@@ -765,27 +910,48 @@ export default function UnfreezeStatePage() {
                     <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] shadow-lg shadow-[#4fc3f7]/20">
                       <div className="p-6 border-b border-[#4fc3f7]/30">
                         <h3 className="text-xl font-semibold text-white mb-2">State Snapshot</h3>
-                        <p className="text-gray-400">Upload state_snapshot.json to load balances for proof generation</p>
+                        <p className="text-gray-400">
+                          Registered keys are fetched from the contract. Upload the final state_snapshot.json for proof generation and balances.
+                        </p>
                       </div>
                       
                       <div className="p-6 space-y-6">
-                        <div className="max-w-2xl mx-auto">
-                          {!snapshotData ? (
+                        <div className="bg-[#0a1930]/50 border border-[#4fc3f7]/30 p-4">
+                          <div className="text-sm text-gray-400 mb-1">Registered keys from contract</div>
+                          {isContractDataLoading ? (
+                            <div className="text-[#4fc3f7] text-sm">Fetching channel data...</div>
+                          ) : (
+                            <div className="text-white text-sm">
+                              {contractRegisteredKeys.length > 0
+                                ? `${contractRegisteredKeys.length} registered keys loaded`
+                                : 'No registered keys loaded yet'}
+                            </div>
+                          )}
+                        </div>
+                        {contractRegisteredKeysError && (
+                          <div className="p-4 bg-red-900/20 border border-red-700">
+                            <p className="text-red-400 text-sm">{contractRegisteredKeysError}</p>
+                          </div>
+                        )}
+
+                        <div>
+                          <p className="text-sm text-gray-400 mb-2">Final state snapshot</p>
+                          {!finalSnapshotData ? (
                             <div className="border-2 border-dashed border-gray-600 p-8 text-center hover:border-[#4fc3f7] transition-colors">
                               <input
                                 type="file"
                                 accept=".json"
                                 onChange={(e) => {
                                   const file = e.target.files?.[0];
-                                  if (file) handleSnapshotFileUpload(file);
+                                  if (file) handleFinalSnapshotFileUpload(file);
                                 }}
                                 className="hidden"
-                                id="snapshot-file"
+                                id="final-snapshot-file"
                               />
-                              <label htmlFor="snapshot-file" className="cursor-pointer">
+                              <label htmlFor="final-snapshot-file" className="cursor-pointer">
                                 <Upload className="mx-auto h-16 w-16 mb-4 text-gray-400" />
-                                <p className="text-lg font-medium text-white mb-2">Click to upload state_snapshot.json</p>
-                                <p className="text-sm text-gray-400">Use the snapshot file generated from the channel state</p>
+                                <p className="text-lg font-medium text-white mb-2">Click to upload final state_snapshot.json</p>
+                                <p className="text-sm text-gray-400">Used for proof generation and balances</p>
                               </label>
                             </div>
                           ) : (
@@ -795,32 +961,32 @@ export default function UnfreezeStatePage() {
                                   <CheckCircle2 className="h-12 w-12 text-green-400" />
                                   <div>
                                     <h3 className="text-lg font-semibold text-green-200">
-                                      {snapshotFile ? snapshotFile.name : 'state_snapshot.json'}
+                                      {finalSnapshotFile ? finalSnapshotFile.name : 'state_snapshot.json'}
                                     </h3>
                                     <p className="text-sm text-green-400">
-                                      {isSnapshotProcessing
+                                      {isFinalSnapshotProcessing
                                         ? 'Resolving participant balances...'
-                                        : 'State snapshot loaded successfully'}
+                                        : 'Final snapshot loaded successfully'}
                                     </p>
-                                    {snapshotData.channelId !== undefined && (
+                                    {finalSnapshotData.channelId !== undefined && (
                                       <p className="text-xs text-green-300 mt-1">
-                                        Channel: {snapshotData.channelId}
+                                        Channel: {finalSnapshotData.channelId}
                                       </p>
                                     )}
-                                    {snapshotData.stateRoot && (
+                                    {finalSnapshotData.stateRoot && (
                                       <p className="text-xs text-green-300 mt-1 break-all">
-                                        State root: {snapshotData.stateRoot}
+                                        State root: {finalSnapshotData.stateRoot}
                                       </p>
                                     )}
                                   </div>
                                 </div>
                                 <button
                                   onClick={() => {
-                                    setSnapshotFile(null);
-                                    setSnapshotData(null);
+                                    setFinalSnapshotFile(null);
+                                    setFinalSnapshotData(null);
                                     setFinalBalances({});
-                                    setSnapshotError('');
-                                    setIsSnapshotProcessing(false);
+                                    setFinalSnapshotError('');
+                                    setIsFinalSnapshotProcessing(false);
                                   }}
                                   className="text-red-400 hover:text-red-600 p-2"
                                 >
@@ -829,11 +995,11 @@ export default function UnfreezeStatePage() {
                               </div>
                               
                               <div className="text-sm text-gray-300">
-                                <p>Registered keys: {snapshotData.registeredKeys.length}</p>
-                                <p>Storage entries: {snapshotData.storageEntries.length}</p>
+                                <p>Registered keys: {finalSnapshotData.registeredKeys.length}</p>
+                                <p>Storage entries: {finalSnapshotData.storageEntries.length}</p>
                                 <p>Participants with balances: {Object.keys(finalBalances).length}</p>
                               </div>
-                              {displaySnapshotEntries.length > 0 && (
+                              {displayFinalSnapshotEntries.length > 0 && (
                                 <div className="mt-4 border border-green-700/50">
                                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 px-3 py-2 text-xs uppercase text-green-300/80 bg-green-900/30">
                                     <div>Registered Key</div>
@@ -841,7 +1007,7 @@ export default function UnfreezeStatePage() {
                                     <div className="text-right">Value (token)</div>
                                   </div>
                                   <div className="max-h-64 overflow-auto divide-y divide-green-800/40">
-                                    {displaySnapshotEntries.map((row) => (
+                                    {displayFinalSnapshotEntries.map((row) => (
                                       <div key={row.key} className="grid grid-cols-1 sm:grid-cols-3 gap-2 px-3 py-2 text-xs text-green-100">
                                         <div className="font-mono break-all">{row.key}</div>
                                         <div className="font-mono text-right break-all">{row.value}</div>
@@ -853,12 +1019,22 @@ export default function UnfreezeStatePage() {
                               )}
                             </div>
                           )}
-                          {snapshotError && (
+                          {finalSnapshotError && (
                             <div className="mt-4 p-4 bg-red-900/20 border border-red-700">
-                              <p className="text-red-400 text-sm">{snapshotError}</p>
+                              <p className="text-red-400 text-sm">{finalSnapshotError}</p>
                             </div>
                           )}
                         </div>
+                        {permutationError && (
+                          <div className="p-4 bg-red-900/20 border border-red-700">
+                            <p className="text-red-400 text-sm">{permutationError}</p>
+                          </div>
+                        )}
+                        {!permutationError && contractRegisteredKeys.length > 0 && finalSnapshotData && permutation.length > 0 && (
+                          <div className="p-4 bg-[#4fc3f7]/10 border border-[#4fc3f7]/30 text-sm text-[#4fc3f7]">
+                            Permutation generated: {permutation.length} entries.
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
