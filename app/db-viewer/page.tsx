@@ -22,7 +22,9 @@ function DbViewerContent() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set([""]));
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
+    new Set([""])
+  );
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
 
   const fetchData = async () => {
@@ -83,11 +85,18 @@ function DbViewerContent() {
         alert("Delete failed: " + result.error);
       }
     } catch (err) {
-      alert("Delete failed: " + (err instanceof Error ? err.message : "Unknown error"));
+      alert(
+        "Delete failed: " +
+          (err instanceof Error ? err.message : "Unknown error")
+      );
     }
   };
 
-  const renderValue = (value: any, path: string, depth: number = 0): JSX.Element => {
+  const renderValue = (
+    value: any,
+    path: string,
+    depth: number = 0
+  ): JSX.Element => {
     if (value === null || value === undefined) {
       return <span className="text-gray-500 italic">null</span>;
     }
@@ -98,7 +107,9 @@ function DbViewerContent() {
         return (
           <span className="text-green-400">
             &quot;{value.substring(0, 100)}...&quot;
-            <span className="text-gray-500 text-xs ml-2">({value.length} chars)</span>
+            <span className="text-gray-500 text-xs ml-2">
+              ({value.length} chars)
+            </span>
           </span>
         );
       }
@@ -146,7 +157,7 @@ function DbViewerContent() {
     if (typeof value === "object") {
       const isExpanded = expandedPaths.has(path);
       const keys = Object.keys(value);
-      
+
       return (
         <div>
           <div className="flex items-center gap-2">
@@ -189,7 +200,11 @@ function DbViewerContent() {
                 <div key={key} className="flex items-start gap-2 py-0.5">
                   <span className="text-amber-300 shrink-0">{key}:</span>
                   <div className="flex-1">
-                    {renderValue(value[key], path ? `${path}/${key}` : key, depth + 1)}
+                    {renderValue(
+                      value[key],
+                      path ? `${path}/${key}` : key,
+                      depth + 1
+                    )}
                   </div>
                 </div>
               ))}
@@ -224,7 +239,9 @@ function DbViewerContent() {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <Database className="w-8 h-8 text-cyan-400" />
-            <h1 className="text-2xl font-bold text-white">Local Database Viewer</h1>
+            <h1 className="text-2xl font-bold text-white">
+              Local Database Viewer
+            </h1>
           </div>
           <Button
             onClick={fetchData}
@@ -239,7 +256,10 @@ function DbViewerContent() {
 
         <div className="bg-[#0a1628] border border-gray-700 rounded-lg p-4">
           <div className="text-sm text-gray-400 mb-4">
-            📁 Data file: <code className="bg-gray-800 px-2 py-0.5 rounded">data/local-db.json</code>
+            📁 Data file:{" "}
+            <code className="bg-gray-800 px-2 py-0.5 rounded">
+              data/local-db.json
+            </code>
           </div>
 
           {loading && (
@@ -281,7 +301,13 @@ function DbViewerContent() {
 // Wrapper with Suspense for useSearchParams
 export default function DbViewerPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen">
+          Loading...
+        </div>
+      }
+    >
       <DbViewerContent />
     </Suspense>
   );
