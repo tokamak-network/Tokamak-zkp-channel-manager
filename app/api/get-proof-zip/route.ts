@@ -45,7 +45,18 @@ export async function GET(request: NextRequest) {
     // Check if it's a file path (new format) or base64 content (legacy)
     if (zipMetadata.filePath) {
       // New format: read from file
-      const absolutePath = path.join(process.cwd(), zipMetadata.filePath);
+      // Security: Validate path to prevent directory traversal attacks
+      const absolutePath = path.resolve(process.cwd(), zipMetadata.filePath);
+      const uploadsDir = path.join(process.cwd(), "data", "uploads");
+      
+      // Ensure the resolved path is within the allowed uploads directory
+      if (!absolutePath.startsWith(uploadsDir)) {
+        console.error("Path traversal attempt detected:", zipMetadata.filePath);
+        return NextResponse.json(
+          { error: "Invalid file path" },
+          { status: 403 }
+        );
+      }
       
       try {
         const fileBuffer = await fs.readFile(absolutePath);

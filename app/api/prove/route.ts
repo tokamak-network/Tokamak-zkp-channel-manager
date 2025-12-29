@@ -17,6 +17,19 @@ interface ProveRequest {
   outputPath?: string; // Optional output path (defaults to temp directory)
 }
 
+// Security: Validate that a path contains no shell metacharacters
+function validatePathSecurity(inputPath: string): void {
+  // Check for shell metacharacters that could enable command injection
+  const dangerousChars = /[;&|`$(){}[\]<>\\!*?~'"]/;
+  if (dangerousChars.test(inputPath)) {
+    throw new Error(`Invalid characters in path: ${inputPath}`);
+  }
+  // Check for path traversal attempts
+  if (inputPath.includes('..')) {
+    throw new Error(`Path traversal not allowed: ${inputPath}`);
+  }
+}
+
 async function assertPathExists(targetPath: string, kind: "file" | "dir") {
   try {
     const stat = await fs.stat(targetPath);
@@ -46,6 +59,19 @@ export async function POST(req: Request) {
     if (!qapPath || !synthesizerPath || !setupPath) {
       return NextResponse.json(
         { error: "Missing required fields: qapPath, synthesizerPath, setupPath" },
+        { status: 400 }
+      );
+    }
+
+    // Security: Validate paths for command injection
+    try {
+      validatePathSecurity(qapPath);
+      validatePathSecurity(synthesizerPath);
+      validatePathSecurity(setupPath);
+      if (outputPath) validatePathSecurity(outputPath);
+    } catch (err) {
+      return NextResponse.json(
+        { error: "Invalid path", details: err instanceof Error ? err.message : "Path validation failed" },
         { status: 400 }
       );
     }
