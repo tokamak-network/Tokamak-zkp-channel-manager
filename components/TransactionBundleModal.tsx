@@ -35,13 +35,13 @@ import {
   getCurrentStateNumber,
   updateData,
 } from "@/lib/db-client";
-import type {
-  Channel,
-  StateSnapshot,
-  UserBalance,
-  Participant,
-} from "@/lib/firebase-types";
 import { createPublicClient, http } from "viem";
+
+// Local type definitions (previously from firebase-types)
+type Channel = any;
+type StateSnapshot = any;
+type UserBalance = any;
+type Participant = any;
 import { sepolia } from "viem/chains";
 import {
   ROLLUP_BRIDGE_CORE_ADDRESS,
