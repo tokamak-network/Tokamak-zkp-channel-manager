@@ -21,20 +21,27 @@ interface SynthesizeL2TransferRequest {
   amount: string;
   useSepolia?: boolean;
   previousStateSnapshot?: any; // State snapshot JSON object from latest verified proof
+  includeProof?: boolean; // If true, also run prove binary and include proof.json
 }
 
 async function assertPathExists(targetPath: string, kind: "file" | "dir") {
   try {
     const stat = await fs.stat(targetPath);
     if (kind === "file" && !stat.isFile()) {
-      throw new Error(`Required file is not a file: ${targetPath}. Install Tokamak-zk-EVM first.`);
+      throw new Error(
+        `Required file is not a file: ${targetPath}. Install Tokamak-zk-EVM first.`
+      );
     }
     if (kind === "dir" && !stat.isDirectory()) {
-      throw new Error(`Required directory is not a directory: ${targetPath}. Install Tokamak-zk-EVM first.`);
+      throw new Error(
+        `Required directory is not a directory: ${targetPath}. Install Tokamak-zk-EVM first.`
+      );
     }
   } catch (err: any) {
     if (err?.code === "ENOENT") {
-      throw new Error(`Required ${kind} not found: ${targetPath}. Install Tokamak-zk-EVM first.`);
+      throw new Error(
+        `Required ${kind} not found: ${targetPath}. Install Tokamak-zk-EVM first.`
+      );
     }
     throw new Error(`Failed to access required ${kind}: ${targetPath}`);
   }
@@ -44,15 +51,27 @@ export async function POST(req: Request) {
   const distRoot = path.join(process.cwd(), "Tokamak-Zk-EVM", "dist");
   const outputDir = path.join(distRoot, "outputs", `transfer-${Date.now()}`);
   let previousStateSnapshotPath: string | null = null;
-  
+
   try {
     const body: SynthesizeL2TransferRequest = await req.json();
-    const { channelId, initTx, signature, recipient, amount, useSepolia = true, previousStateSnapshot } = body;
+    const {
+      channelId,
+      initTx,
+      signature,
+      recipient,
+      amount,
+      useSepolia = true,
+      previousStateSnapshot,
+      includeProof = false,
+    } = body;
 
     // Validate inputs
     if (!channelId || !initTx || !signature || !recipient || !amount) {
       return NextResponse.json(
-        { error: "Missing required fields: channelId, initTx, signature, recipient, amount" },
+        {
+          error:
+            "Missing required fields: channelId, initTx, signature, recipient, amount",
+        },
         { status: 400 }
       );
     }
@@ -69,18 +88,26 @@ export async function POST(req: Request) {
 
     // If previousStateSnapshot is provided, save it to a temporary file
     if (previousStateSnapshot) {
-      previousStateSnapshotPath = path.join(outputDir, "previous_state_snapshot.json");
+      previousStateSnapshotPath = path.join(
+        outputDir,
+        "previous_state_snapshot.json"
+      );
       await fs.writeFile(
         previousStateSnapshotPath,
         JSON.stringify(previousStateSnapshot, null, 2),
         "utf-8"
       );
-      console.log("Saved previous state snapshot to:", previousStateSnapshotPath);
+      console.log(
+        "Saved previous state snapshot to:",
+        previousStateSnapshotPath
+      );
     }
 
     // Build RPC URL from environment variable
     if (!ALCHEMY_KEY) {
-      throw new Error("NEXT_PUBLIC_ALCHEMY_API_KEY environment variable is not set");
+      throw new Error(
+        "NEXT_PUBLIC_ALCHEMY_API_KEY environment variable is not set"
+      );
     }
     const rpcUrl = `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`;
 
@@ -91,20 +118,27 @@ export async function POST(req: Request) {
     await assertPathExists(libraryPath, "dir");
     const args = [
       "l2-transfer",
-      "--channel-id", channelId,
-      "--init-tx", initTx,
-      "--sender-key", senderKey,
-      "--recipient", recipient,
-      "--amount", amount,
-      "--output", outputDir,
-      "--rpc-url", rpcUrl,
+      "--channel-id",
+      channelId,
+      "--init-tx",
+      initTx,
+      "--sender-key",
+      senderKey,
+      "--recipient",
+      recipient,
+      "--amount",
+      amount,
+      "--output",
+      outputDir,
+      "--rpc-url",
+      rpcUrl,
     ];
-    
+
     // Add --previous-state option if previousStateSnapshot is provided
     if (previousStateSnapshotPath) {
       args.push("--previous-state", previousStateSnapshotPath);
     }
-    
+
     if (useSepolia) {
       args.push("--sepolia");
     }
@@ -128,23 +162,105 @@ export async function POST(req: Request) {
       console.warn("Synthesizer stderr:", stderr);
     }
 
+    // If includeProof is true, run the prove binary
+    let proveOutputDir: string | null = null;
+    if (includeProof) {
+      console.log("Running prove binary...");
+
+      const proveBinaryPath = path.join(distRoot, "bin", "prove");
+      const qapPath = path.join(
+        distRoot,
+        "resource",
+        "qap-compiler",
+        "library"
+      );
+      const setupPath = path.join(distRoot, "resource", "setup", "output");
+      proveOutputDir = path.join(outputDir, "prove_output");
+
+      await assertPathExists(proveBinaryPath, "file");
+      await assertPathExists(qapPath, "dir");
+      await assertPathExists(setupPath, "dir");
+
+      // Create prove output directory
+      await fs.mkdir(proveOutputDir, { recursive: true });
+
+      // prove binary usage: <QAP_PATH> <SYNTHESIZER_PATH> <SETUP_PATH> <OUT_PATH>
+      const proveCommand = `"${proveBinaryPath}" "${qapPath}" "${outputDir}" "${setupPath}" "${proveOutputDir}"`;
+      console.log("Executing prove command:", proveCommand);
+
+      const { stdout: proveStdout, stderr: proveStderr } = await execAsync(
+        proveCommand,
+        {
+          cwd: distRoot,
+          timeout: 300000, // 5 minutes timeout
+          env: {
+            ...process.env,
+            DYLD_LIBRARY_PATH: libraryPath,
+            // ICICLE_BACKEND_INSTALL_DIR: path.join(libraryPath, "backend"),
+          },
+        }
+      );
+
+      console.log("Prove stdout:", proveStdout);
+      if (proveStderr) {
+        console.warn("Prove stderr:", proveStderr);
+      }
+    }
+
     // Read output files
     const outputFiles = await fs.readdir(outputDir);
-    
+
     if (outputFiles.length === 0) {
       throw new Error("No output files generated by synthesizer");
     }
 
+    // Files to exclude from ZIP (too large and not needed for verification)
+    const excludeFiles = ["placementVariables.json"];
+
     // Create ZIP file with all outputs
     const zip = new JSZip();
-    
+
     for (const fileName of outputFiles) {
+      // Skip excluded files
+      if (excludeFiles.includes(fileName)) {
+        console.log(`Skipping large file: ${fileName}`);
+        continue;
+      }
+
       const filePath = path.join(outputDir, fileName);
       const stat = await fs.stat(filePath);
-      
+
       if (stat.isFile()) {
         const content = await fs.readFile(filePath);
         zip.file(fileName, content);
+      }
+    }
+
+    // If prove was run, add proof output files to ZIP
+    if (proveOutputDir) {
+      try {
+        const proveOutputFiles = await fs.readdir(proveOutputDir);
+        let addedCount = 0;
+        for (const fileName of proveOutputFiles) {
+          // Skip excluded files
+          if (excludeFiles.includes(fileName)) {
+            console.log(`Skipping large file from prove output: ${fileName}`);
+            continue;
+          }
+
+          const filePath = path.join(proveOutputDir, fileName);
+          const stat = await fs.stat(filePath);
+
+          if (stat.isFile()) {
+            const content = await fs.readFile(filePath);
+            // Add proof files directly to root of ZIP
+            zip.file(fileName, content);
+            addedCount++;
+          }
+        }
+        console.log(`Added ${addedCount} proof files to ZIP`);
+      } catch (err) {
+        console.error("Error reading prove output files:", err);
       }
     }
 
@@ -159,6 +275,7 @@ export async function POST(req: Request) {
       network: useSepolia ? "sepolia" : "mainnet",
       rpcUrl,
       generatedAt: new Date().toISOString(),
+      proofGenerated: includeProof,
     };
     zip.file("transaction-info.json", JSON.stringify(transactionInfo, null, 2));
 
@@ -190,7 +307,7 @@ export async function POST(req: Request) {
     } catch (cleanupErr) {
       console.warn("Failed to clean up output directory:", cleanupErr);
     }
-    
+
     // Clean up previous state snapshot file if it was created
     if (previousStateSnapshotPath) {
       try {
@@ -203,7 +320,7 @@ export async function POST(req: Request) {
     // Extract meaningful error message from stderr if available
     let errorMessage = "Failed to synthesize L2 transfer";
     let errorDetails = error instanceof Error ? error.message : String(error);
-    
+
     if (error?.stderr) {
       // Extract the actual error message from stderr
       const stderrStr = String(error.stderr);

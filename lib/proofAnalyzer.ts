@@ -58,11 +58,18 @@ function combine16ByteChunks(lower: string, upper: string): string {
 /**
  * Extract Merkle roots from instance.json
  * 
- * According to instance_description.json:
+ * According to updated a_pub_user_description:
+ * - a_pub_user[0]: Resulting Merkle tree root hash (lower 16 bytes)
+ * - a_pub_user[1]: Resulting Merkle tree root hash (upper 16 bytes)
+ * - a_pub_user[2-7]: (empty/reserved)
  * - a_pub_user[8]: Initial Merkle tree root hash (lower 16 bytes)
  * - a_pub_user[9]: Initial Merkle tree root hash (upper 16 bytes)
- * - a_pub_user[10]: Resulting Merkle tree root hash (lower 16 bytes)
- * - a_pub_user[11]: Resulting Merkle tree root hash (upper 16 bytes)
+ * - a_pub_user[10]: EdDSA signature of transaction (lower 16 bytes)
+ * - a_pub_user[11]: EdDSA signature of transaction (upper 16 bytes)
+ * - a_pub_user[12]: Contract address to call (lower 16 bytes)
+ * - a_pub_user[13]: Contract address to call (upper 16 bytes)
+ * - a_pub_user[14]: Selector for a function to call (lower 16 bytes)
+ * - a_pub_user[15]: Selector for a function to call (upper 16 bytes)
  */
 export function extractMerkleRoots(instanceData: InstanceData): {
   initial: string;
@@ -70,11 +77,11 @@ export function extractMerkleRoots(instanceData: InstanceData): {
 } {
   const { a_pub_user } = instanceData;
   
+  // Resulting root: index 0 (lower) and 1 (upper)
+  const resultingRoot = combine16ByteChunks(a_pub_user[0], a_pub_user[1]);
+  
   // Initial root: index 8 (lower) and 9 (upper)
   const initialRoot = combine16ByteChunks(a_pub_user[8], a_pub_user[9]);
-  
-  // Resulting root: index 10 (lower) and 11 (upper)
-  const resultingRoot = combine16ByteChunks(a_pub_user[10], a_pub_user[11]);
   
   return {
     initial: initialRoot,
@@ -98,7 +105,7 @@ export function extractParticipantBalances(
 }> {
   return snapshotData.storageEntries.map((entry) => {
     // Convert hex balance to decimal
-    const balanceWei = BigInt(entry.value);
+    const balanceWei = entry.value === '0x' ? 0n : BigInt(entry.value);
     const balanceEth = Number(balanceWei) / Math.pow(10, decimals);
     
     return {

@@ -104,6 +104,13 @@ export default function ProofDetailPage() {
   const [symbol, setSymbol] = useState('TOKEN');
   const [proofAnalysis, setProofAnalysis] = useState<ProofAnalysisResult | null>(null);
   const [isAnalyzingProof, setIsAnalyzingProof] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<{
+    verified: boolean;
+    message: string;
+    output?: string;
+    error?: string;
+  } | null>(null);
 
   // Fetch proof data from Firebase
   useEffect(() => {
@@ -657,17 +664,95 @@ export default function ProofDetailPage() {
               </div>
             </div>
 
+            {/* Verification Result */}
+            {verifyResult && (
+              <div className={`mb-4 p-4 rounded-lg border ${
+                verifyResult.verified 
+                  ? 'bg-green-500/10 border-green-500/30' 
+                  : 'bg-red-500/10 border-red-500/30'
+              }`}>
+                <div className="flex items-center gap-2 mb-2">
+                  {verifyResult.verified ? (
+                    <CheckCircle2 className="w-5 h-5 text-green-400" />
+                  ) : (
+                    <XCircle className="w-5 h-5 text-red-400" />
+                  )}
+                  <span className={`font-medium ${verifyResult.verified ? 'text-green-400' : 'text-red-400'}`}>
+                    {verifyResult.message}
+                  </span>
+                </div>
+                {verifyResult.error && (
+                  <p className="text-sm text-red-300 mt-1">{verifyResult.error}</p>
+                )}
+                {verifyResult.output && (
+                  <details className="mt-2">
+                    <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-300">
+                      Show verification output
+                    </summary>
+                    <pre className="mt-2 p-2 bg-black/30 rounded text-xs text-gray-400 overflow-auto max-h-32">
+                      {verifyResult.output}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Verify Button */}
               <button
-                onClick={() => {
-                  // TODO: Implement verification logic
-                  window.alert('This will execute the proof verification process');
+                onClick={async () => {
+                  if (!proof.zipFile?.content) {
+                    window.alert('ZIP file not found. The proof must have a ZIP file with proof.json to verify.');
+                    return;
+                  }
+
+                  setIsVerifying(true);
+                  setVerifyResult(null);
+
+                  try {
+                    const response = await fetch('/api/verify-proof-binary', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        proofZipBase64: proof.zipFile.content,
+                      }),
+                    });
+
+                    const result = await response.json();
+                    setVerifyResult({
+                      verified: result.verified,
+                      message: result.message || (result.verified ? 'Verification successful' : 'Verification failed'),
+                      output: result.output,
+                      error: result.error || result.details,
+                    });
+                  } catch (error) {
+                    setVerifyResult({
+                      verified: false,
+                      message: 'Verification failed',
+                      error: error instanceof Error ? error.message : 'Unknown error occurred',
+                    });
+                  } finally {
+                    setIsVerifying(false);
+                  }
                 }}
-                className="flex items-center justify-center gap-2 px-6 py-4 bg-green-600 hover:bg-green-500 text-white rounded transition-all hover:shadow-lg hover:shadow-green-500/30 font-medium"
+                disabled={isVerifying || !proof.zipFile?.content}
+                className={`flex items-center justify-center gap-2 px-6 py-4 rounded transition-all font-medium ${
+                  isVerifying || !proof.zipFile?.content
+                    ? 'bg-gray-600 cursor-not-allowed text-gray-300'
+                    : 'bg-green-600 hover:bg-green-500 text-white hover:shadow-lg hover:shadow-green-500/30'
+                }`}
               >
-                <Play className="w-5 h-5" />
-                <span>Verify Proof</span>
+                {isVerifying ? (
+                  <>
+                    <LoadingSpinner size="sm" />
+                    <span>Verifying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-5 h-5" />
+                    <span>Verify Proof</span>
+                  </>
+                )}
               </button>
 
               {/* Download All Files (ZIP) */}

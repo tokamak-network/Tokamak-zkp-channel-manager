@@ -43,7 +43,14 @@ export async function fetchChannelDataFromContract(channelId: string) {
       args: [BigInt(channelId)],
     });
 
-    // 5. Get MPT keys for each participant
+    // Get preallocated keys
+    const preAllocatedKeys = await readContract({
+      address: ROLLUP_BRIDGE_ADDRESS,
+      abi: ROLLUP_BRIDGE_ABI,
+      functionName: "getPreAllocatedKeys",
+      args: [allowedTokens],
+    });
+    // Get MPT keys for each participant
     const mptKeyList: string[] = [];
     for (const participant of participants as string[]) {
       const mptKey = await readContract({
@@ -53,9 +60,10 @@ export async function fetchChannelDataFromContract(channelId: string) {
         args: [BigInt(channelId), participant as `0x${string}`],
       });
       if (mptKey && BigInt(mptKey as bigint) > 0n) {
-        mptKeyList.push((mptKey as bigint).toString());
+        mptKeyList.push((mptKey as bigint).toString(16));
       }
     }
+    const registeredKeys = [...preAllocatedKeys, ...mptKeyList];
 
     // 6. Get channel tree size (merkle tree depth)
     const treeSize = await readContract({
@@ -68,7 +76,7 @@ export async function fetchChannelDataFromContract(channelId: string) {
     return {
       // From contract
       initialMerkleRoot: channelInfo[3], // initialRoot from getChannelInfo
-      mptKeyList,
+      registeredKeys,
       groupPublicKey: {
         x: (pkx as bigint).toString(),
         y: (pky as bigint).toString(),

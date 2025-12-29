@@ -42,23 +42,36 @@ export async function POST(request: NextRequest) {
         )
       : [];
     
-    // Calculate subNumber based on existing submissions
-    // Note: This is not fully atomic, but the transaction below will help prevent duplicates
-    let subNumber = currentSequenceProofs.length + 1;
-
-    // Use a transaction to atomically increment a counter for this sequence
-    // This provides better race condition protection
+    // Calculate subNumber based on ACTUAL existing submissions
+    // Find the highest existing subNumber for this sequence and add 1
+    let maxSubNumber = 0;
+    if (currentSequenceProofs.length > 0) {
+      for (const proof of currentSequenceProofs) {
+        const sub = (proof as any).subNumber || 1;
+        if (sub > maxSubNumber) {
+          maxSubNumber = sub;
+        }
+      }
+    }
+    
+    // Use a transaction to atomically reserve the next subNumber
+    // The counter is based on actual data, not a separate counter
     const sequenceCounterRef = ref(realtimeDb, `channels/${channelId}/sequenceCounters/${proofNumber}`);
     
     const counterResult = await runTransaction(sequenceCounterRef, (current) => {
-      if (current === null) {
-        return 1; // First submission for this sequence
+      // Calculate the correct next subNumber based on actual proofs
+      const nextSubNumber = maxSubNumber + 1;
+      
+      // If current counter is behind actual data, reset it
+      if (current === null || (current as number) < nextSubNumber) {
+        return nextSubNumber;
       }
+      // Otherwise increment normally (handles concurrent submissions)
       return (current as number) + 1;
     });
 
     // Use the transaction result as the authoritative subNumber
-    subNumber = counterResult.snapshot.val() as number;
+    const subNumber = counterResult.snapshot.val() as number;
 
     // Generate proof IDs
     const proofId =

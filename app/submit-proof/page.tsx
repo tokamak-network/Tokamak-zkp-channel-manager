@@ -116,15 +116,15 @@ export default function SubmitProofPage() {
   }, [isFrostSignatureEnabled]);
 
   
-  // Compute final state root from the last proof's a_pub_user[10] (lower) and a_pub_user[11] (upper)
+  // Compute final state root from the last proof's a_pub_user[0] (lower) and a_pub_user[1] (upper)
   const finalStateRoot = useMemo(() => {
     if (uploadedProofs.length === 0) return null;
     const lastProof = uploadedProofs[uploadedProofs.length - 1];
     if (lastProof.data.publicInputs.length < 12) return null;
     
-    // a_pub_user[10] = lower 16 bytes, a_pub_user[11] = upper 16 bytes of resulting merkle root
-    const lowerBytes = lastProof.data.publicInputs[10];
-    const upperBytes = lastProof.data.publicInputs[11];
+    // a_pub_user[0] = lower 16 bytes, a_pub_user[1] = upper 16 bytes of resulting merkle root
+    const lowerBytes = lastProof.data.publicInputs[0];
+    const upperBytes = lastProof.data.publicInputs[1];
     
     // Combine: upper (16 bytes) + lower (16 bytes) = 32 bytes
     const lowerHex = lowerBytes.toString(16).padStart(32, '0');

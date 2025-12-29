@@ -469,6 +469,7 @@ export const ROLLUP_BRIDGE_PROOF_MANAGER_ABI = [
     inputs: [
       { name: 'channelId', type: 'uint256' },
       { name: 'finalBalances', type: 'uint256[]' },
+      { name: 'permutation', type: 'uint256[]' },
       {
         name: 'groth16Proof',
         type: 'tuple',
