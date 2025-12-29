@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     await fs.mkdir(channelDir, { recursive: true });
 
     // Save ZIP file to disk
-    const fileName = `${proofId}.zip`;
+    const fileName = `${proofId.replace(/[^a-zA-Z0-9_.-]/g, '')}.zip`;
     const filePath = path.join(channelDir, fileName);
     const arrayBuffer = await file.arrayBuffer();
     await fs.writeFile(filePath, Buffer.from(arrayBuffer));
