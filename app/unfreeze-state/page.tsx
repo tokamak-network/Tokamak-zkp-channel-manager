@@ -16,7 +16,7 @@ import {
   getGroth16VerifierAddress
 } from '@/lib/contracts';
 import { generateClientSideProof, isClientProofGenerationSupported, getMemoryRequirement, requiresExternalDownload, getDownloadSize } from '@/lib/clientProofGeneration';
-import { getData, getLatestSnapshot } from '@/lib/realtime-db-helpers';
+import { getData, getLatestSnapshot, getProofZipContent } from '@/lib/db-client';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
 import { ALCHEMY_KEY } from '@/lib/constants';
 import { Unlock, Link, FileText, CheckCircle2, XCircle, Calculator, Download, Upload, Settings, RefreshCw } from 'lucide-react';
@@ -240,9 +240,24 @@ export default function UnfreezeStatePage() {
 
         const latestProof = verifiedProofsArray[verifiedProofsArray.length - 1];
 
-        if (latestProof?.zipFile?.content) {
+        // Get ZIP content (supports both file-based and legacy formats)
+        let zipContent: string | null = null;
+        if (latestProof?.zipFile?.filePath) {
+          // New format: fetch from API
+          const result = await getProofZipContent(
+            String(selectedChannel),
+            latestProof.key || latestProof.proofId?.replace('#', '-') || '',
+            'verifiedProofs'
+          );
+          zipContent = result?.content || null;
+        } else if (latestProof?.zipFile?.content) {
+          // Legacy format: use content directly
+          zipContent = latestProof.zipFile.content;
+        }
+
+        if (zipContent) {
           const { parseProofFromBase64Zip, analyzeProof } = await import('@/lib/proofAnalyzer');
-          const parsed = await parseProofFromBase64Zip(latestProof.zipFile.content);
+          const parsed = await parseProofFromBase64Zip(zipContent);
 
           if (parsed.instance && parsed.snapshot) {
             const analysis = analyzeProof(parsed.instance, parsed.snapshot, 18);

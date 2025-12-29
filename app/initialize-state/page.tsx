@@ -30,7 +30,7 @@ import {
   getDownloadSize,
 } from "@/lib/clientProofGeneration";
 import { useUserRolesDynamic } from "@/hooks/useUserRolesDynamic";
-import { updateData } from "@/lib/realtime-db-helpers";
+import { updateData } from "@/lib/db-client";
 import { ALCHEMY_KEY } from "@/lib/constants";
 import {
   Settings,

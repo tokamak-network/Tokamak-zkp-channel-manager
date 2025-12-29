@@ -34,7 +34,7 @@ import {
   getData,
   getCurrentStateNumber,
   updateData,
-} from "@/lib/realtime-db-helpers";
+} from "@/lib/db-client";
 import type {
   Channel,
   StateSnapshot,
@@ -132,6 +132,11 @@ export function TransactionBundleModal({
     setDownloadComplete(false);
 
     try {
+      // Fetch state number first (independent of other data)
+      const stateNumber = await getCurrentStateNumber(channelId);
+      console.log("fetchBundleData: stateNumber =", stateNumber);
+      setCurrentStateNumber(stateNumber);
+
       const [channel, snapshot, balances, firebaseParticipants] =
         await Promise.all([
           getChannel(channelId),
@@ -172,9 +177,6 @@ export function TransactionBundleModal({
         }
       }
 
-      // Get current state number from verified proofs using shared utility
-      const stateNumber = await getCurrentStateNumber(channelId);
-      setCurrentStateNumber(stateNumber);
       setBundleData({
         channel,
         snapshot,
@@ -184,6 +186,10 @@ export function TransactionBundleModal({
     } catch (err) {
       console.error("Failed to fetch bundle data:", err);
       setError("Failed to load channel data");
+      // Still set state number to 0 if there's an error
+      if (currentStateNumber === null) {
+        setCurrentStateNumber(0);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -941,7 +947,7 @@ export function TransactionBundleModal({
                       To Address
                     </span>
                     <span className="text-white font-mono text-sm">
-                      {toAddress}
+                      {toAddress.slice(0, 6)}...{toAddress.slice(-4)}
                     </span>
                   </div>
 

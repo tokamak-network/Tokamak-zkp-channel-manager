@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "clean": "rm -rf .next node_modules/.cache"
+    "clean": "rm -rf .next node_modules/.cache",
+    "postinstall": "mkdir -p data && echo 'Local database directory created'",
+    "db:reset": "rm -rf data/local-db.json && echo 'Database reset'"
   },
   "dependencies": {
     "@ethereumjs/statemanager": "^10.1.0",
@@ -37,6 +39,7 @@
     "js-sha256": "^0.11.1",
     "js-sha3": "^0.9.3",
     "jszip": "^3.10.1",
+    "lowdb": "^7.0.1",
     "lucide-react": "^0.292.0",
     "next": "^15.5.7",
     "poseidon-bls12381": "^1.0.0",

@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getData } from "@/lib/realtime-db-helpers";
-import { ref, runTransaction } from "firebase/database";
-import { realtimeDb } from "@/lib/firebase";
+import { getData, runTransaction } from "@/lib/local-db";
 
 /**
  * POST /api/get-next-proof-number
@@ -10,7 +8,7 @@ import { realtimeDb } from "@/lib/firebase";
  * for a given channel. This prevents race conditions when multiple users
  * submit proofs simultaneously.
  * 
- * Uses Firebase Realtime Database transactions to ensure atomicity.
+ * Uses local database transactions to ensure atomicity.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -30,10 +28,6 @@ export async function POST(request: NextRequest) {
     const verifiedCount = verifiedProofs ? Object.keys(verifiedProofs).length : 0;
     const proofNumber = verifiedCount + 1;
 
-    // Use Firebase transaction to atomically calculate and reserve subNumber
-    // This prevents race conditions when multiple users submit proofs for the same sequence
-    const submittedProofsRef = ref(realtimeDb, `channels/${channelId}/submittedProofs`);
-    
     // Get current submitted proofs for this sequence number
     const submittedProofs = await getData<any>(`channels/${channelId}/submittedProofs`);
     const currentSequenceProofs = submittedProofs
@@ -55,36 +49,31 @@ export async function POST(request: NextRequest) {
     }
     
     // Use a transaction to atomically reserve the next subNumber
-    // The counter is based on actual data, not a separate counter
-    const sequenceCounterRef = ref(realtimeDb, `channels/${channelId}/sequenceCounters/${proofNumber}`);
+    const counterPath = `channels/${channelId}/sequenceCounters/${proofNumber}`;
     
-    const counterResult = await runTransaction(sequenceCounterRef, (current) => {
-      // Calculate the correct next subNumber based on actual proofs
-      const nextSubNumber = maxSubNumber + 1;
+    const nextSubNumber = await runTransaction<number>(counterPath, (current) => {
+      const nextSub = maxSubNumber + 1;
       
       // If current counter is behind actual data, reset it
-      if (current === null || (current as number) < nextSubNumber) {
-        return nextSubNumber;
+      if (current === null || current < nextSub) {
+        return nextSub;
       }
       // Otherwise increment normally (handles concurrent submissions)
-      return (current as number) + 1;
+      return current + 1;
     });
-
-    // Use the transaction result as the authoritative subNumber
-    const subNumber = counterResult.snapshot.val() as number;
 
     // Generate proof IDs
     const proofId =
-      subNumber === 1
+      nextSubNumber === 1
         ? `proof#${proofNumber}`
-        : `proof#${proofNumber}-${subNumber}`;
+        : `proof#${proofNumber}-${nextSubNumber}`;
     const storageProofId =
-      subNumber === 1 ? `proof-${proofNumber}` : `proof-${proofNumber}-${subNumber}`;
+      nextSubNumber === 1 ? `proof-${proofNumber}` : `proof-${proofNumber}-${nextSubNumber}`;
 
     return NextResponse.json({
       success: true,
       proofNumber,
-      subNumber,
+      subNumber: nextSubNumber,
       proofId,
       storageProofId,
     });
@@ -99,4 +88,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

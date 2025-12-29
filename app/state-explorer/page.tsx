@@ -28,7 +28,8 @@ import {
   pushData,
   updateData,
   deleteData,
-} from "@/lib/realtime-db-helpers";
+  getProofZipContent,
+} from "@/lib/db-client";
 import { ERC20_ABI } from "@/lib/contracts";
 import {
   FileText,
@@ -49,6 +50,7 @@ import {
   AlertCircle,
   Upload,
   Download,
+  Database,
 } from "lucide-react";
 import JSZip from "jszip";
 
@@ -377,6 +379,7 @@ function StateExplorerDetailView({
   onBack: () => void;
   userAddress: string;
 }) {
+  const router = useRouter();
   const [filter, setFilter] = useState<
     "all" | "pending" | "verified" | "rejected"
   >("all");
@@ -451,6 +454,24 @@ function StateExplorerDetailView({
     enabled: channel.participants.length > 0,
   });
 
+  // Helper function to get ZIP content (supports both file-based and legacy base64)
+  const getZipContentForProof = useCallback(async (
+    proofKey: string,
+    zipFile: any,
+    status: "submittedProofs" | "verifiedProofs" | "rejectedProofs" = "verifiedProofs"
+  ): Promise<string | null> => {
+    // If zipFile has filePath, fetch from API (new format)
+    if (zipFile?.filePath) {
+      const result = await getProofZipContent(String(channel.id), proofKey, status);
+      return result?.content || null;
+    }
+    // Legacy: use base64 content directly from database
+    if (zipFile?.content) {
+      return zipFile.content;
+    }
+    return null;
+  }, [channel.id]);
+
   // Helper function to parse ZIP with caching
   const parseZipWithCache = useCallback(async (
     proofKey: string,
@@ -494,6 +515,7 @@ function StateExplorerDetailView({
 
     try {
       // SINGLE FETCH: Get all proof data in one call
+      console.log("fetchAllChannelData: Fetching proofs for channel", channel.id);
       const [verifiedProofsData, submittedProofsData, rejectedProofsData] = await Promise.all([
         cachedVerifiedProofs && !forceRefresh 
           ? Promise.resolve(cachedVerifiedProofs) 
@@ -501,6 +523,12 @@ function StateExplorerDetailView({
         getData<any>(`channels/${channel.id}/submittedProofs`),
         getData<any>(`channels/${channel.id}/rejectedProofs`),
       ]);
+
+      console.log("fetchAllChannelData: Results", {
+        verifiedProofsData,
+        submittedProofsData,
+        rejectedProofsData,
+      });
 
       // Cache verified proofs for later use
       if (verifiedProofsData && !cachedVerifiedProofs) {
@@ -526,12 +554,14 @@ function StateExplorerDetailView({
 
         // Process proofs sequentially for state transitions (using cache)
         for (const proof of verifiedProofsArray) {
-          if (!proof.zipFile?.content) continue;
+          // Get ZIP content (supports both file-based and legacy formats)
+          const zipContent = await getZipContentForProof(proof.key, proof.zipFile, "verifiedProofs");
+          if (!zipContent) continue;
 
           try {
             const cached = await parseZipWithCache(
               proof.key,
-              proof.zipFile.content,
+              zipContent,
               parseProofFromBase64Zip,
               analyzeProof,
               decimals
@@ -825,7 +855,9 @@ function StateExplorerDetailView({
 
       // Add each verified proof ZIP to the master ZIP
       for (const proof of verifiedProofsArray) {
-        if (!proof.zipFile?.content) {
+        // Get ZIP content (supports both file-based and legacy formats)
+        const zipContent = await getZipContentForProof(proof.key, proof.zipFile, "verifiedProofs");
+        if (!zipContent) {
           console.warn(
             `Proof ${proof.key} has no zipFile content, skipping...`
           );
@@ -834,7 +866,7 @@ function StateExplorerDetailView({
 
         try {
           // Decode base64 content
-          const base64Content = proof.zipFile.content;
+          const base64Content = zipContent;
           const binaryString = atob(base64Content);
           const bytes = new Uint8Array(binaryString.length);
           for (let i = 0; i < binaryString.length; i++) {
@@ -1009,7 +1041,7 @@ function StateExplorerDetailView({
                     Create Transaction
                   </button>
                 </div>
-                {/* Second row: Download Verified Proofs */}
+                {/* Second row: Download Verified Proofs and Admin DB Viewer */}
                 <div className="flex items-center gap-3">
                   <button
                     onClick={handleDownloadAllVerifiedProofs}
@@ -1028,6 +1060,17 @@ function StateExplorerDetailView({
                       </>
                     )}
                   </button>
+                  {/* Admin Only: DB Viewer */}
+                  {isLeader && (
+                    <button
+                      onClick={() => router.push("/db-viewer")}
+                      className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded transition-all font-medium border border-gray-600"
+                      title="Admin: View Local Database"
+                    >
+                      <Database className="w-4 h-4" />
+                      DB Viewer
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

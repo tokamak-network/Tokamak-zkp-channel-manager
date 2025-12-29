@@ -26,7 +26,7 @@ import {
   ETH_TOKEN_ADDRESS,
 } from '@/lib/contracts';
 import { ERC20_ABI } from '@/lib/contracts';
-import { getData } from '@/lib/realtime-db-helpers';
+import { getData, getProofZipContent } from '@/lib/db-client';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { 
   parseProofFromBase64Zip, 
@@ -111,6 +111,8 @@ export default function ProofDetailPage() {
     output?: string;
     error?: string;
   } | null>(null);
+  const [zipContent, setZipContent] = useState<string | null>(null);
+  const [isLoadingZip, setIsLoadingZip] = useState(false);
 
   // Fetch proof data from Firebase
   useEffect(() => {
@@ -316,6 +318,42 @@ export default function ProofDetailPage() {
 
     fetchProof();
   }, [channelId, proofId, decimals]);
+
+  // Fetch ZIP content (handles both file-based and legacy formats)
+  useEffect(() => {
+    const loadZipContent = async () => {
+      if (!proof || !channelId) return;
+      
+      // If we already have content in memory, use it
+      if (proof.zipFile?.content) {
+        setZipContent(proof.zipFile.content);
+        return;
+      }
+      
+      // If there's a filePath, fetch from API
+      if (proof.zipFile?.filePath || proof.key) {
+        setIsLoadingZip(true);
+        try {
+          const status = proof.status === 'verified' ? 'verifiedProofs' :
+                        proof.status === 'rejected' ? 'rejectedProofs' :
+                        'submittedProofs';
+          
+          const proofKey = proof.key || proof.proofId?.replace('#', '-') || '';
+          const result = await getProofZipContent(channelId, proofKey, status as any);
+          
+          if (result?.content) {
+            setZipContent(result.content);
+          }
+        } catch (error) {
+          console.error('Failed to load ZIP content:', error);
+        } finally {
+          setIsLoadingZip(false);
+        }
+      }
+    };
+    
+    loadZipContent();
+  }, [proof, channelId]);
 
   // Fetch channel data and participants
   useEffect(() => {
@@ -701,7 +739,7 @@ export default function ProofDetailPage() {
               {/* Verify Button */}
               <button
                 onClick={async () => {
-                  if (!proof.zipFile?.content) {
+                  if (!zipContent) {
                     window.alert('ZIP file not found. The proof must have a ZIP file with proof.json to verify.');
                     return;
                   }
@@ -714,7 +752,7 @@ export default function ProofDetailPage() {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
-                        proofZipBase64: proof.zipFile.content,
+                        proofZipBase64: zipContent,
                       }),
                     });
 
@@ -735,9 +773,9 @@ export default function ProofDetailPage() {
                     setIsVerifying(false);
                   }
                 }}
-                disabled={isVerifying || !proof.zipFile?.content}
+                disabled={isVerifying || isLoadingZip || !zipContent}
                 className={`flex items-center justify-center gap-2 px-6 py-4 rounded transition-all font-medium ${
-                  isVerifying || !proof.zipFile?.content
+                  isVerifying || isLoadingZip || !zipContent
                     ? 'bg-gray-600 cursor-not-allowed text-gray-300'
                     : 'bg-green-600 hover:bg-green-500 text-white hover:shadow-lg hover:shadow-green-500/30'
                 }`}
@@ -758,14 +796,14 @@ export default function ProofDetailPage() {
               {/* Download All Files (ZIP) */}
               <button
                 onClick={async () => {
-                  if (!proof.zipFile?.content) {
+                  if (!zipContent) {
                     window.alert('ZIP file not found. The proof may not have a ZIP file uploaded.');
                     return;
                   }
 
                   try {
                     // Convert base64 to bytes
-                    const base64Content = proof.zipFile.content;
+                    const base64Content = zipContent;
                     const binaryString = atob(base64Content);
                     const bytes = new Uint8Array(binaryString.length);
                     for (let i = 0; i < binaryString.length; i++) {

@@ -4,7 +4,7 @@ import { useState, useRef } from 'react';
 import { useAccount } from 'wagmi';
 import { X, Upload, FileArchive, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 // Using API route to avoid CORS issues
-import { getData, updateData, setData } from '@/lib/realtime-db-helpers';
+import { getData, updateData, setData } from '@/lib/db-client';
 import JSZip from 'jszip';
 
 interface SubmitProofModalProps {
