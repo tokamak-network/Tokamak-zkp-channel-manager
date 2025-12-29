@@ -82,13 +82,17 @@ interface StateTransition {
 
 interface OnChainChannel {
   id: number;
-  state: number; // 0: Pending, 1: Active, 2: Closed
-  participantCount: number;
+  state?: number; // 0: Pending, 1: Active, 2: Closed
+  status?: number; // Channel status from contract
+  participantCount?: number;
   participants: string[];
   leader: string;
-  isLeader: boolean;
-  targetAddress: string;
-  hasPublicKey: boolean;
+  isLeader?: boolean;
+  targetAddress?: string;
+  hasPublicKey?: boolean;
+  tokenAddress?: string;
+  timeout?: number;
+  latestCommittedState?: string;
 }
 
 // Channel state enum - matches contract: None(0), Initialized(1), Open(2), Active(3), Closing(4), Closed(5)
@@ -280,10 +284,12 @@ function ChannelSelectionView({
                   </div>
 
                   {/* Target Contract */}
-                  <div className="text-xs text-gray-500">
-                    Target: {channel.targetAddress.slice(0, 6)}...
-                    {channel.targetAddress.slice(-4)}
-                  </div>
+                  {channel.targetAddress && (
+                    <div className="text-xs text-gray-500">
+                      Target: {channel.targetAddress.slice(0, 6)}...
+                      {channel.targetAddress.slice(-4)}
+                    </div>
+                  )}
                 </button>
               ))}
             </div>
@@ -1136,11 +1142,13 @@ function StateExplorerDetailView({
                 <Shield className="w-4 h-4" />
                 Public Key: {channel.hasPublicKey ? "Set" : "Not set"}
               </span>
-              <span className="flex items-center gap-1">
-                <Coins className="w-4 h-4" />
-                Target: {channel.targetAddress.slice(0, 6)}...
-                {channel.targetAddress.slice(-4)}
-              </span>
+              {channel.targetAddress && (
+                <span className="flex items-center gap-1">
+                  <Coins className="w-4 h-4" />
+                  Target: {channel.targetAddress.slice(0, 6)}...
+                  {channel.targetAddress.slice(-4)}
+                </span>
+              )}
             </div>
           </div>
 

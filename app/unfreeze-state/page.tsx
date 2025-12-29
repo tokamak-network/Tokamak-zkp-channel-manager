@@ -245,7 +245,7 @@ export default function UnfreezeStatePage() {
         if (latestProof?.zipFile?.filePath) {
           // New format: fetch from API
           const result = await getProofZipContent(
-            String(selectedChannel),
+            String(selectedChannelId),
             latestProof.key || latestProof.proofId?.replace('#', '-') || '',
             'verifiedProofs'
           );

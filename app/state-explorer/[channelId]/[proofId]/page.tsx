@@ -59,7 +59,8 @@ interface ProofData {
   verifiedAt?: string;
   verifiedBy?: string;
   zipFile?: {
-    path: string;
+    path?: string;
+    filePath?: string; // Path to file on disk (new format)
     size: number;
     fileName: string;
     content?: string; // base64 content
