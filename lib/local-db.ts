@@ -21,6 +21,37 @@ export interface DatabaseSchema {
 }
 
 export interface ChannelData {
+  // Channel metadata
+  channelId: string;
+  leader: string;
+  participants: string[];
+  targetAddress: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+
+  // Initialization data
+  initializationTxHash?: string;
+
+  // State snapshots
+  stateSnapshots?: {
+    [snapshotId: string]: StateSnapshotData;
+  };
+
+  // User balances
+  userBalances?: {
+    [balanceId: string]: UserBalanceData;
+  };
+
+  // Proofs
+  submittedProofs?: {
+    [proofKey: string]: ProofData;
+  };
+  verifiedProofs?: {
+    [proofKey: string]: ProofData;
+  };
+  rejectedProofs?: {
+    [proofKey: string]: ProofData;
   };
 
   // Sequence counters for proof numbering

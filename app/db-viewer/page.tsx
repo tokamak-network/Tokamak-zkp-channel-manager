@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,8 +15,10 @@ import {
   ArrowLeft,
 } from "lucide-react";
 
-export default function DbViewerPage() {
+function DbViewerContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const channelId = searchParams.get("channelId");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -207,10 +209,16 @@ export default function DbViewerPage() {
         <Button
           variant="outline"
           className="mb-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border-[#4fc3f7]/30 text-white hover:border-[#4fc3f7] hover:bg-[#1a2347]"
-          onClick={() => router.back()}
+          onClick={() => {
+            if (channelId) {
+              router.push(`/state-explorer?channelId=${channelId}`);
+            } else {
+              router.push("/state-explorer");
+            }
+          }}
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
-          Back
+          Back to Explorer
         </Button>
 
         <div className="flex items-center justify-between mb-6">
@@ -270,3 +278,11 @@ export default function DbViewerPage() {
   );
 }
 
+// Wrapper with Suspense for useSearchParams
+export default function DbViewerPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
+      <DbViewerContent />
+    </Suspense>
+  );
+}

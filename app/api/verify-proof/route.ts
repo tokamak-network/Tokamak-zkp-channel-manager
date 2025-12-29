@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getData, pushData, deleteData } from "@/lib/realtime-db-helpers";
+import { getData, deleteData, pushData } from "@/lib/local-db";
 
 /**
  * POST /api/verify-proof

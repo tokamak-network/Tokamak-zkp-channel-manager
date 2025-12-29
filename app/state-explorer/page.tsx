@@ -641,11 +641,28 @@ function StateExplorerDetailView({
       // Add verified proofs (without zipFile.content to save memory)
       if (verifiedProofsData) {
         Object.entries(verifiedProofsData).forEach(([key, value]: [string, any]) => {
+          // Skip non-proof entries (e.g., metadata)
+          if (!value || typeof value !== 'object' || !value.submitter) {
+            return;
+          }
+          // Ensure id is a string, not an object, and clean up any [object Object] artifacts
+          let proofId = typeof value.proofId === 'string' ? value.proofId : 
+                       typeof value.id === 'string' ? value.id : 
+                       `verified-${key}`;
+          // Clean up corrupted proofId
+          if (proofId.includes('[object Object]')) {
+            const match = key.match(/^proof-(\d+)(?:-(\d+))?$/);
+            if (match) {
+              proofId = match[2] ? `proof#${match[1]}-${match[2]}` : `proof#${match[1]}`;
+            } else {
+              proofId = `proof#${key.replace('proof-', '')}`;
+            }
+          }
           allProofs.push({
             ...value,
             // Exclude zipFile.content from the proofs list to save memory
             zipFile: value.zipFile ? { ...value.zipFile, content: undefined } : undefined,
-            id: value.proofId || value.id || `verified-${key}`,
+            id: proofId,
             key,
             status: "verified" as const,
           });
@@ -655,12 +672,30 @@ function StateExplorerDetailView({
       // Add submitted proofs
       if (submittedProofsData) {
         Object.entries(submittedProofsData).forEach(([key, value]: [string, any]) => {
+          // Skip non-proof entries (e.g., metadata)
+          if (!value || typeof value !== 'object' || !value.submitter) {
+            return;
+          }
           const existingProof = allProofs.find((p) => p.proofId === value.proofId && p.key === key);
           if (!existingProof) {
+            // Ensure id is a string, not an object, and clean up any [object Object] artifacts
+            let proofId = typeof value.proofId === 'string' ? value.proofId : 
+                         typeof value.id === 'string' ? value.id : 
+                         `submitted-${key}`;
+            // Clean up corrupted proofId (e.g., "proof#1-[object Object]1")
+            if (proofId.includes('[object Object]')) {
+              // Extract valid parts: key format is "proof-1" or "proof-1-2"
+              const match = key.match(/^proof-(\d+)(?:-(\d+))?$/);
+              if (match) {
+                proofId = match[2] ? `proof#${match[1]}-${match[2]}` : `proof#${match[1]}`;
+              } else {
+                proofId = `proof#${key.replace('proof-', '')}`;
+              }
+            }
             allProofs.push({
               ...value,
               zipFile: value.zipFile ? { ...value.zipFile, content: undefined } : undefined,
-              id: value.proofId || value.id || `submitted-${key}`,
+              id: proofId,
               key,
               status: "pending" as const,
             });
@@ -671,10 +706,27 @@ function StateExplorerDetailView({
       // Add rejected proofs
       if (rejectedProofsData) {
         Object.entries(rejectedProofsData).forEach(([key, value]: [string, any]) => {
+          // Skip non-proof entries (e.g., metadata)
+          if (!value || typeof value !== 'object' || !value.submitter) {
+            return;
+          }
+          // Ensure id is a string, not an object, and clean up any [object Object] artifacts
+          let proofId = typeof value.proofId === 'string' ? value.proofId : 
+                       typeof value.id === 'string' ? value.id : 
+                       `rejected-${key}`;
+          // Clean up corrupted proofId
+          if (proofId.includes('[object Object]')) {
+            const match = key.match(/^proof-(\d+)(?:-(\d+))?$/);
+            if (match) {
+              proofId = match[2] ? `proof#${match[1]}-${match[2]}` : `proof#${match[1]}`;
+            } else {
+              proofId = `proof#${key.replace('proof-', '')}`;
+            }
+          }
           allProofs.push({
             ...value,
             zipFile: value.zipFile ? { ...value.zipFile, content: undefined } : undefined,
-            id: value.proofId || value.id || `rejected-${key}`,
+            id: proofId,
             key,
             status: "rejected" as const,
           });
@@ -795,6 +847,7 @@ function StateExplorerDetailView({
           channelId: channel.id,
           proofKey: proof.key,
           userAddress: userAddress,
+          isLeader: isLeader, // Pass leader status from on-chain data
         }),
       });
 
@@ -1063,7 +1116,7 @@ function StateExplorerDetailView({
                   {/* Admin Only: DB Viewer */}
                   {isLeader && (
                     <button
-                      onClick={() => router.push("/db-viewer")}
+                      onClick={() => router.push(`/db-viewer?channelId=${channel.id}`)}
                       className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded transition-all font-medium border border-gray-600"
                       title="Admin: View Local Database"
                     >
@@ -1947,7 +2000,10 @@ function StateExplorerPage() {
       }
     }
 
-    setIsLoading(true);
+    // Only show loading state for initial fetch, not background updates
+    if (!forceRefresh) {
+      setIsLoading(true);
+    }
     setError(null);
 
     try {
@@ -2100,20 +2156,111 @@ function StateExplorerPage() {
     }
   }, [isConnected, address, publicClient, cacheLoaded]);
 
-  // Auto-select channel from URL query parameter
-  useEffect(() => {
-    const channelIdParam = searchParams.get("channelId");
-    if (channelIdParam && channels.length > 0 && !selectedChannel) {
-      const channelIdNum = parseInt(channelIdParam, 10);
-      const channel = channels.find((c) => c.id === channelIdNum);
-      if (channel) {
-        setSelectedChannel(channel);
+  // State for direct channel loading from URL
+  const [isLoadingDirectChannel, setIsLoadingDirectChannel] = useState(false);
+  const pendingChannelId = searchParams.get("channelId");
+
+  // Fetch a single channel directly by ID (more efficient than loading all channels)
+  const fetchSingleChannel = async (channelIdNum: number): Promise<OnChainChannel | null> => {
+    if (!publicClient) return null;
+    
+    try {
+      const channelIdBigInt = BigInt(channelIdNum);
+      
+      // Fetch channel info directly from smart contract
+      const [channelInfo, participants, leader] = await Promise.all([
+        publicClient.readContract({
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: "getChannelInfo",
+          args: [channelIdBigInt],
+        }) as Promise<readonly [`0x${string}`, number, bigint, `0x${string}`]>,
+        publicClient.readContract({
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: "getChannelParticipants",
+          args: [channelIdBigInt],
+        }) as Promise<readonly `0x${string}`[]>,
+        publicClient.readContract({
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: "getChannelLeader",
+          args: [channelIdBigInt],
+        }) as Promise<`0x${string}`>,
+      ]);
+
+      const [tokenAddress, status, timeout, latestCommittedState] = channelInfo;
+      
+      // Only return if channel exists (has token address)
+      if (tokenAddress === "0x0000000000000000000000000000000000000000") {
+        return null;
       }
+
+      return {
+        id: channelIdNum,
+        tokenAddress,
+        status,
+        timeout: Number(timeout),
+        latestCommittedState,
+        participants: [...participants],
+        leader,
+      };
+    } catch (error) {
+      console.error("Failed to fetch single channel:", error);
+      return null;
     }
-  }, [searchParams, channels, selectedChannel]);
+  };
+
+  // Direct channel loading from URL (bypasses channel list loading)
+  useEffect(() => {
+    const loadDirectChannel = async () => {
+      const channelIdParam = searchParams.get("channelId");
+      
+      // Skip if no channelId in URL or already have selected channel
+      if (!channelIdParam || selectedChannel) return;
+      
+      // Skip if publicClient not ready
+      if (!publicClient) return;
+      
+      const channelIdNum = parseInt(channelIdParam, 10);
+      if (isNaN(channelIdNum)) return;
+
+      // First, check if channel exists in already loaded channels
+      const existingChannel = channels.find((c) => c.id === channelIdNum);
+      if (existingChannel) {
+        setSelectedChannel(existingChannel);
+        return;
+      }
+
+      // If channels are still loading, wait for them
+      if (isLoading && channels.length === 0) {
+        // Channels are loading, will be handled by next effect run
+        return;
+      }
+
+      // No channels loaded yet or channel not in list - fetch directly
+      setIsLoadingDirectChannel(true);
+      try {
+        const channel = await fetchSingleChannel(channelIdNum);
+        if (channel) {
+          setSelectedChannel(channel);
+        } else {
+          // Channel not found, redirect to channel list
+          console.warn(`Channel #${channelIdNum} not found`);
+          router.push("/state-explorer");
+        }
+      } finally {
+        setIsLoadingDirectChannel(false);
+      }
+    };
+
+    loadDirectChannel();
+  }, [searchParams, publicClient, selectedChannel, channels, isLoading, router]);
 
   const handleSelectChannel = (channel: OnChainChannel) => {
     setSelectedChannel(channel);
+    // Update URL with channelId for bookmarking and back navigation
+    router.push(`/state-explorer?channelId=${channel.id}`, { scroll: false });
   };
 
   const handleBack = () => {
@@ -2121,6 +2268,20 @@ function StateExplorerPage() {
     // Remove channelId from URL to prevent auto-reselection
     router.push("/state-explorer");
   };
+
+  // Show loading state when waiting for channel from URL parameter
+  if (isLoadingDirectChannel || (pendingChannelId && !selectedChannel && !isLoading)) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4fc3f7] mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading channel #{pendingChannelId}...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

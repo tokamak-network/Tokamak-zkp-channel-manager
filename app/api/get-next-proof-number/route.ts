@@ -54,12 +54,15 @@ export async function POST(request: NextRequest) {
     const nextSubNumber = await runTransaction<number>(counterPath, (current) => {
       const nextSub = maxSubNumber + 1;
       
-      // If current counter is behind actual data, reset it
-      if (current === null || current < nextSub) {
+      // Ensure current is a valid number (not an object or other type)
+      const currentNum = typeof current === 'number' ? current : null;
+      
+      // If current counter is behind actual data or invalid, reset it
+      if (currentNum === null || currentNum < nextSub) {
         return nextSub;
       }
       // Otherwise increment normally (handles concurrent submissions)
-      return current + 1;
+      return currentNum + 1;
     });
 
     // Generate proof IDs
