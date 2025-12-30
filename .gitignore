@@ -67,3 +67,6 @@ public/zk-assets/zkey/circuit_final_128.zkey
 
 # Tokamak-Zk-EVM
 /tokamak-zk-evm-bin
+
+# Database 
+/data
