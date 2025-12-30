@@ -17,11 +17,11 @@ if [ -z "$RPC_KEY" ]; then
 fi
 
 if [ ! -d "$SUBMODULE_DIR" ] || [ -z "$(ls -A "$SUBMODULE_DIR" 2>/dev/null)" ]; then
-  echo "Initializing Tokamak-Zk-EVM submodule from dev branch..."
+  echo "Initializing Tokamak-Zk-EVM submodule from main branch..."
   git submodule update --init -- "$SUBMODULE_DIR"
-  git -C "$SUBMODULE_DIR" fetch origin dev
-  git -C "$SUBMODULE_DIR" checkout dev
-  git -C "$SUBMODULE_DIR" pull --ff-only origin dev
+  git -C "$SUBMODULE_DIR" fetch origin main
+  git -C "$SUBMODULE_DIR" checkout main
+  git -C "$SUBMODULE_DIR" pull --ff-only origin main
 else
   echo "Tokamak-Zk-EVM submodule not empty; skipping update."
 fi
