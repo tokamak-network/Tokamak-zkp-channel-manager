@@ -196,7 +196,7 @@ export async function POST(req: Request) {
           env: {
             ...process.env,
             DYLD_LIBRARY_PATH: libraryPath,
-            ICICLE_BACKEND_INSTALL_DIR: path.join(libraryPath, "backend"),
+            // ICICLE_BACKEND_INSTALL_DIR: path.join(libraryPath, "backend"),
           },
         }
       );

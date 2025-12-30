@@ -10,5 +10,5 @@
 [submodule "Tokamak-Zk-EVM"]
 	path = Tokamak-Zk-EVM
 	url = https://github.com/tokamak-network/Tokamak-zk-EVM.git
-	branch = dev
+	branch = main
 	ignore = all
