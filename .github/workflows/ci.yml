@@ -1,0 +1,202 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop, ci]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      run_e2e:
+        description: 'Run E2E tests on Sepolia'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  FOUNDRY_PROFILE: ci
+  NODE_VERSION: '20'
+
+jobs:
+  # ============================================================================
+  # Job 1: Build & Lint Check
+  # ============================================================================
+  build:
+    name: 🏗️ Build & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build Next.js app
+        run: npm run build
+        env:
+          NEXT_PUBLIC_DEFAULT_NETWORK: sepolia
+          NEXT_PUBLIC_DEBUG_MODE: false
+
+  # ============================================================================
+  # Job 2: Smart Contract Tests (Foundry)
+  # ============================================================================
+  contract-tests:
+    name: 🔧 Contract Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Install contract dependencies
+        run: forge install
+
+      - name: Build contracts
+        run: forge build --sizes
+        continue-on-error: true
+
+      - name: Run Foundry tests
+        run: forge test -vvv
+        env:
+          FOUNDRY_PROFILE: test
+
+      - name: Check contract sizes
+        run: forge build --sizes 2>&1 | tee contract-sizes.txt
+        continue-on-error: true
+
+      - name: Upload contract sizes
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-sizes
+          path: contracts/contract-sizes.txt
+        continue-on-error: true
+
+  # ============================================================================
+  # Job 3: E2E Channel Lifecycle Test (Foundry only - no external deps)
+  # ============================================================================
+  e2e-foundry:
+    name: 🧪 E2E Tests (Foundry)
+    runs-on: ubuntu-latest
+    needs: [build]
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Install contract dependencies
+        run: forge install
+
+      - name: Run E2E Lifecycle Tests
+        run: forge test --match-contract ChannelLifecycleE2ETest -vvv
+        continue-on-error: true
+
+  # ============================================================================
+  # Job 4: E2E Tests on Sepolia (Manual trigger only)
+  # ============================================================================
+  e2e-sepolia:
+    name: 🌐 E2E Tests (Sepolia)
+    runs-on: ubuntu-latest
+    needs: [build, contract-tests]
+    if: ${{ github.event.inputs.run_e2e == 'true' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run E2E Tests on Sepolia
+        run: npm run test:e2e:sepolia
+        env:
+          E2E_RPC_URL: ${{ secrets.SEPOLIA_RPC_URL }}
+          E2E_PRIVATE_KEY: ${{ secrets.SEPOLIA_PRIVATE_KEY }}
+          NEXT_PUBLIC_ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
+
+  # ============================================================================
+  # Job 5: Security Analysis (Optional)
+  # ============================================================================
+  security:
+    name: 🔒 Security Check
+    runs-on: ubuntu-latest
+    needs: build
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Install Slither
+        run: pip3 install slither-analyzer
+        continue-on-error: true
+
+      - name: Run Slither
+        run: |
+          cd contracts
+          slither . --filter-paths "lib/" --exclude-dependencies || true
+        continue-on-error: true
+
+  # ============================================================================
+  # Summary Job
+  # ============================================================================
+  ci-success:
+    name: ✅ CI Success
+    runs-on: ubuntu-latest
+    needs: [build, contract-tests]
+    if: always()
+    steps:
+      - name: Check core jobs
+        run: |
+          if [[ "${{ needs.build.result }}" == "success" && \
+                "${{ needs.contract-tests.result }}" == "success" ]]; then
+            echo "✅ Core CI checks passed!"
+            exit 0
+          else
+            echo "❌ Core CI checks failed"
+            echo "Build: ${{ needs.build.result }}"
+            echo "Contract Tests: ${{ needs.contract-tests.result }}"
+            exit 1
+          fi
