@@ -122,6 +122,7 @@ export async function POST(req: Request) {
 
     // Build paths for verify binary
     const verifyBinaryPath = path.join(distRoot, "bin", "verify");
+    const preprocessBinaryPath = path.join(distRoot, "bin", "preprocess");
     const libraryPath = path.join(distRoot, "backend-lib", "icicle", "lib");
     const qapPath = path.join(distRoot, "resource", "qap-compiler", "library");
     const setupPath = path.join(distRoot, "resource", "setup", "output");
@@ -131,7 +132,112 @@ export async function POST(req: Request) {
     await assertPathExists(libraryPath, "dir");
     await assertPathExists(qapPath, "dir");
     await assertPathExists(setupPath, "dir");
-    await assertPathExists(preprocessPath, "dir");
+
+    // Check if preprocess output exists, if not run preprocess automatically
+    const preprocessJsonPath = path.join(preprocessPath, "preprocess.json");
+    let preprocessExists = false;
+    try {
+      await fs.access(preprocessJsonPath);
+      preprocessExists = true;
+      console.log("Preprocess output already exists, skipping preprocess step");
+    } catch {
+      console.log("Preprocess output not found, running preprocess automatically...");
+      
+      // Ensure preprocess directory exists
+      await fs.mkdir(preprocessPath, { recursive: true });
+      
+      // Check if preprocess binary exists
+      try {
+        await assertPathExists(preprocessBinaryPath, "file");
+      } catch {
+        return NextResponse.json(
+          {
+            error: "Preprocess binary not found. Please ensure Tokamak-Zk-EVM is properly installed.",
+            verified: false,
+          },
+          { status: 500 }
+        );
+      }
+
+      // Check if permutation.json exists in synthesizer output (required for preprocess)
+      const permutationPath = path.join(synthesizerOutputDir, "permutation.json");
+      try {
+        await fs.access(permutationPath);
+      } catch {
+        return NextResponse.json(
+          {
+            error: "Missing required file in ZIP: permutation.json (required for preprocess)",
+            verified: false,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Run preprocess binary
+      // preprocess binary usage: <QAP_PATH> <SYNTHESIZER_PATH> <SETUP_PATH> <OUT_PATH>
+      const preprocessCommand = `"${preprocessBinaryPath}" "${qapPath}" "${synthesizerOutputDir}" "${setupPath}" "${preprocessPath}"`;
+      console.log("Executing preprocess command:", preprocessCommand);
+
+      try {
+        const { stdout, stderr } = await execAsync(preprocessCommand, {
+          cwd: distRoot,
+          timeout: 300000, // 5 minutes timeout
+          env: {
+            ...process.env,
+            DYLD_LIBRARY_PATH: libraryPath,
+            ICICLE_BACKEND_INSTALL_DIR: path.join(libraryPath, "backend"),
+          },
+        });
+
+        console.log("Preprocess stdout:", stdout);
+        if (stderr) {
+          console.warn("Preprocess stderr:", stderr);
+        }
+
+        // Verify preprocess.json was created
+        try {
+          await fs.access(preprocessJsonPath);
+          console.log("Preprocess completed successfully");
+          preprocessExists = true;
+        } catch {
+          return NextResponse.json(
+            {
+              error: "Preprocess failed - preprocess.json not generated",
+              verified: false,
+              details: `stdout: ${stdout}\nstderr: ${stderr || "none"}`,
+            },
+            { status: 500 }
+          );
+        }
+      } catch (preprocessError: any) {
+        console.error("Preprocess execution error:", preprocessError);
+        return NextResponse.json(
+          {
+            error: "Failed to run preprocess",
+            verified: false,
+            details: preprocessError.message,
+            stderr: preprocessError.stderr || undefined,
+          },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Final check that preprocess output exists
+    if (!preprocessExists) {
+      try {
+        await assertPathExists(preprocessPath, "dir");
+        await fs.access(preprocessJsonPath);
+      } catch {
+        return NextResponse.json(
+          {
+            error: "Preprocess output directory or preprocess.json not found after preprocess step",
+            verified: false,
+          },
+          { status: 500 }
+        );
+      }
+    }
 
     // verify binary usage: <QAP_PATH> <SYNTHESIZER_PATH> <SETUP_PATH> <PREPROCESS_PATH> <PROOF_PATH>
     const verifyCommand = `"${verifyBinaryPath}" "${qapPath}" "${synthesizerOutputDir}" "${setupPath}" "${preprocessPath}" "${proveOutputDir}"`;
