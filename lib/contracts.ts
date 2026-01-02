@@ -1,11 +1,11 @@
 import { Address } from 'wagmi';
 
 // Modular Contract addresses - Updated for new architecture
-export const ROLLUP_BRIDGE_CORE_ADDRESS: Address = '0x9439DF86D91A7A05d926c15ee8f9790b60410133' as Address;
-export const ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS: Address = '0x24D302f09840275371FF1985d0f23DF16c69E90b' as Address;
-export const ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS: Address = '0x84b0676FDC944187214d774681Aa135b481d7C12' as Address;
-export const ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS: Address = '0x0048Fc775cfD21B24Bd53652BD8B3796c5F26A83' as Address;
-export const ROLLUP_BRIDGE_ADMIN_MANAGER_ADDRESS: Address = '0x374c2a109C59c60E18af161F263689520eBd6932' as Address;
+export const ROLLUP_BRIDGE_CORE_ADDRESS: Address = '0x04C0A9366280A4B6bcE0f01d5D18014d1Bd03845' as Address;
+export const ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS: Address = '0x1B6073D620b8977D4760F5a36f1Be0ceB3A21fAE' as Address;
+export const ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS: Address = '0xCfD17915Fe378f49c4bF574d63F3De5c7AFD78c7' as Address;
+export const ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS: Address = '0x0B9bE3471eEB400Dcf0872D7795308a959E3FDa8' as Address;
+export const ROLLUP_BRIDGE_ADMIN_MANAGER_ADDRESS: Address = '0x845C23BA92cE8994079eAB7E7fD078e5269F647d' as Address;
 
 // Legacy address for backwards compatibility
 export const ROLLUP_BRIDGE_ADDRESS: Address = ROLLUP_BRIDGE_CORE_ADDRESS;
@@ -81,6 +81,13 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
   {
     inputs: [{ name: 'channelId', type: 'uint256' }],
     name: 'getChannelParticipants',
+    outputs: [{ name: '', type: 'address[]' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
+    inputs: [{ name: 'channelId', type: 'uint256' }],
+    name: 'getChannelWhitelisted',
     outputs: [{ name: '', type: 'address[]' }],
     stateMutability: 'view',
     type: 'function'
@@ -252,7 +259,7 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
         type: 'tuple',
         components: [
           { name: 'targetContract', type: 'address' },
-          { name: 'participants', type: 'address[]' },
+          { name: 'whitelisted', type: 'address[]' },
           { name: 'enableFrostSignature', type: 'bool' }
         ]
       }

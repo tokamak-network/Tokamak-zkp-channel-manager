@@ -17,7 +17,7 @@ interface ComputedKey {
 
 export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [channelId, setChannelId] = useState<number>(1);
+  const [channelId, setChannelId] = useState<number>(0);
   const [slotIndex, setSlotIndex] = useState<number>(0);
   const [computedKeys, setComputedKeys] = useState<ComputedKey[]>([]);
   const [isComputing, setIsComputing] = useState(false);
@@ -38,12 +38,24 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
       return;
     }
 
+    // Additional check for signMessageAsync availability (Firefox fix)
+    if (!signMessageAsync) {
+      setError("Wallet signing not available. Please reconnect your wallet.");
+      return;
+    }
+
     setIsComputing(true);
     setError("");
 
     try {
       const message = L2_PRV_KEY_MESSAGE + `${channelId}`;
-      const signature = await signMessageAsync({message});
+      
+      // Try to sign with additional error handling for Firefox
+      const signature = await signMessageAsync({
+        message,
+        account: address // Explicitly pass account for better Firefox compatibility
+      });
+      
       const accountL2 = deriveL2KeysAndAddressFromSignature(signature, slotIndex);
 
       const newKey: ComputedKey = {
@@ -56,12 +68,18 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
 
       setError(""); // Clear any previous errors
     } catch (err) {
-      if (err instanceof Error && err.message.includes("User rejected")) {
-        setError("Signature cancelled by user");
+      if (err instanceof Error) {
+        if (err.message.includes("User rejected")) {
+          setError("Signature cancelled by user");
+        } else if (err.message.includes("ConnectorNotFoundError") || err.message.includes("Connector not found")) {
+          setError("Wallet connection lost. Please disconnect and reconnect your wallet.");
+        } else if (err.message.includes("ChainMismatchError")) {
+          setError("Wrong network. Please switch to the correct network.");
+        } else {
+          setError(`Error: ${err.message}`);
+        }
       } else {
-        setError(
-          err instanceof Error ? err.message : "Failed to compute MPT key"
-        );
+        setError("Failed to compute MPT key. Please try again.");
       }
     } finally {
       setIsComputing(false);
@@ -70,21 +88,51 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
 
   const copyToClipboard = async (key: string) => {
     try {
-      await navigator.clipboard.writeText(key);
+      // Check if clipboard API is available (Firefox may have restrictions)
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(key);
+      } else {
+        // Fallback for browsers that don't support clipboard API
+        const textArea = document.createElement('textarea');
+        textArea.value = key;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
       setCopiedKey(key);
       setTimeout(() => setCopiedKey(""), 2000);
     } catch (err) {
-      setError("Failed to copy to clipboard");
+      setError("Failed to copy to clipboard. Please copy manually.");
     }
   };
 
   const copyAddressToClipboard = async (address: string) => {
     try {
-      await navigator.clipboard.writeText(address);
+      // Check if clipboard API is available (Firefox may have restrictions)
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(address);
+      } else {
+        // Fallback for browsers that don't support clipboard API
+        const textArea = document.createElement('textarea');
+        textArea.value = address;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
       setCopiedAddress(address);
       setTimeout(() => setCopiedAddress(""), 2000);
     } catch (err) {
-      setError("Failed to copy address to clipboard");
+      setError("Failed to copy address to clipboard. Please copy manually.");
     }
   };
 
@@ -136,10 +184,13 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
                   </label>
                   <input
                     type="number"
-                    min="1"
+                    min="0"
                     value={channelId}
-                    onChange={(e) =>
-                      setChannelId(parseInt(e.target.value) || 1)
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value);
+                      // Allow 0 and positive integers, default to 0 for invalid input
+                      setChannelId(isNaN(value) ? 0 : Math.max(0, value));
+                    }
                     }
                     className="w-full px-3 py-2 border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:ring-[#4fc3f7] focus:border-[#4fc3f7] focus:outline-none"
                   />
@@ -168,12 +219,25 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
             <div className="flex items-center gap-4">
               <button
                 onClick={computeMPTKey}
-                disabled={isComputing}
+                disabled={isComputing || !isConnected || !address || !signMessageAsync}
                 className="px-6 py-3 bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
               >
                 <Calculator className="w-4 h-4" />
                 {isComputing ? "Computing..." : "Generate MPT Key"}
               </button>
+              
+              {/* Connection Status Indicator */}
+              {isConnected && address ? (
+                <div className="flex items-center gap-2 text-sm text-green-400">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  Wallet Connected
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-red-400">
+                  <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                  Wallet Not Connected
+                </div>
+              )}
 
               {error && (
                 <p className="text-red-400 text-sm flex items-center gap-2">

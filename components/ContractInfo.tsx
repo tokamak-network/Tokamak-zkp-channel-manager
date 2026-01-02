@@ -23,7 +23,7 @@ export function ContractInfo() {
   // Anyone can create channels now - no authorization required
 
   // Use dynamic hook to check all channels for leadership and participation
-  const { hasChannels, isParticipant, isLoading: rolesLoading, totalChannels, participatingChannels, leadingChannels, channelStatsData } = useUserRolesDynamic();
+  const { hasChannels, isParticipant, isLoading: rolesLoading, totalChannels, participatingChannels, whitelistedChannels, leadingChannels, channelStatsData } = useUserRolesDynamic();
 
 
   // Create dynamic contract calls for user deposits in participating channels
@@ -142,7 +142,7 @@ export function ContractInfo() {
 
   // Get channel-specific deposit/withdraw availability
   const getDepositableChannels = () => {
-    return participatingChannels.filter(channelId => {
+    return whitelistedChannels.filter(channelId => {
       const channelStats = channelStatsData[channelId];
       return channelStats && channelStats[2] === 1; // State 1 = Initialized, can deposit
     });
@@ -261,12 +261,12 @@ export function ContractInfo() {
       </div>
 
       {/* Quick Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        {/* Channel Participation */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        {/* Channel Participation (Active) */}
         <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7]/50 p-4 shadow-lg shadow-[#4fc3f7]/20">
           <div className="flex items-center gap-3">
-            <div className={`h-8 w-8  flex items-center justify-center shadow-lg ${
-              participatingChannels.length > 0 ? 'bg-[#4fc3f7] shadow-[#4fc3f7]/30' : 'bg-gray-600'
+            <div className={`h-8 w-8 flex items-center justify-center shadow-lg ${
+              participatingChannels.length > 0 ? 'bg-green-500 shadow-green-500/30' : 'bg-gray-600'
             }`}>
               {participatingChannels.length > 0 ? (
                 <Users className="w-4 h-4 text-white" />
@@ -275,9 +275,32 @@ export function ContractInfo() {
               )}
             </div>
             <div>
-              <p className="font-medium text-white">Participant</p>
-              <p className={`text-sm ${participatingChannels.length > 0 ? 'text-[#4fc3f7]' : 'text-gray-400'}`}>
-                {participatingChannels.length > 0 ? `In ${participatingChannels.length} channel${participatingChannels.length > 1 ? 's' : ''}` : 'Not Participating'}
+              <p className="font-medium text-white">Active Participant</p>
+              <p className={`text-sm ${participatingChannels.length > 0 ? 'text-green-400' : 'text-gray-400'}`}>
+                {participatingChannels.length > 0 ? `${participatingChannels.length} deposited` : 'No deposits'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Whitelisted (Eligible for deposits) */}
+        <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7]/50 p-4 shadow-lg shadow-[#4fc3f7]/20">
+          <div className="flex items-center gap-3">
+            <div className={`h-8 w-8 flex items-center justify-center shadow-lg ${
+              whitelistedChannels.length > 0 ? 'bg-yellow-500 shadow-yellow-500/30' : 'bg-gray-600'
+            }`}>
+              {whitelistedChannels.length > 0 ? (
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+              ) : (
+                <span className="text-white text-sm">○</span>
+              )}
+            </div>
+            <div>
+              <p className="font-medium text-white">Whitelisted</p>
+              <p className={`text-sm ${whitelistedChannels.length > 0 ? 'text-yellow-400' : 'text-gray-400'}`}>
+                {whitelistedChannels.length > 0 ? `${whitelistedChannels.length} eligible` : 'No invitations'}
               </p>
             </div>
           </div>
@@ -286,7 +309,7 @@ export function ContractInfo() {
         {/* Channel Leadership */}
         <div className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7]/50 p-4 shadow-lg shadow-[#4fc3f7]/20">
           <div className="flex items-center gap-3">
-            <div className={`h-8 w-8  flex items-center justify-center shadow-lg ${
+            <div className={`h-8 w-8 flex items-center justify-center shadow-lg ${
               leadingChannels.length > 0 ? 'bg-[#4fc3f7] shadow-[#4fc3f7]/30' : 'bg-gray-600'
             }`}>
               {leadingChannels.length > 0 ? (
@@ -298,7 +321,7 @@ export function ContractInfo() {
             <div>
               <p className="font-medium text-white">Channel Leader</p>
               <p className={`text-sm ${leadingChannels.length > 0 ? 'text-[#4fc3f7]' : 'text-gray-400'}`}>
-                {leadingChannels.length > 0 ? `Leading ${leadingChannels.length} channel${leadingChannels.length > 1 ? 's' : ''}` : 'No channel yet'}
+                {leadingChannels.length > 0 ? `Leading ${leadingChannels.length}` : 'No channels'}
               </p>
             </div>
           </div>
@@ -461,7 +484,6 @@ export function ContractInfo() {
                         </div>
                         <div className="flex-1">
                           <p className="text-sm font-medium text-white">Create New Channel</p>
-                          <p className="text-xs text-gray-400">0.001 ETH bond required</p>
                         </div>
                         <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -500,15 +522,15 @@ export function ContractInfo() {
                         </div>
                         <div className="flex-1">
                           <p className="text-sm font-medium text-white">Freeze State</p>
-                          {participatingChannels.length > 0 && (
+                          {whitelistedChannels.length > 0 && (
                         <div className="space-y-1">
-                          {participatingChannels.map(channelId => {
+                          {whitelistedChannels.map(channelId => {
                             const canDepositInChannel = depositableChannels.includes(channelId);
                             return (
                               <div key={channelId} className="flex items-center gap-2 text-xs">
                                 <div className={`h-1.5 w-1.5 rounded-full ${canDepositInChannel ? 'bg-[#4fc3f7]' : 'bg-gray-500'}`}></div>
                                 <span className={canDepositInChannel ? 'text-[#4fc3f7]' : 'text-gray-500'}>
-                                  Channel {channelId}
+                                  Channel {channelId} {participatingChannels.includes(channelId) ? '(deposited)' : '(eligible)'}
                                 </span>
                               </div>
                             );
@@ -532,15 +554,15 @@ export function ContractInfo() {
                       </div>
                       <div className="flex-1">
                         <p className="text-sm font-medium text-white">Freeze State</p>
-                        {participatingChannels.length > 0 && (
+                        {whitelistedChannels.length > 0 && (
                         <div className="space-y-1">
-                          {participatingChannels.map(channelId => {
+                          {whitelistedChannels.map(channelId => {
                             const canDepositInChannel = depositableChannels.includes(channelId);
                             return (
                               <div key={channelId} className="flex items-center gap-2 text-xs">
                                 <div className={`h-1.5 w-1.5 rounded-full ${canDepositInChannel ? 'bg-[#4fc3f7]' : 'bg-gray-500'}`}></div>
                                 <span className={canDepositInChannel ? 'text-[#4fc3f7]' : 'text-gray-500'}>
-                                  Channel {channelId}
+                                  Channel {channelId} {participatingChannels.includes(channelId) ? '(deposited)' : '(eligible)'}
                                 </span>
                               </div>
                             );

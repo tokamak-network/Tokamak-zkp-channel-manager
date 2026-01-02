@@ -32,7 +32,7 @@ export interface User {
 // Channel Parameters for opening a channel
 export interface ChannelParams {
   targetContract: Address;
-  participants: Address[];
+  whitelisted: Address[];  // Changed from participants to whitelisted
   l2PublicKeys: Address[];
   preprocessedPart1: bigint[];
   preprocessedPart2: bigint[];
@@ -100,7 +100,8 @@ export interface ExtendedChannelData {
   targetContract: Address;
   state: ChannelState;
   stateLabel: string;
-  participants: Address[];
+  participants: Address[];     // Users who have deposited
+  whitelisted: Address[];      // Users whitelisted during creation
   participantCount: bigint;
   totalDeposits: bigint;
   userDeposit: bigint;
@@ -128,7 +129,7 @@ export interface TransactionStatus {
 // Form data for creating a new channel
 export interface CreateChannelFormData {
   targetContract: string;
-  participants: string[];
+  whitelistedUsers: string[];  // Changed from participants to whitelistedUsers
   pkx: string;
   pky: string;
   enableFrostSignatures: boolean;

@@ -12,7 +12,8 @@ interface ChannelData {
   decimals: number;
   symbol: string;
   isETH: boolean;
-  participants: readonly string[];
+  participants: readonly string[];  // Users who have deposited
+  whitelisted: readonly string[];   // Users whitelisted during channel creation
 }
 
 interface UseChannelDataReturn {
@@ -115,11 +116,20 @@ export function useChannelData(): UseChannelDataReturn {
 export function useChannelInfo(channelId: number) {
   const { address, isConnected } = useAccount();
 
-  // Get channel participants
+  // Get channel participants (users who have deposited)
   const { data: participants } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
     functionName: 'getChannelParticipants',
+    args: [BigInt(channelId)],
+    enabled: isConnected,
+  });
+
+  // Get channel whitelisted users (set during channel creation)
+  const { data: whitelisted } = useContractRead({
+    address: ROLLUP_BRIDGE_CORE_ADDRESS,
+    abi: ROLLUP_BRIDGE_CORE_ABI,
+    functionName: 'getChannelWhitelisted',
     args: [BigInt(channelId)],
     enabled: isConnected,
   });
@@ -151,11 +161,14 @@ export function useChannelInfo(channelId: number) {
     enabled: isConnected && !!address && !!participants && participants.includes(address) && !!targetContract,
   });
 
-  // Check if user is participant and channel is initialized
+  // Check user roles and channel state
   const isUserParticipant = participants && address ? participants.includes(address) : false;
+  const isUserWhitelisted = whitelisted && address ? whitelisted.includes(address) : false;
   const isChannelInitialized = channelState === 1; // state === 1 means Initialized
 
-  const isEligible = isUserParticipant && isChannelInitialized;
+  // User is eligible for deposits if whitelisted (even if not yet a participant)
+  // User can see channel info if they are whitelisted or have already participated
+  const isEligible = (isUserWhitelisted || isUserParticipant) && channelState !== undefined;
 
   // Get token info if not ETH
   const isETH = !targetContract || targetContract === '0x0000000000000000000000000000000000000001' || targetContract === '0x0000000000000000000000000000000000000000';
@@ -197,6 +210,7 @@ export function useChannelInfo(channelId: number) {
     symbol: isETH ? 'ETH' : (typeof tokenSymbol === 'string' ? tokenSymbol : 'TOKEN'),
     isETH,
     participants: participants || [],
+    whitelisted: whitelisted || [],
   };
 }
 
