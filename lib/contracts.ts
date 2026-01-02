@@ -65,6 +65,13 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
     type: 'function'
   },
   {
+    inputs: [{ name: 'channelId', type: 'uint256' }, { name: 'addr', type: 'address' }],
+    name: 'isChannelWhitelisted',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function'
+  },
+  {
     inputs: [{ name: 'targetContract', type: 'address' }],
     name: 'isAllowedTargetContract',
     outputs: [{ name: '', type: 'bool' }],
@@ -81,13 +88,6 @@ export const ROLLUP_BRIDGE_CORE_ABI = [
   {
     inputs: [{ name: 'channelId', type: 'uint256' }],
     name: 'getChannelParticipants',
-    outputs: [{ name: '', type: 'address[]' }],
-    stateMutability: 'view',
-    type: 'function'
-  },
-  {
-    inputs: [{ name: 'channelId', type: 'uint256' }],
-    name: 'getChannelWhitelisted',
     outputs: [{ name: '', type: 'address[]' }],
     stateMutability: 'view',
     type: 'function'

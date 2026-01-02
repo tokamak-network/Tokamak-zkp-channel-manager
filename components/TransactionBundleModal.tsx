@@ -370,9 +370,7 @@ export function TransactionBundleModal({
     channelId: string
   ): Promise<any | null> => {
     try {
-      // Get only the metadata first (without zipFile.content if possible)
-      // Note: Firebase doesn't support partial reads, so we get the whole thing
-      // but we only need the latest proof's content
+      // Get verified proofs data from lowDB
       const verifiedProofsData = await getData<any>(
         `channels/${channelId}/verifiedProofs`
       );
@@ -394,27 +392,31 @@ export function TransactionBundleModal({
         }
       }
 
-      // Get zipFile content from the latest proof
+      // Get latest proof data
       const latestProof = verifiedProofsData[latestKey];
-      let zipFileContent = latestProof?.zipFile?.content;
+      const zipFilePath = latestProof?.zipFile?.filePath;
 
-      // If content not in initial fetch, get it separately (this handles Firebase's lazy loading)
-      if (!zipFileContent) {
-        try {
-          const zipFileData = await getData<any>(
-            `channels/${channelId}/verifiedProofs/${latestKey}/zipFile`
-          );
-          zipFileContent = zipFileData?.content;
-        } catch (err) {
-          console.warn("Failed to fetch zipFile content:", err);
-          return null;
-        }
+      if (!zipFilePath) {
+        console.warn("No file path found for latest proof");
+        return null;
       }
 
-      if (!zipFileContent) return null;
+      // Use the get-proof-zip API to get the ZIP content, then extract state_snapshot.json
+      const response = await fetch(`/api/get-proof-zip?channelId=${channelId}&proofId=${latestKey}&status=verifiedProofs&format=json`);
+      
+      if (!response.ok) {
+        console.warn("Failed to fetch proof ZIP");
+        return null;
+      }
 
-      // Parse and extract state_snapshot
-      const { snapshot } = await parseProofFromBase64Zip(zipFileContent);
+      const zipData = await response.json();
+      if (!zipData.success || !zipData.content) {
+        console.warn("No ZIP content received");
+        return null;
+      }
+
+      // Parse the base64 ZIP content to extract state_snapshot.json
+      const { snapshot } = await parseProofFromBase64Zip(zipData.content);
       return snapshot || null;
     } catch (err) {
       console.warn("Failed to get latest state snapshot:", err);

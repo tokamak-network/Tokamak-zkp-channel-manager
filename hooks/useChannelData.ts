@@ -13,7 +13,7 @@ interface ChannelData {
   symbol: string;
   isETH: boolean;
   participants: readonly string[];  // Users who have deposited
-  whitelisted: readonly string[];   // Users whitelisted during channel creation
+  isWhitelisted: boolean;           // Whether current user is whitelisted for this channel
 }
 
 interface UseChannelDataReturn {
@@ -125,13 +125,13 @@ export function useChannelInfo(channelId: number) {
     enabled: isConnected,
   });
 
-  // Get channel whitelisted users (set during channel creation)
-  const { data: whitelisted } = useContractRead({
+  // Check if user is whitelisted for this channel (new approach using mapping)
+  const { data: isUserWhitelisted } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
-    functionName: 'getChannelWhitelisted',
-    args: [BigInt(channelId)],
-    enabled: isConnected,
+    functionName: 'isChannelWhitelisted',
+    args: [BigInt(channelId), address as `0x${string}`],
+    enabled: isConnected && !!address,
   });
 
   // Get channel state
@@ -163,7 +163,6 @@ export function useChannelInfo(channelId: number) {
 
   // Check user roles and channel state
   const isUserParticipant = participants && address ? participants.includes(address) : false;
-  const isUserWhitelisted = whitelisted && address ? whitelisted.includes(address) : false;
   const isChannelInitialized = channelState === 1; // state === 1 means Initialized
 
   // User is eligible for deposits if whitelisted (even if not yet a participant)
@@ -210,7 +209,7 @@ export function useChannelInfo(channelId: number) {
     symbol: isETH ? 'ETH' : (typeof tokenSymbol === 'string' ? tokenSymbol : 'TOKEN'),
     isETH,
     participants: participants || [],
-    whitelisted: whitelisted || [],
+    isWhitelisted: Boolean(isUserWhitelisted),
   };
 }
 

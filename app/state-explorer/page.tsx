@@ -86,7 +86,6 @@ interface OnChainChannel {
   status?: number; // Channel status from contract
   participantCount?: number;
   participants: string[]; // Users who have deposited
-  whitelisted?: string[]; // Users whitelisted during channel creation
   leader: string;
   isLeader?: boolean;
   targetAddress?: string;
@@ -2050,36 +2049,24 @@ function StateExplorerPage() {
             continue;
           }
 
-          // Get participants and whitelisted users to check if user has access
-          const [participants, whitelisted] = await Promise.all([
-            publicClient.readContract({
-              address: ROLLUP_BRIDGE_CORE_ADDRESS,
-              abi: ROLLUP_BRIDGE_CORE_ABI,
-              functionName: "getChannelParticipants",
-              args: [BigInt(i)],
-            }) as Promise<string[]>,
-            publicClient.readContract({
-              address: ROLLUP_BRIDGE_CORE_ADDRESS,
-              abi: ROLLUP_BRIDGE_CORE_ABI,
-              functionName: "getChannelWhitelisted",
-              args: [BigInt(i)],
-            }) as Promise<string[]>
-          ]);
+          // Get participants to check if user has access
+          const participants = await publicClient.readContract({
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: "getChannelParticipants",
+            args: [BigInt(i)],
+          }) as string[];
 
-          // Check if user is a participant or whitelisted (case-insensitive comparison)
+          // Check if user is a participant (case-insensitive comparison)
           const isParticipant = participants.some(
             (p) => p.toLowerCase() === address.toLowerCase()
-          );
-          
-          const isWhitelisted = whitelisted.some(
-            (w) => w.toLowerCase() === address.toLowerCase()
           );
 
           // Also check if user is the leader
           const isLeader = leader.toLowerCase() === address.toLowerCase();
 
           console.log(
-            `State Explorer: Channel ${i} - Leader: ${leader}, Participants: ${participants.length}, Whitelisted: ${whitelisted.length}, IsParticipant: ${isParticipant}, IsWhitelisted: ${isWhitelisted}, IsLeader: ${isLeader}`
+            `State Explorer: Channel ${i} - Leader: ${leader}, Participants: ${participants.length}, IsParticipant: ${isParticipant}, IsLeader: ${isLeader}`
           );
 
           // Add all channels (not just user's channels)
@@ -2118,7 +2105,6 @@ function StateExplorerPage() {
             state: state,
             participantCount: participantCount,
             participants: participants,
-            whitelisted: whitelisted, // Add whitelisted users for completeness
             leader: leader,
             isLeader: isLeader,
             targetAddress: targetAddress,
@@ -2190,7 +2176,7 @@ function StateExplorerPage() {
       const channelIdBigInt = BigInt(channelIdNum);
       
       // Fetch channel info directly from smart contract
-      const [channelInfo, participants, whitelisted, leader] = await Promise.all([
+      const [channelInfo, participants, leader] = await Promise.all([
         publicClient.readContract({
           address: ROLLUP_BRIDGE_CORE_ADDRESS,
           abi: ROLLUP_BRIDGE_CORE_ABI,
@@ -2201,12 +2187,6 @@ function StateExplorerPage() {
           address: ROLLUP_BRIDGE_CORE_ADDRESS,
           abi: ROLLUP_BRIDGE_CORE_ABI,
           functionName: "getChannelParticipants",
-          args: [channelIdBigInt],
-        }) as Promise<readonly `0x${string}`[]>,
-        publicClient.readContract({
-          address: ROLLUP_BRIDGE_CORE_ADDRESS,
-          abi: ROLLUP_BRIDGE_CORE_ABI,
-          functionName: "getChannelWhitelisted",
           args: [channelIdBigInt],
         }) as Promise<readonly `0x${string}`[]>,
         publicClient.readContract({
@@ -2231,7 +2211,6 @@ function StateExplorerPage() {
         timeout: Number(timeout),
         latestCommittedState,
         participants: [...participants],
-        whitelisted: [...whitelisted],
         leader,
       };
     } catch (error) {

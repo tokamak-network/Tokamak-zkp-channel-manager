@@ -9,7 +9,7 @@ export function useUserRolesDynamic() {
   const [isLoading, setIsLoading] = useState(true);
   const [totalChannels, setTotalChannels] = useState(0);
   const [participatingChannels, setParticipatingChannels] = useState<number[]>([]);
-  const [whitelistedChannels, setWhitelistedChannels] = useState<number[]>([]);  // New: channels where user is whitelisted
+  const [whitelistedChannels, setWhitelistedChannels] = useState<number[]>([]);
   const [leadingChannels, setLeadingChannels] = useState<number[]>([]);
   const [channelStatsData, setChannelStatsData] = useState<Record<number, readonly [bigint, `0x${string}`, number, bigint, `0x${string}`] | null>>({});
 
@@ -50,12 +50,12 @@ export function useUserRolesDynamic() {
       args: [BigInt(i)],
     });
 
-    // Get channel whitelisted users to check deposit eligibility
+    // Check if user is whitelisted for this channel (new approach using mapping)
     channelContracts.push({
       address: ROLLUP_BRIDGE_CORE_ADDRESS,
       abi: ROLLUP_BRIDGE_CORE_ABI,
-      functionName: 'getChannelWhitelisted',
-      args: [BigInt(i)],
+      functionName: 'isChannelWhitelisted',
+      args: [BigInt(i), address || '0x0000000000000000000000000000000000000000'],
     });
 
     // Get channel state for deposit page
@@ -90,23 +90,23 @@ export function useUserRolesDynamic() {
     let foundLeadership = false;
     let foundParticipation = false;
     const participantChannels: number[] = [];
-    const whitelistedChannels: number[] = [];  // New: track whitelisted channels
+    const whitelistedChannels: number[] = [];
     const leaderChannels: number[] = [];
     const statsData: Record<number, readonly [bigint, `0x${string}`, number, bigint, `0x${string}`] | null> = {};
 
     // Process the channel data
     let actualChannelCount = 0;
     for (let i = 0; i < maxChannelsToCheck; i++) {
-      // Now we have 5 calls per channel: leader, participants, whitelisted, state, targetContract
+      // Now we have 5 calls per channel: leader, participants, isWhitelisted, state, targetContract
       const leaderIndex = i * 5;
       const participantsIndex = i * 5 + 1;
-      const whitelistedIndex = i * 5 + 2;
+      const isWhitelistedIndex = i * 5 + 2;
       const stateIndex = i * 5 + 3;
       const targetContractIndex = i * 5 + 4;
       
       const leader = channelData?.[leaderIndex]?.result as string | undefined;
       const participants = channelData?.[participantsIndex]?.result as readonly string[] | undefined;
-      const whitelisted = channelData?.[whitelistedIndex]?.result as readonly string[] | undefined;
+      const isWhitelisted = channelData?.[isWhitelistedIndex]?.result as boolean | undefined;
       const state = channelData?.[stateIndex]?.result as number | undefined;
       const targetContract = channelData?.[targetContractIndex]?.result as `0x${string}` | undefined;
 
@@ -147,8 +147,7 @@ export function useUserRolesDynamic() {
       }
 
       // Check if user is whitelisted (eligible for deposits)
-      const isWhitelisted = whitelisted && whitelisted.includes(address);
-      if (isWhitelisted) {
+      if (isWhitelisted && address) {
         whitelistedChannels.push(i);
       }
     }
