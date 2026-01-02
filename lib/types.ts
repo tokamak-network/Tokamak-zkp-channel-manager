@@ -101,7 +101,6 @@ export interface ExtendedChannelData {
   state: ChannelState;
   stateLabel: string;
   participants: Address[];     // Users who have deposited
-  whitelisted: Address[];      // Users whitelisted during creation
   participantCount: bigint;
   totalDeposits: bigint;
   userDeposit: bigint;

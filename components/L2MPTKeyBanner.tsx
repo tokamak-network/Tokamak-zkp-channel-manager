@@ -51,10 +51,7 @@ export function L2MPTKeyBanner({ className }: L2MPTKeyBannerProps) {
       const message = L2_PRV_KEY_MESSAGE + `${channelId}`;
       
       // Try to sign with additional error handling for Firefox
-      const signature = await signMessageAsync({
-        message,
-        account: address // Explicitly pass account for better Firefox compatibility
-      });
+      const signature = await signMessageAsync({message});
       
       const accountL2 = deriveL2KeysAndAddressFromSignature(signature, slotIndex);
 

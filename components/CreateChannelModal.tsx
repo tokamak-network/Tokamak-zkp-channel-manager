@@ -29,24 +29,24 @@ interface CreateChannelModalProps {
 export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannelModalProps) {
   const [formData, setFormData] = useState<CreateChannelFormData>({
     targetContract: ETH_TOKEN_ADDRESS,
-    participants: [''],
+    whitelistedUsers: [''],
     pkx: '',
     pky: '',
     enableFrostSignatures: true
   });
-  const [participantsText, setParticipantsText] = useState('');
+  const [whitelistedUsersText, setWhitelistedUsersText] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Form validation
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    // Validate participants
-    const participants = parseParticipantAddresses(participantsText);
-    if (participants.length < 3) {
-      newErrors.participants = 'At least 3 participants required';
-    } else if (participants.length > 50) {
-      newErrors.participants = 'Maximum 50 participants allowed';
+    // Validate whitelistedUsers
+    const whitelistedUsers = parseParticipantAddresses(whitelistedUsersText);
+    if (whitelistedUsers.length < 3) {
+      newErrors.whitelistedUsers = 'At least 3 whitelistedUsers required';
+    } else if (whitelistedUsers.length > 50) {
+      newErrors.whitelistedUsers = 'Maximum 50 whitelistedUsers allowed';
     }
 
     // Validate target contract
@@ -66,7 +66,7 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
   // Prepare contract write - updated for new contract structure
   const channelArgs = validateForm() ? [{
     targetContract: formData.targetContract as `0x${string}`,
-    participants: parseParticipantAddresses(participantsText) as `0x${string}`[],
+    whitelistedUsers: parseParticipantAddresses(whitelistedUsersText) as `0x${string}`[],
     enableFrostSignature: formData.enableFrostSignatures
   }] : undefined;
 
@@ -100,12 +100,12 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
   const resetForm = () => {
     setFormData({
       targetContract: ETH_TOKEN_ADDRESS,
-      participants: [''],
+      whitelistedUsers: [''],
       pkx: '',
       pky: '',
       enableFrostSignatures: true
     });
-    setParticipantsText('');
+    setWhitelistedUsersText('');
     setErrors({});
   };
 
@@ -133,7 +133,7 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
             Create New Channel
           </DialogTitle>
           <DialogDescription>
-            Set up a new ZK Rollup bridge channel with multiple participants
+            Set up a new ZK Rollup bridge channel with multiple whitelistedUsers
           </DialogDescription>
         </DialogHeader>
 
@@ -170,23 +170,23 @@ export function CreateChannelModal({ isOpen, onClose, onSuccess }: CreateChannel
             )}
           </div>
 
-          {/* Participants */}
+          {/* whitelistedUsers */}
           <div className="space-y-2">
             <label className="text-sm font-medium">Participant Addresses</label>
             <Textarea
               placeholder="Enter participant addresses (one per line)&#10;0x1234...&#10;0x5678...&#10;0x9abc..."
-              value={participantsText}
-              onChange={(e) => setParticipantsText(e.target.value)}
+              value={whitelistedUsersText}
+              onChange={(e) => setWhitelistedUsersText(e.target.value)}
               rows={4}
-              className={errors.participants ? 'border-red-500' : ''}
+              className={errors.whitelistedUsers ? 'border-red-500' : ''}
             />
             <div className="text-xs text-gray-500">
               Enter 3-50 participant addresses, one per line. Must be valid Ethereum addresses.
             </div>
-            {errors.participants && (
+            {errors.whitelistedUsers && (
               <div className="text-sm text-red-500 flex items-center gap-1">
                 <AlertCircle className="h-4 w-4" />
-                {errors.participants}
+                {errors.whitelistedUsers}
               </div>
             )}
           </div>
