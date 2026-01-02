@@ -225,8 +225,8 @@ export default function HomePage() {
                       </div>
                     )}
 
-                    {/* Deposit Tokens - For whitelisted users, participants or leaders */}
-                    {isConnected && (isParticipant || hasChannels || (whitelistedChannels && whitelistedChannels.length > 0)) && (
+                    {/* Deposit Tokens - For whitelisted users or leaders */}
+                    {isConnected && (hasChannels || (whitelistedChannels && whitelistedChannels.length > 0)) && (
                       <div 
                         onClick={handleDepositTokens}
                         className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"
