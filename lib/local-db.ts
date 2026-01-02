@@ -177,6 +177,11 @@ export async function saveDatabase(): Promise<void> {
 export async function getData<T = any>(path: string): Promise<T | null> {
   const database = await getDatabase();
 
+  // Always read from disk to get the latest data
+  // This ensures we don't use stale cached data when the file has been updated
+  // by another process or request
+  await database.read();
+
   if (!database.data) {
     return null;
   }
