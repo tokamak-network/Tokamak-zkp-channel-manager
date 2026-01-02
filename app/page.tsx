@@ -9,14 +9,14 @@ import { useRouter } from 'next/navigation';
 import { Layout } from '@/components/Layout';
 import { ContractInfo } from '@/components/ContractInfo';
 import { useUserRolesDynamic } from '@/hooks/useUserRolesDynamic';
-import { Lock, Zap, Gem, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Activity, FileCheck, Unlock } from 'lucide-react';
+import { Lock, Zap, Gem, PlusCircle, Key, ArrowDownCircle, ArrowUpCircle, Activity, FileCheck, Unlock, Search } from 'lucide-react';
 
 export default function HomePage() {
   const router = useRouter();
   const { address, isConnected } = useAccount();
 
   // Use dynamic hook to check all channels for leadership and participation
-  const { hasChannels, isParticipant } = useUserRolesDynamic();
+  const { hasChannels, isParticipant, whitelistedChannels } = useUserRolesDynamic();
 
   const handleCreateChannel = () => {
     if (!isConnected) {
@@ -51,6 +51,11 @@ export default function HomePage() {
   const handleUnfreezeState = () => {
     if (!isConnected) return;
     router.push('/unfreeze-state');
+  };
+
+  const handleStateExplorer = () => {
+    if (!isConnected) return;
+    router.push('/state-explorer');
   };
 
 
@@ -179,6 +184,29 @@ export default function HomePage() {
                       </div>
                     )}
 
+                    {/* State Explorer - Unique styling with purple gradient */}
+                    {isConnected && (
+                      <div 
+                        onClick={handleStateExplorer}
+                        className="bg-gradient-to-r from-purple-900/80 via-violet-800/80 to-indigo-900/80 border-2 border-purple-400/60 p-4 shadow-xl shadow-purple-500/30 hover:shadow-2xl hover:shadow-purple-400/50 transition-all duration-500 cursor-pointer hover:scale-110 group flex items-center gap-4 relative overflow-hidden"
+                      >
+                        {/* Animated background overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-purple-600/20 to-pink-600/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        
+                        <div className="h-14 w-14 bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center flex-shrink-0 group-hover:from-purple-400 group-hover:to-pink-500 transition-all duration-500 shadow-lg shadow-purple-500/40 rounded-lg relative z-10">
+                          <Search className="w-7 h-7 text-white group-hover:scale-110 transition-transform duration-300" />
+                        </div>
+                        <div className="flex-1 relative z-10">
+                          <h3 className="font-bold text-white mb-1 text-base group-hover:text-purple-200 transition-colors duration-300 tracking-wide">State Explorer</h3>
+                          <p className="text-purple-200/90 text-sm group-hover:text-purple-100 transition-colors duration-300 font-medium">
+                            🔍 Explore channel states & proofs
+                          </p>
+                        </div>
+                        {/* Decorative sparkle */}
+                        <div className="absolute top-2 right-2 w-3 h-3 bg-purple-300 rounded-full opacity-60 group-hover:opacity-100 group-hover:scale-125 transition-all duration-300"></div>
+                      </div>
+                    )}
+
                     {/* DKG Management - Available for all connected users */}
                     {isConnected && (
                       <div 
@@ -197,8 +225,8 @@ export default function HomePage() {
                       </div>
                     )}
 
-                    {/* Deposit Tokens - Only for participants or leaders */}
-                    {isConnected && (isParticipant || hasChannels) && (
+                    {/* Deposit Tokens - For whitelisted users or leaders */}
+                    {isConnected && (hasChannels || (whitelistedChannels && whitelistedChannels.length > 0)) && (
                       <div 
                         onClick={handleDepositTokens}
                         className="bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-[#4fc3f7] p-4 shadow-lg shadow-[#4fc3f7]/20 hover:shadow-xl hover:shadow-[#4fc3f7]/40 transition-all duration-300 cursor-pointer hover:scale-105 group flex items-center gap-4"

@@ -15,7 +15,7 @@ import { MobileNavigation } from '@/components/MobileNavigation';
 import { Footer } from '@/components/Footer';
 import { AlertTriangle, Lightbulb, CheckCircle } from 'lucide-react';
 
-interface Participant {
+interface WhitelistedUser {
   address: string;
 }
 
@@ -107,7 +107,7 @@ export default function CreateChannelPage() {
 
   // Form state - default to TON token since it's the only option
   const [targetContract, setTargetContract] = useState<string>(TON_TOKEN_ADDRESS);
-  const [participants, setParticipants] = useState<Participant[]>([
+  const [whitelistedUsers, setWhitelistedUsers] = useState<WhitelistedUser[]>([
     { address: '' }
   ]);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
@@ -119,23 +119,23 @@ export default function CreateChannelPage() {
   const showTargetContractWarning = targetContract !== '' && !isTonContract;
   const nextSteps = enableFrostSignature ? FROST_NEXT_STEPS : STANDARD_NEXT_STEPS;
 
-  // Add/Remove participants
-  const addParticipant = () => {
-    if (participants.length < maxParticipants) {
-      setParticipants([...participants, { address: '' }]);
+  // Add/Remove whitelisted users
+  const addWhitelistedUser = () => {
+    if (whitelistedUsers.length < maxParticipants) {
+      setWhitelistedUsers([...whitelistedUsers, { address: '' }]);
     }
   };
 
-  const removeParticipant = (index: number) => {
-    if (participants.length > 1) {
-      setParticipants(participants.filter((_, i) => i !== index));
+  const removeWhitelistedUser = (index: number) => {
+    if (whitelistedUsers.length > 1) {
+      setWhitelistedUsers(whitelistedUsers.filter((_, i) => i !== index));
     }
   };
 
-  const updateParticipant = (index: number, value: string) => {
-    const newParticipants = [...participants];
-    newParticipants[index].address = value;
-    setParticipants(newParticipants);
+  const updateWhitelistedUser = (index: number, value: string) => {
+    const newWhitelistedUsers = [...whitelistedUsers];
+    newWhitelistedUsers[index].address = value;
+    setWhitelistedUsers(newWhitelistedUsers);
   };
 
   // Update target contract
@@ -149,16 +149,16 @@ export default function CreateChannelPage() {
       !isAlreadyLeader && // Prevent creation if already leading a channel
       targetContract !== '' && // Target contract must be selected
       isTonContract && // Only TON contract allowed
-      participants.length >= 1 && 
-      participants.length <= maxParticipants &&
-      participants.every(p => isValidEthereumAddress(p.address))
+      whitelistedUsers.length >= 1 && 
+      whitelistedUsers.length <= maxParticipants &&
+      whitelistedUsers.every(p => isValidEthereumAddress(p.address))
     );
-  }, [isAuthorized, isAlreadyLeader, isTonContract, maxParticipants, participants, targetContract]);
+  }, [isAuthorized, isAlreadyLeader, isTonContract, maxParticipants, whitelistedUsers, targetContract]);
 
   // Prepare contract call
   const channelParams = isFormValid ? {
     targetContract: targetContract as `0x${string}`,
-    participants: participants.map(p => p.address as `0x${string}`),
+    whitelisted: whitelistedUsers.map(p => p.address as `0x${string}`),
     enableFrostSignature: enableFrostSignature
   } : undefined;
 
@@ -347,13 +347,13 @@ export default function CreateChannelPage() {
               <div>
                 <div className="flex justify-between items-center mb-4">
                   <label className="block text-sm font-medium text-gray-300">
-                    Whitelisted Participants ({participants.length}/{maxParticipants})
+                    Whitelisted Participants ({whitelistedUsers.length}/{maxParticipants})
                   </label>
                   <div className="space-x-2">
                     <button
                       type="button"
-                      onClick={addParticipant}
-                      disabled={participants.length >= maxParticipants}
+                      onClick={addWhitelistedUser}
+                      disabled={whitelistedUsers.length >= maxParticipants}
                       className="px-3 py-1 text-sm bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 transition-colors duration-200"
                     >
                       Add
@@ -362,14 +362,14 @@ export default function CreateChannelPage() {
                 </div>
                 
                 <div className="space-y-4">
-                  {participants.map((participant, index) => (
+                  {whitelistedUsers.map((whitelistedUser, index) => (
                     <div key={index} className="border border-[#4fc3f7]/30 bg-[#0a1930]/50 p-4">
                       <div className="flex justify-between items-start mb-3">
                         <h4 className="font-medium text-white">Whitelisted Participant {index + 1}</h4>
-                        {participants.length > 1 && (
+                        {whitelistedUsers.length > 1 && (
                           <button
                             type="button"
-                            onClick={() => removeParticipant(index)}
+                            onClick={() => removeWhitelistedUser(index)}
                             className="text-red-400 hover:text-red-300 text-sm"
                           >
                             Remove
@@ -383,12 +383,12 @@ export default function CreateChannelPage() {
                         </label>
                         <input
                           type="text"
-                          value={participant.address}
-                          onChange={(e) => updateParticipant(index, e.target.value)}
+                          value={whitelistedUser.address}
+                          onChange={(e) => updateWhitelistedUser(index, e.target.value)}
                           placeholder="0x..."
                           className="w-full px-3 py-2 text-sm border border-[#4fc3f7]/50 bg-[#0a1930] text-white focus:outline-none focus:ring-2 focus:ring-[#4fc3f7]"
                         />
-                        {participant.address && !isValidEthereumAddress(participant.address) && (
+                        {whitelistedUser.address && !isValidEthereumAddress(whitelistedUser.address) && (
                           <p className="text-red-400 text-xs mt-1">Invalid address</p>
                         )}
                       </div>

@@ -85,7 +85,7 @@ interface OnChainChannel {
   state?: number; // 0: Pending, 1: Active, 2: Closed
   status?: number; // Channel status from contract
   participantCount?: number;
-  participants: string[];
+  participants: string[]; // Users who have deposited
   leader: string;
   isLeader?: boolean;
   targetAddress?: string;
@@ -2024,14 +2024,14 @@ function StateExplorerPage() {
 
       const totalChannels = Number(nextChannelId);
       console.log(
-        `State Explorer: Checking ${
+        `State Explorer: Checking ${totalChannels} channels (0 to ${
           totalChannels - 1
-        } channels for user ${address}`
+        }) for user ${address}`
       );
       const userChannels: OnChainChannel[] = [];
 
       // Check each channel if user is a participant
-      for (let i = 1; i < totalChannels; i++) {
+      for (let i = 0; i < totalChannels; i++) {
         try {
           // First check if channel exists by getting the leader
           const leader = (await publicClient.readContract({
@@ -2049,13 +2049,13 @@ function StateExplorerPage() {
             continue;
           }
 
-          // Get participants to check if user is a participant
-          const participants = (await publicClient.readContract({
+          // Get participants to check if user has access
+          const participants = await publicClient.readContract({
             address: ROLLUP_BRIDGE_CORE_ADDRESS,
             abi: ROLLUP_BRIDGE_CORE_ABI,
             functionName: "getChannelParticipants",
             args: [BigInt(i)],
-          })) as string[];
+          }) as string[];
 
           // Check if user is a participant (case-insensitive comparison)
           const isParticipant = participants.some(

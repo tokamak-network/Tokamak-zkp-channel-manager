@@ -9,6 +9,7 @@ export function useUserRolesDynamic() {
   const [isLoading, setIsLoading] = useState(true);
   const [totalChannels, setTotalChannels] = useState(0);
   const [participatingChannels, setParticipatingChannels] = useState<number[]>([]);
+  const [whitelistedChannels, setWhitelistedChannels] = useState<number[]>([]);
   const [leadingChannels, setLeadingChannels] = useState<number[]>([]);
   const [channelStatsData, setChannelStatsData] = useState<Record<number, readonly [bigint, `0x${string}`, number, bigint, `0x${string}`] | null>>({});
 
@@ -25,7 +26,7 @@ export function useUserRolesDynamic() {
   });
 
   // Get the actual channel count from nextChannelId - this is always the real total
-  const channelCount = totalChannelsData?.[0]?.result ? Number(totalChannelsData[0].result) : 10;
+  const channelCount = totalChannelsData?.[0]?.result !== undefined ? Number(totalChannelsData[0].result) : 0;
   
   // For role checking (leader/participant status), we limit the number to avoid performance issues
   // but the total channel count display will always show the real number from channelCount
@@ -41,12 +42,20 @@ export function useUserRolesDynamic() {
       args: [BigInt(i)],
     });
     
-    // Get channel participants to check participation
+    // Get channel participants to check participation (users who have deposited)
     channelContracts.push({
       address: ROLLUP_BRIDGE_CORE_ADDRESS,
       abi: ROLLUP_BRIDGE_CORE_ABI,
       functionName: 'getChannelParticipants',
       args: [BigInt(i)],
+    });
+
+    // Check if user is whitelisted for this channel (new approach using mapping)
+    channelContracts.push({
+      address: ROLLUP_BRIDGE_CORE_ADDRESS,
+      abi: ROLLUP_BRIDGE_CORE_ABI,
+      functionName: 'isChannelWhitelisted',
+      args: [BigInt(i), address || '0x0000000000000000000000000000000000000000'],
     });
 
     // Get channel state for deposit page
@@ -81,22 +90,25 @@ export function useUserRolesDynamic() {
     let foundLeadership = false;
     let foundParticipation = false;
     const participantChannels: number[] = [];
+    const whitelistedChannels: number[] = [];
     const leaderChannels: number[] = [];
     const statsData: Record<number, readonly [bigint, `0x${string}`, number, bigint, `0x${string}`] | null> = {};
 
     // Process the channel data
     let actualChannelCount = 0;
     for (let i = 0; i < maxChannelsToCheck; i++) {
-      // Now we have 4 calls per channel: leader, participants, state, allowedTokens
-      const leaderIndex = i * 4;
-      const participantsIndex = i * 4 + 1;
-      const stateIndex = i * 4 + 2;
-      const allowedTokensIndex = i * 4 + 3;
+      // Now we have 5 calls per channel: leader, participants, isWhitelisted, state, targetContract
+      const leaderIndex = i * 5;
+      const participantsIndex = i * 5 + 1;
+      const isWhitelistedIndex = i * 5 + 2;
+      const stateIndex = i * 5 + 3;
+      const targetContractIndex = i * 5 + 4;
       
       const leader = channelData?.[leaderIndex]?.result as string | undefined;
       const participants = channelData?.[participantsIndex]?.result as readonly string[] | undefined;
+      const isWhitelisted = channelData?.[isWhitelistedIndex]?.result as boolean | undefined;
       const state = channelData?.[stateIndex]?.result as number | undefined;
-      const targetContract = channelData?.[allowedTokensIndex]?.result as `0x${string}` | undefined;
+      const targetContract = channelData?.[targetContractIndex]?.result as `0x${string}` | undefined;
 
       // Skip if channel doesn't exist (no leader returned or zero address)
       if (!leader || leader === '0x0000000000000000000000000000000000000000') {
@@ -133,6 +145,11 @@ export function useUserRolesDynamic() {
         foundParticipation = true;
         participantChannels.push(i);
       }
+
+      // Check if user is whitelisted (eligible for deposits)
+      if (isWhitelisted && address) {
+        whitelistedChannels.push(i);
+      }
     }
 
     setHasChannels(foundLeadership);
@@ -140,6 +157,7 @@ export function useUserRolesDynamic() {
     // Always use the real total from nextChannelId contract call, regardless of how many we checked for roles
     setTotalChannels(channelCount);
     setParticipatingChannels(participantChannels);
+    setWhitelistedChannels(whitelistedChannels);  // New: set whitelisted channels
     setLeadingChannels(leaderChannels);
     setChannelStatsData(statsData);
     setIsLoading(false);
@@ -151,6 +169,7 @@ export function useUserRolesDynamic() {
     isLoading,
     totalChannels,
     participatingChannels,
+    whitelistedChannels,  // New: return whitelisted channels
     leadingChannels,
     channelStatsData,
   };

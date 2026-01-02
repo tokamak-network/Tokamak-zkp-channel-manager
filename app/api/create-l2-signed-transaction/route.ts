@@ -50,10 +50,10 @@ function serializeTokamakL2Tx(tx: TokamakL2Tx) {
     type: tx.type,
     cache: (tx as any).cache || {},
     activeCapabilities: (tx as any).activeCapabilities || [],
-    common: serializeCommon(tx.common),
-    txOptions: {
-      common: serializeCommon(tx.common),
-    },
+    // common: serializeCommon(tx.common),
+    // txOptions: {
+    //   common: serializeCommon(tx.common),
+    // },
     to: {
       address: tx.to.toString(),
       bytes: Array.from(tx.to.bytes),
