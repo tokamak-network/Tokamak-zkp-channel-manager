@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { CheckCircle2, Clock, XCircle, ArrowRight, Check } from 'lucide-react';
+import { CheckCircle2, Clock, XCircle, ArrowRight, Check, Trash2 } from 'lucide-react';
 
 export type ProofStatus = 'pending' | 'verified' | 'rejected';
 
@@ -22,6 +22,9 @@ interface ProofCardProps {
   isLeader?: boolean;
   onVerify?: (proof: ProofData) => void;
   isVerifying?: boolean;
+  onDelete?: (proof: ProofData) => void;
+  isDeleting?: boolean;
+  userAddress?: string;
 }
 
 const statusConfig = {
@@ -45,16 +48,38 @@ const statusConfig = {
   }
 };
 
-export function ProofCard({ proof, isLeader = false, onVerify, isVerifying = false }: ProofCardProps) {
+export function ProofCard({ 
+  proof, 
+  isLeader = false, 
+  onVerify, 
+  isVerifying = false,
+  onDelete,
+  isDeleting = false,
+  userAddress
+}: ProofCardProps) {
   const config = statusConfig[proof.status];
   const Icon = config.icon;
   const proofDisplayId = proof.proofId || `#${proof.id}`;
+
+  // Check if user can delete this proof
+  const isSubmitter = userAddress && proof.submitter?.toLowerCase() === userAddress.toLowerCase();
+  const canDelete = isLeader || (isSubmitter && proof.status === 'pending');
 
   const handleVerify = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (onVerify && proof.status === 'pending') {
       onVerify(proof);
+    }
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onDelete && canDelete) {
+      if (window.confirm(`Are you sure you want to delete ${proofDisplayId}?`)) {
+        onDelete(proof);
+      }
     }
   };
 
@@ -107,12 +132,25 @@ export function ProofCard({ proof, isLeader = false, onVerify, isVerifying = fal
         </div>
 
         <div className="pt-2 border-t border-[#4fc3f7]/20 flex items-center justify-between">
-          <Link href={`/state-explorer/${proof.channelId}/${encodeURIComponent(proof.id || proof.proofId || proof.key || '')}`}>
-            <div className="text-sm text-gray-400 group-hover:text-[#4fc3f7] transition-colors flex items-center gap-1 cursor-pointer">
-              View Details
-              <ArrowRight className="w-4 h-4" />
-            </div>
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href={`/state-explorer/${proof.channelId}/${encodeURIComponent(proof.id || proof.proofId || proof.key || '')}`}>
+              <div className="text-sm text-gray-400 group-hover:text-[#4fc3f7] transition-colors flex items-center gap-1 cursor-pointer">
+                View Details
+                <ArrowRight className="w-4 h-4" />
+              </div>
+            </Link>
+            {/* Delete Button */}
+            {canDelete && onDelete && (
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="text-sm text-red-400 hover:text-red-300 transition-colors flex items-center gap-1 disabled:opacity-50"
+                title={isLeader ? "Delete proof (Leader)" : "Delete your pending proof"}
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
           {/* Status Text */}
           <span className={`text-xs font-medium ${
             proof.status === 'verified' ? 'text-green-400' :

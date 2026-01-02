@@ -26,7 +26,7 @@ import {
   ETH_TOKEN_ADDRESS,
 } from '@/lib/contracts';
 import { ERC20_ABI } from '@/lib/contracts';
-import { getData } from '@/lib/realtime-db-helpers';
+import { getData, getProofZipContent } from '@/lib/db-client';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { 
   parseProofFromBase64Zip, 
@@ -59,7 +59,8 @@ interface ProofData {
   verifiedAt?: string;
   verifiedBy?: string;
   zipFile?: {
-    path: string;
+    path?: string;
+    filePath?: string; // Path to file on disk (new format)
     size: number;
     fileName: string;
     content?: string; // base64 content
@@ -111,6 +112,8 @@ export default function ProofDetailPage() {
     output?: string;
     error?: string;
   } | null>(null);
+  const [zipContent, setZipContent] = useState<string | null>(null);
+  const [isLoadingZip, setIsLoadingZip] = useState(false);
 
   // Fetch proof data from Firebase
   useEffect(() => {
@@ -179,10 +182,7 @@ export default function ProofDetailPage() {
           // Get zipFile data if it exists
           let zipFileData = foundProof.zipFile;
           
-          // Try to get ZIP file content from Firebase
-          // The ZIP file is stored at: channels/{channelId}/{status}Proofs/{storageProofId}/zipFile
-          // where storageProofId is like "proof-1" or "proof-1-2"
-          // The key from Firebase is the storageProofId (e.g., "proof-1")
+          // Get the storage key for the proof
           const storageProofId = foundProof.key || 
             (foundProof.proofId ? foundProof.proofId.replace(/#/g, '-') : null) ||
             (foundProof.id ? `proof-${foundProof.id}` : null);
@@ -197,80 +197,28 @@ export default function ProofDetailPage() {
           });
           
           if (storageProofId) {
-            // Determine which status folder to check based on proof status
+            // Determine status folder based on proof status
             const statusFolder = foundProof.status === 'verified' ? 'verifiedProofs' :
                                 foundProof.status === 'rejected' ? 'rejectedProofs' :
                                 'submittedProofs';
             
-            // Try the most likely path first (based on status)
-            const primaryPath = `channels/${channelId}/${statusFolder}/${storageProofId}/zipFile`;
-            
-            // Also try other possible paths
-            const possiblePaths = [
-              primaryPath,
-              `channels/${channelId}/submittedProofs/${storageProofId}/zipFile`,
-              `channels/${channelId}/verifiedProofs/${storageProofId}/zipFile`,
-              `channels/${channelId}/rejectedProofs/${storageProofId}/zipFile`,
-            ];
-            
-            // Try each path until we find the ZIP file
-            for (const path of possiblePaths) {
-              try {
-                console.log('ProofDetailPage: Trying path', path);
-                const zipFileContent = await getData<any>(path);
-                console.log('ProofDetailPage: zipFileContent from', path, {
-                  hasContent: !!zipFileContent,
-                  type: typeof zipFileContent,
-                  keys: zipFileContent ? Object.keys(zipFileContent) : [],
-                  contentExists: !!zipFileContent?.content,
-                  contentType: typeof zipFileContent?.content,
-                  fullData: zipFileContent
-                });
-                
-                if (zipFileContent) {
-                  // Check if content exists and is a string
-                  if (zipFileContent.content && typeof zipFileContent.content === 'string') {
-                    console.log('ProofDetailPage: Found ZIP file content at', path, 'Content length:', zipFileContent.content.length);
-                    zipFileData = {
-                      path: path,
-                      size: zipFileContent.size || foundProof.zipFile?.size || 0,
-                      fileName: zipFileContent.fileName || foundProof.zipFile?.fileName || `proof-${foundProof.proofId || foundProof.id || 'unknown'}.zip`,
-                      content: zipFileContent.content,
-                    };
-                    break; // Found it, stop searching
-                  } else if (typeof zipFileContent === 'string') {
-                    // If the entire response is a string (base64), use it directly
-                    console.log('ProofDetailPage: Found ZIP file content as string at', path, 'Content length:', zipFileContent.length);
-                    zipFileData = {
-                      path: path,
-                      size: foundProof.zipFile?.size || 0,
-                      fileName: foundProof.zipFile?.fileName || `proof-${foundProof.proofId || foundProof.id || 'unknown'}.zip`,
-                      content: zipFileContent,
-                    };
-                    break; // Found it, stop searching
-                  } else {
-                    console.warn('ProofDetailPage: zipFileContent exists but no valid content found', zipFileContent);
-                  }
-                }
-              } catch (error) {
-                console.warn('ProofDetailPage: Failed to fetch from path', path, error);
-                // Continue to next path
-                continue;
-              }
-            }
-          } else if (foundProof.zipFile?.path) {
-            // Fallback to the path in zipFile metadata
+            // Use getProofZipContent to fetch ZIP file content (handles file-based storage)
             try {
-              console.log('ProofDetailPage: Trying zipFile.path', foundProof.zipFile.path);
-              const zipFileContent = await getData<any>(foundProof.zipFile.path);
-              if (zipFileContent?.content) {
+              const result = await getProofZipContent(channelId, storageProofId, statusFolder as any);
+              
+              if (result?.content) {
+                console.log('ProofDetailPage: Found ZIP content, length:', result.content.length);
                 zipFileData = {
                   ...foundProof.zipFile,
-                  content: zipFileContent.content,
+                  size: result.size || foundProof.zipFile?.size || 0,
+                  fileName: result.fileName || foundProof.zipFile?.fileName || `proof-${foundProof.proofId || foundProof.id || 'unknown'}.zip`,
+                  content: result.content,
                 };
+              } else {
+                console.warn('ProofDetailPage: getProofZipContent returned null or no content');
               }
             } catch (error) {
-              console.warn('Failed to fetch ZIP file content:', error);
+              console.warn('ProofDetailPage: Failed to fetch ZIP content:', error);
             }
           }
           
@@ -316,6 +264,42 @@ export default function ProofDetailPage() {
 
     fetchProof();
   }, [channelId, proofId, decimals]);
+
+  // Fetch ZIP content (handles both file-based and legacy formats)
+  useEffect(() => {
+    const loadZipContent = async () => {
+      if (!proof || !channelId) return;
+      
+      // If we already have content in memory, use it
+      if (proof.zipFile?.content) {
+        setZipContent(proof.zipFile.content);
+        return;
+      }
+      
+      // If there's a filePath, fetch from API
+      if (proof.zipFile?.filePath || proof.key) {
+        setIsLoadingZip(true);
+        try {
+          const status = proof.status === 'verified' ? 'verifiedProofs' :
+                        proof.status === 'rejected' ? 'rejectedProofs' :
+                        'submittedProofs';
+          
+          const proofKey = proof.key || proof.proofId?.replace('#', '-') || '';
+          const result = await getProofZipContent(channelId, proofKey, status as any);
+          
+          if (result?.content) {
+            setZipContent(result.content);
+          }
+        } catch (error) {
+          console.error('Failed to load ZIP content:', error);
+        } finally {
+          setIsLoadingZip(false);
+        }
+      }
+    };
+    
+    loadZipContent();
+  }, [proof, channelId]);
 
   // Fetch channel data and participants
   useEffect(() => {
@@ -701,7 +685,7 @@ export default function ProofDetailPage() {
               {/* Verify Button */}
               <button
                 onClick={async () => {
-                  if (!proof.zipFile?.content) {
+                  if (!zipContent) {
                     window.alert('ZIP file not found. The proof must have a ZIP file with proof.json to verify.');
                     return;
                   }
@@ -714,7 +698,7 @@ export default function ProofDetailPage() {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
-                        proofZipBase64: proof.zipFile.content,
+                        proofZipBase64: zipContent,
                       }),
                     });
 
@@ -735,9 +719,9 @@ export default function ProofDetailPage() {
                     setIsVerifying(false);
                   }
                 }}
-                disabled={isVerifying || !proof.zipFile?.content}
+                disabled={isVerifying || isLoadingZip || !zipContent}
                 className={`flex items-center justify-center gap-2 px-6 py-4 rounded transition-all font-medium ${
-                  isVerifying || !proof.zipFile?.content
+                  isVerifying || isLoadingZip || !zipContent
                     ? 'bg-gray-600 cursor-not-allowed text-gray-300'
                     : 'bg-green-600 hover:bg-green-500 text-white hover:shadow-lg hover:shadow-green-500/30'
                 }`}
@@ -758,14 +742,14 @@ export default function ProofDetailPage() {
               {/* Download All Files (ZIP) */}
               <button
                 onClick={async () => {
-                  if (!proof.zipFile?.content) {
+                  if (!zipContent) {
                     window.alert('ZIP file not found. The proof may not have a ZIP file uploaded.');
                     return;
                   }
 
                   try {
                     // Convert base64 to bytes
-                    const base64Content = proof.zipFile.content;
+                    const base64Content = zipContent;
                     const binaryString = atob(base64Content);
                     const bytes = new Uint8Array(binaryString.length);
                     for (let i = 0; i < binaryString.length; i++) {

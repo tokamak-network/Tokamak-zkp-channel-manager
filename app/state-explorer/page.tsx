@@ -28,7 +28,8 @@ import {
   pushData,
   updateData,
   deleteData,
-} from "@/lib/realtime-db-helpers";
+  getProofZipContent,
+} from "@/lib/db-client";
 import { ERC20_ABI } from "@/lib/contracts";
 import {
   FileText,
@@ -49,6 +50,7 @@ import {
   AlertCircle,
   Upload,
   Download,
+  Database,
 } from "lucide-react";
 import JSZip from "jszip";
 
@@ -80,13 +82,17 @@ interface StateTransition {
 
 interface OnChainChannel {
   id: number;
-  state: number; // 0: Pending, 1: Active, 2: Closed
-  participantCount: number;
+  state?: number; // 0: Pending, 1: Active, 2: Closed
+  status?: number; // Channel status from contract
+  participantCount?: number;
   participants: string[];
   leader: string;
-  isLeader: boolean;
-  targetAddress: string;
-  hasPublicKey: boolean;
+  isLeader?: boolean;
+  targetAddress?: string;
+  hasPublicKey?: boolean;
+  tokenAddress?: string;
+  timeout?: number;
+  latestCommittedState?: string;
 }
 
 // Channel state enum - matches contract: None(0), Initialized(1), Open(2), Active(3), Closing(4), Closed(5)
@@ -278,10 +284,12 @@ function ChannelSelectionView({
                   </div>
 
                   {/* Target Contract */}
-                  <div className="text-xs text-gray-500">
-                    Target: {channel.targetAddress.slice(0, 6)}...
-                    {channel.targetAddress.slice(-4)}
-                  </div>
+                  {channel.targetAddress && (
+                    <div className="text-xs text-gray-500">
+                      Target: {channel.targetAddress.slice(0, 6)}...
+                      {channel.targetAddress.slice(-4)}
+                    </div>
+                  )}
                 </button>
               ))}
             </div>
@@ -377,6 +385,7 @@ function StateExplorerDetailView({
   onBack: () => void;
   userAddress: string;
 }) {
+  const router = useRouter();
   const [filter, setFilter] = useState<
     "all" | "pending" | "verified" | "rejected"
   >("all");
@@ -402,6 +411,12 @@ function StateExplorerDetailView({
   const [dataFetchedOnce, setDataFetchedOnce] = useState(false);
   const publicClient = usePublicClient();
   const VISIBLE_PARTICIPANTS_COLLAPSED = 3;
+
+  // Calculate isLeader in real-time based on current userAddress
+  // This ensures the leader status updates when wallet is switched
+  const isLeader = userAddress && channel.leader 
+    ? userAddress.toLowerCase() === channel.leader.toLowerCase() 
+    : false;
 
   // Get token info (decimals, symbol)
   const isETH =
@@ -444,6 +459,24 @@ function StateExplorerDetailView({
     })),
     enabled: channel.participants.length > 0,
   });
+
+  // Helper function to get ZIP content (supports both file-based and legacy base64)
+  const getZipContentForProof = useCallback(async (
+    proofKey: string,
+    zipFile: any,
+    status: "submittedProofs" | "verifiedProofs" | "rejectedProofs" = "verifiedProofs"
+  ): Promise<string | null> => {
+    // If zipFile has filePath, fetch from API (new format)
+    if (zipFile?.filePath) {
+      const result = await getProofZipContent(String(channel.id), proofKey, status);
+      return result?.content || null;
+    }
+    // Legacy: use base64 content directly from database
+    if (zipFile?.content) {
+      return zipFile.content;
+    }
+    return null;
+  }, [channel.id]);
 
   // Helper function to parse ZIP with caching
   const parseZipWithCache = useCallback(async (
@@ -488,6 +521,7 @@ function StateExplorerDetailView({
 
     try {
       // SINGLE FETCH: Get all proof data in one call
+      console.log("fetchAllChannelData: Fetching proofs for channel", channel.id);
       const [verifiedProofsData, submittedProofsData, rejectedProofsData] = await Promise.all([
         cachedVerifiedProofs && !forceRefresh 
           ? Promise.resolve(cachedVerifiedProofs) 
@@ -495,6 +529,12 @@ function StateExplorerDetailView({
         getData<any>(`channels/${channel.id}/submittedProofs`),
         getData<any>(`channels/${channel.id}/rejectedProofs`),
       ]);
+
+      console.log("fetchAllChannelData: Results", {
+        verifiedProofsData,
+        submittedProofsData,
+        rejectedProofsData,
+      });
 
       // Cache verified proofs for later use
       if (verifiedProofsData && !cachedVerifiedProofs) {
@@ -520,12 +560,14 @@ function StateExplorerDetailView({
 
         // Process proofs sequentially for state transitions (using cache)
         for (const proof of verifiedProofsArray) {
-          if (!proof.zipFile?.content) continue;
+          // Get ZIP content (supports both file-based and legacy formats)
+          const zipContent = await getZipContentForProof(proof.key, proof.zipFile, "verifiedProofs");
+          if (!zipContent) continue;
 
           try {
             const cached = await parseZipWithCache(
               proof.key,
-              proof.zipFile.content,
+              zipContent,
               parseProofFromBase64Zip,
               analyzeProof,
               decimals
@@ -605,11 +647,28 @@ function StateExplorerDetailView({
       // Add verified proofs (without zipFile.content to save memory)
       if (verifiedProofsData) {
         Object.entries(verifiedProofsData).forEach(([key, value]: [string, any]) => {
+          // Skip non-proof entries (e.g., metadata)
+          if (!value || typeof value !== 'object' || !value.submitter) {
+            return;
+          }
+          // Ensure id is a string, not an object, and clean up any [object Object] artifacts
+          let proofId = typeof value.proofId === 'string' ? value.proofId : 
+                       typeof value.id === 'string' ? value.id : 
+                       `verified-${key}`;
+          // Clean up corrupted proofId
+          if (proofId.includes('[object Object]')) {
+            const match = key.match(/^proof-(\d+)(?:-(\d+))?$/);
+            if (match) {
+              proofId = match[2] ? `proof#${match[1]}-${match[2]}` : `proof#${match[1]}`;
+            } else {
+              proofId = `proof#${key.replace('proof-', '')}`;
+            }
+          }
           allProofs.push({
             ...value,
             // Exclude zipFile.content from the proofs list to save memory
             zipFile: value.zipFile ? { ...value.zipFile, content: undefined } : undefined,
-            id: value.proofId || value.id || `verified-${key}`,
+            id: proofId,
             key,
             status: "verified" as const,
           });
@@ -619,12 +678,30 @@ function StateExplorerDetailView({
       // Add submitted proofs
       if (submittedProofsData) {
         Object.entries(submittedProofsData).forEach(([key, value]: [string, any]) => {
+          // Skip non-proof entries (e.g., metadata)
+          if (!value || typeof value !== 'object' || !value.submitter) {
+            return;
+          }
           const existingProof = allProofs.find((p) => p.proofId === value.proofId && p.key === key);
           if (!existingProof) {
+            // Ensure id is a string, not an object, and clean up any [object Object] artifacts
+            let proofId = typeof value.proofId === 'string' ? value.proofId : 
+                         typeof value.id === 'string' ? value.id : 
+                         `submitted-${key}`;
+            // Clean up corrupted proofId (e.g., "proof#1-[object Object]1")
+            if (proofId.includes('[object Object]')) {
+              // Extract valid parts: key format is "proof-1" or "proof-1-2"
+              const match = key.match(/^proof-(\d+)(?:-(\d+))?$/);
+              if (match) {
+                proofId = match[2] ? `proof#${match[1]}-${match[2]}` : `proof#${match[1]}`;
+              } else {
+                proofId = `proof#${key.replace('proof-', '')}`;
+              }
+            }
             allProofs.push({
               ...value,
               zipFile: value.zipFile ? { ...value.zipFile, content: undefined } : undefined,
-              id: value.proofId || value.id || `submitted-${key}`,
+              id: proofId,
               key,
               status: "pending" as const,
             });
@@ -635,10 +712,27 @@ function StateExplorerDetailView({
       // Add rejected proofs
       if (rejectedProofsData) {
         Object.entries(rejectedProofsData).forEach(([key, value]: [string, any]) => {
+          // Skip non-proof entries (e.g., metadata)
+          if (!value || typeof value !== 'object' || !value.submitter) {
+            return;
+          }
+          // Ensure id is a string, not an object, and clean up any [object Object] artifacts
+          let proofId = typeof value.proofId === 'string' ? value.proofId : 
+                       typeof value.id === 'string' ? value.id : 
+                       `rejected-${key}`;
+          // Clean up corrupted proofId
+          if (proofId.includes('[object Object]')) {
+            const match = key.match(/^proof-(\d+)(?:-(\d+))?$/);
+            if (match) {
+              proofId = match[2] ? `proof#${match[1]}-${match[2]}` : `proof#${match[1]}`;
+            } else {
+              proofId = `proof#${key.replace('proof-', '')}`;
+            }
+          }
           allProofs.push({
             ...value,
             zipFile: value.zipFile ? { ...value.zipFile, content: undefined } : undefined,
-            id: value.proofId || value.id || `rejected-${key}`,
+            id: proofId,
             key,
             status: "rejected" as const,
           });
@@ -695,7 +789,7 @@ function StateExplorerDetailView({
   // SECURITY: This operation is now performed on the backend via API route
   // to ensure atomic transactions and prevent race conditions
   const handleVerifyProof = async (proof: ProofData) => {
-    if (!channel.isLeader || !proof.key || !proof.sequenceNumber) {
+    if (!isLeader || !proof.key || !proof.sequenceNumber) {
       return;
     }
 
@@ -738,6 +832,53 @@ function StateExplorerDetailView({
     }
   };
 
+  // Handle proof deletion
+  const [isDeletingProof, setIsDeletingProof] = useState<string | null>(null);
+
+  const handleDeleteProof = async (proof: ProofData) => {
+    if (!proof.key) {
+      alert("Cannot delete proof: missing key");
+      return;
+    }
+
+    setIsDeletingProof(proof.key as string);
+
+    try {
+      const response = await fetch("/api/delete-proof", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          channelId: channel.id,
+          proofKey: proof.key,
+          userAddress: userAddress,
+          isLeader: isLeader, // Pass leader status from on-chain data
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to delete proof");
+      }
+
+      const result = await response.json();
+      console.log("Proof deleted successfully:", result);
+
+      // Refresh proofs list
+      await fetchAllChannelData(true);
+    } catch (error) {
+      console.error("Error deleting proof:", error);
+      alert(
+        `Failed to delete proof: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    } finally {
+      setIsDeletingProof(null);
+    }
+  };
+
   // Download all verified proofs
   const handleDownloadAllVerifiedProofs = async () => {
     setIsDownloadingProofs(true);
@@ -773,7 +914,9 @@ function StateExplorerDetailView({
 
       // Add each verified proof ZIP to the master ZIP
       for (const proof of verifiedProofsArray) {
-        if (!proof.zipFile?.content) {
+        // Get ZIP content (supports both file-based and legacy formats)
+        const zipContent = await getZipContentForProof(proof.key, proof.zipFile, "verifiedProofs");
+        if (!zipContent) {
           console.warn(
             `Proof ${proof.key} has no zipFile content, skipping...`
           );
@@ -782,7 +925,7 @@ function StateExplorerDetailView({
 
         try {
           // Decode base64 content
-          const base64Content = proof.zipFile.content;
+          const base64Content = zipContent;
           const binaryString = atob(base64Content);
           const bytes = new Uint8Array(binaryString.length);
           for (let i = 0; i < binaryString.length; i++) {
@@ -914,7 +1057,7 @@ function StateExplorerDetailView({
                     <h2 className="text-xl font-semibold text-white font-mono">
                       Channel #{channel.id}
                     </h2>
-                    {channel.isLeader && (
+                    {isLeader && (
                       <span className="bg-amber-500/20 text-amber-400 text-xs px-2 py-0.5 rounded font-medium">
                         LEADER
                       </span>
@@ -957,7 +1100,7 @@ function StateExplorerDetailView({
                     Create Transaction
                   </button>
                 </div>
-                {/* Second row: Download Verified Proofs */}
+                {/* Second row: Download Verified Proofs and Admin DB Viewer */}
                 <div className="flex items-center gap-3">
                   <button
                     onClick={handleDownloadAllVerifiedProofs}
@@ -976,6 +1119,17 @@ function StateExplorerDetailView({
                       </>
                     )}
                   </button>
+                  {/* Admin Only: DB Viewer */}
+                  {isLeader && (
+                    <button
+                      onClick={() => router.push(`/db-viewer?channelId=${channel.id}`)}
+                      className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded transition-all font-medium border border-gray-600"
+                      title="Admin: View Local Database"
+                    >
+                      <Database className="w-4 h-4" />
+                      DB Viewer
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -988,11 +1142,13 @@ function StateExplorerDetailView({
                 <Shield className="w-4 h-4" />
                 Public Key: {channel.hasPublicKey ? "Set" : "Not set"}
               </span>
-              <span className="flex items-center gap-1">
-                <Coins className="w-4 h-4" />
-                Target: {channel.targetAddress.slice(0, 6)}...
-                {channel.targetAddress.slice(-4)}
-              </span>
+              {channel.targetAddress && (
+                <span className="flex items-center gap-1">
+                  <Coins className="w-4 h-4" />
+                  Target: {channel.targetAddress.slice(0, 6)}...
+                  {channel.targetAddress.slice(-4)}
+                </span>
+              )}
             </div>
           </div>
 
@@ -1585,7 +1741,7 @@ function StateExplorerDetailView({
             )}
 
             {/* Pending Proofs Approval Section (Leader Only) */}
-            {channel.isLeader &&
+            {isLeader &&
               proofs.filter((p) => p.status === "pending").length > 0 && (
                 <div className="mb-6 bg-gradient-to-b from-[#1a2347] to-[#0a1930] border border-amber-500/50 p-6 shadow-lg">
                   <div className="flex items-center gap-3 mb-4">
@@ -1718,9 +1874,12 @@ function StateExplorerDetailView({
                   <ProofCard
                     key={proof.id || proof.key}
                     proof={proof}
-                    isLeader={channel.isLeader}
+                    isLeader={isLeader}
                     onVerify={handleVerifyProof}
                     isVerifying={isVerifying === proof.key}
+                    onDelete={handleDeleteProof}
+                    isDeleting={isDeletingProof === proof.key}
+                    userAddress={userAddress}
                   />
                 ))}
               </div>
@@ -1849,7 +2008,10 @@ function StateExplorerPage() {
       }
     }
 
-    setIsLoading(true);
+    // Only show loading state for initial fetch, not background updates
+    if (!forceRefresh) {
+      setIsLoading(true);
+    }
     setError(null);
 
     try {
@@ -2002,20 +2164,111 @@ function StateExplorerPage() {
     }
   }, [isConnected, address, publicClient, cacheLoaded]);
 
-  // Auto-select channel from URL query parameter
-  useEffect(() => {
-    const channelIdParam = searchParams.get("channelId");
-    if (channelIdParam && channels.length > 0 && !selectedChannel) {
-      const channelIdNum = parseInt(channelIdParam, 10);
-      const channel = channels.find((c) => c.id === channelIdNum);
-      if (channel) {
-        setSelectedChannel(channel);
+  // State for direct channel loading from URL
+  const [isLoadingDirectChannel, setIsLoadingDirectChannel] = useState(false);
+  const pendingChannelId = searchParams.get("channelId");
+
+  // Fetch a single channel directly by ID (more efficient than loading all channels)
+  const fetchSingleChannel = async (channelIdNum: number): Promise<OnChainChannel | null> => {
+    if (!publicClient) return null;
+    
+    try {
+      const channelIdBigInt = BigInt(channelIdNum);
+      
+      // Fetch channel info directly from smart contract
+      const [channelInfo, participants, leader] = await Promise.all([
+        publicClient.readContract({
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: "getChannelInfo",
+          args: [channelIdBigInt],
+        }) as Promise<readonly [`0x${string}`, number, bigint, `0x${string}`]>,
+        publicClient.readContract({
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: "getChannelParticipants",
+          args: [channelIdBigInt],
+        }) as Promise<readonly `0x${string}`[]>,
+        publicClient.readContract({
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: "getChannelLeader",
+          args: [channelIdBigInt],
+        }) as Promise<`0x${string}`>,
+      ]);
+
+      const [tokenAddress, status, timeout, latestCommittedState] = channelInfo;
+      
+      // Only return if channel exists (has token address)
+      if (tokenAddress === "0x0000000000000000000000000000000000000000") {
+        return null;
       }
+
+      return {
+        id: channelIdNum,
+        tokenAddress,
+        status,
+        timeout: Number(timeout),
+        latestCommittedState,
+        participants: [...participants],
+        leader,
+      };
+    } catch (error) {
+      console.error("Failed to fetch single channel:", error);
+      return null;
     }
-  }, [searchParams, channels, selectedChannel]);
+  };
+
+  // Direct channel loading from URL (bypasses channel list loading)
+  useEffect(() => {
+    const loadDirectChannel = async () => {
+      const channelIdParam = searchParams.get("channelId");
+      
+      // Skip if no channelId in URL or already have selected channel
+      if (!channelIdParam || selectedChannel) return;
+      
+      // Skip if publicClient not ready
+      if (!publicClient) return;
+      
+      const channelIdNum = parseInt(channelIdParam, 10);
+      if (isNaN(channelIdNum)) return;
+
+      // First, check if channel exists in already loaded channels
+      const existingChannel = channels.find((c) => c.id === channelIdNum);
+      if (existingChannel) {
+        setSelectedChannel(existingChannel);
+        return;
+      }
+
+      // If channels are still loading, wait for them
+      if (isLoading && channels.length === 0) {
+        // Channels are loading, will be handled by next effect run
+        return;
+      }
+
+      // No channels loaded yet or channel not in list - fetch directly
+      setIsLoadingDirectChannel(true);
+      try {
+        const channel = await fetchSingleChannel(channelIdNum);
+        if (channel) {
+          setSelectedChannel(channel);
+        } else {
+          // Channel not found, redirect to channel list
+          console.warn(`Channel #${channelIdNum} not found`);
+          router.push("/state-explorer");
+        }
+      } finally {
+        setIsLoadingDirectChannel(false);
+      }
+    };
+
+    loadDirectChannel();
+  }, [searchParams, publicClient, selectedChannel, channels, isLoading, router]);
 
   const handleSelectChannel = (channel: OnChainChannel) => {
     setSelectedChannel(channel);
+    // Update URL with channelId for bookmarking and back navigation
+    router.push(`/state-explorer?channelId=${channel.id}`, { scroll: false });
   };
 
   const handleBack = () => {
@@ -2023,6 +2276,20 @@ function StateExplorerPage() {
     // Remove channelId from URL to prevent auto-reselection
     router.push("/state-explorer");
   };
+
+  // Show loading state when waiting for channel from URL parameter
+  if (isLoadingDirectChannel || (pendingChannelId && !selectedChannel && !isLoading)) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4fc3f7] mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading channel #{pendingChannelId}...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
