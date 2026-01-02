@@ -175,28 +175,78 @@ export async function saveDatabase(): Promise<void> {
  * Example: "channels/1/submittedProofs"
  */
 export async function getData<T = any>(path: string): Promise<T | null> {
-  const database = await getDatabase();
+  const callId = `getData-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+  
+  try {
+    console.log(`[${callId}] getData: Starting`, { path, dbFile: DB_FILE });
+    
+    const database = await getDatabase();
 
-  // Always read from disk to get the latest data
-  // This ensures we don't use stale cached data when the file has been updated
-  // by another process or request
-  await database.read();
+    // Always read from disk to get the latest data
+    // This ensures we don't use stale cached data when the file has been updated
+    // by another process or request
+    const readStartTime = Date.now();
+    await database.read();
+    const readDuration = Date.now() - readStartTime;
+    
+    console.log(`[${callId}] getData: Database read completed`, {
+      path,
+      readDuration: `${readDuration}ms`,
+      hasData: !!database.data,
+    });
 
-  if (!database.data) {
-    return null;
-  }
-
-  const parts = path.split("/").filter((p) => p);
-  let current: any = database.data;
-
-  for (const part of parts) {
-    if (current === null || current === undefined) {
+    if (!database.data) {
+      console.warn(`[${callId}] getData: Database data is null/undefined`, { path });
       return null;
     }
-    current = current[part];
-  }
 
-  return current ?? null;
+    const parts = path.split("/").filter((p) => p);
+    let current: any = database.data;
+    const navigationPath: string[] = [];
+
+    for (const part of parts) {
+      navigationPath.push(part);
+      if (current === null || current === undefined) {
+        console.log(`[${callId}] getData: Path not found (null/undefined)`, {
+          path,
+          navigationPath: navigationPath.join("/"),
+          currentPart: part,
+          availableKeys: typeof current === "object" && current !== null ? Object.keys(current) : "N/A",
+        });
+        return null;
+      }
+      
+      if (!(part in current)) {
+        console.log(`[${callId}] getData: Path not found (key missing)`, {
+          path,
+          navigationPath: navigationPath.join("/"),
+          currentPart: part,
+          availableKeys: typeof current === "object" && current !== null ? Object.keys(current) : "N/A",
+          currentType: typeof current,
+        });
+        return null;
+      }
+      
+      current = current[part];
+    }
+
+    console.log(`[${callId}] getData: Success`, {
+      path,
+      found: current !== null && current !== undefined,
+      resultType: typeof current,
+      resultKeys: typeof current === "object" && current !== null ? Object.keys(current) : "N/A",
+    });
+
+    return current ?? null;
+  } catch (error: any) {
+    console.error(`[${callId}] getData: Error`, {
+      path,
+      error: error.message,
+      stack: error.stack,
+      code: error.code,
+    });
+    throw error;
+  }
 }
 
 /**
