@@ -1,29 +1,29 @@
 import { Address } from 'wagmi';
 
 // Modular Contract addresses - Updated for new architecture
-export const ROLLUP_BRIDGE_CORE_ADDRESS: Address = process.env.ROLLUP_BRIDGE_CORE_ADDRESS as Address;
-export const ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS: Address = process.env.ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS as Address;
-export const ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS: Address = process.env.ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS as Address;
-export const ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS: Address = process.env.ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS as Address;
-export const ROLLUP_BRIDGE_ADMIN_MANAGER_ADDRESS: Address = process.env.ROLLUP_BRIDGE_ADMIN_MANAGER_ADDRESS as Address;
+export const ROLLUP_BRIDGE_CORE_ADDRESS: Address = process.env.NEXT_PUBLIC_ROLLUP_BRIDGE_CORE_ADDRESS as Address;
+export const ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS: Address = process.env.NEXT_PUBLIC_ROLLUP_BRIDGE_DEPOSIT_MANAGER_ADDRESS as Address;
+export const ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS: Address = process.env.NEXT_PUBLIC_ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS as Address;
+export const ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS: Address = process.env.NEXT_PUBLIC_ROLLUP_BRIDGE_WITHDRAW_MANAGER_ADDRESS as Address;
+export const ROLLUP_BRIDGE_ADMIN_MANAGER_ADDRESS: Address = process.env.NEXT_PUBLIC_ROLLUP_BRIDGE_ADMIN_MANAGER_ADDRESS as Address;
 
 // Legacy address for backwards compatibility
 export const ROLLUP_BRIDGE_ADDRESS: Address = ROLLUP_BRIDGE_CORE_ADDRESS;
 // Legacy verifier for backwards compatibility
-export const VERIFIER_ADDRESS: Address = process.env.VERIFIER_ADDRESS as Address;
+export const VERIFIER_ADDRESS: Address = process.env.NEXT_PUBLIC_VERIFIER_ADDRESS as Address;
 
 // Groth16 Verifiers for different tree sizes
-export const GROTH16_VERIFIER_16_ADDRESS: Address = process.env.GROTH16_VERIFIER_16_ADDRESS as Address;
-export const GROTH16_VERIFIER_32_ADDRESS: Address = process.env.GROTH16_VERIFIER_32_ADDRESS as Address;
-export const GROTH16_VERIFIER_64_ADDRESS: Address = process.env.GROTH16_VERIFIER_64_ADDRESS as Address;
-export const GROTH16_VERIFIER_128_ADDRESS: Address = process.env.GROTH16_VERIFIER_128_ADDRESS as Address; 
-export const ZECFROST_ADDRESS: Address = process.env.ZECFROST_ADDRESS as Address; 
+export const GROTH16_VERIFIER_16_ADDRESS: Address = process.env.NEXT_PUBLIC_GROTH16_VERIFIER_16_ADDRESS as Address;
+export const GROTH16_VERIFIER_32_ADDRESS: Address = process.env.NEXT_PUBLIC_GROTH16_VERIFIER_32_ADDRESS as Address;
+export const GROTH16_VERIFIER_64_ADDRESS: Address = process.env.NEXT_PUBLIC_GROTH16_VERIFIER_64_ADDRESS as Address;
+export const GROTH16_VERIFIER_128_ADDRESS: Address = process.env.NEXT_PUBLIC_GROTH16_VERIFIER_128_ADDRESS as Address; 
+export const ZECFROST_ADDRESS: Address = process.env.NEXT_PUBLIC_ZECFROST_ADDRESS as Address; 
 
 // Supported token addresses on Sepolia testnet
-export const TON_TOKEN_ADDRESS: Address = process.env.TON_TOKEN_ADDRESS as Address; // TON token (18 decimals)
-export const USDT_TOKEN_ADDRESS: Address = process.env.USDT_TOKEN_ADDRESS as Address; // USDT token
-export const USDC_TOKEN_ADDRESS: Address = process.env.USDC_TOKEN_ADDRESS as Address;
-export const ETH_TOKEN_ADDRESS: Address = process.env.ETH_TOKEN_ADDRESS as Address; // ETH placeholder
+export const TON_TOKEN_ADDRESS: Address = process.env.NEXT_PUBLIC_TON_TOKEN_ADDRESS as Address; // TON token (18 decimals)
+export const USDT_TOKEN_ADDRESS: Address = process.env.NEXT_PUBLIC_USDT_TOKEN_ADDRESS as Address; // USDT token
+export const USDC_TOKEN_ADDRESS: Address = process.env.NEXT_PUBLIC_USDC_TOKEN_ADDRESS as Address;
+export const ETH_TOKEN_ADDRESS: Address = process.env.NEXT_PUBLIC_ETH_TOKEN_ADDRESS as Address; // ETH placeholder
 
 // Token utilities are in ./tokenUtils.ts to avoid circular dependency
 
