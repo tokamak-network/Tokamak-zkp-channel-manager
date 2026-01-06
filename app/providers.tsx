@@ -13,19 +13,17 @@ import { ThemeProvider as OldThemeProvider } from '@/contexts/ThemeContext';
 import { ThemeProvider } from '@/components/ui/theme-toggle';
 import { ToastProvider } from '@/components/ui/toast';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
-import { ALCHEMY_KEY } from '@/lib/constants';
+import { ETHERS_RPC_URL } from '@/lib/rpc';
 
 import '@rainbow-me/rainbowkit/styles.css';
 
-// Configure chains and providers with Alchemy RPC URLs from environment
+// Configure chains and providers with RPC URLs from environment
 const { chains, publicClient } = configureChains(
   [sepolia, mainnet],
   [
     jsonRpcProvider({
-      rpc: (chain) => ({
-        http: chain.id === 1 
-          ? process.env.MAINNET_RPC_URL || `https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}`
-          : process.env.SEPOLIA_RPC_URL || `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`,
+      rpc: () => ({
+        http: ETHERS_RPC_URL,
         webSocket: undefined, // Disable WebSocket to avoid connection issues
       }),
     }),

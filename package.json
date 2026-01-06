@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/fetch-contracts-json.mjs && node scripts/install-tokamak-zk-evm.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "fetch:contracts": "node scripts/fetch-contracts-json.mjs",
     "clean": "rm -rf .next node_modules/.cache",
     "postinstall": "mkdir -p data && echo 'Local database directory created'",
     "db:reset": "rm -rf data/local-db.json && echo 'Database reset'"

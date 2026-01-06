@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useCallback, Suspense } from "react";
-import { useAccount, usePublicClient, useContractReads } from "wagmi";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Suspense } from "react";
+import { useAccount, useContractReads } from "wagmi";
+import { readContracts } from "@wagmi/core";
 import { useSearchParams, useRouter } from "next/navigation";
 import { formatUnits } from "viem";
 import { Layout } from "@/components/Layout";
@@ -406,10 +407,10 @@ function StateExplorerDetailView({
   const [isLoadingTransitions, setIsLoadingTransitions] = useState(false);
   const [isTransitionsExpanded, setIsTransitionsExpanded] = useState(false);
   const [isDownloadingProofs, setIsDownloadingProofs] = useState(false);
+  const fetchRequestIdRef = useRef(0);
   // Cache for verified proofs data to avoid refetching
   const [cachedVerifiedProofs, setCachedVerifiedProofs] = useState<any>(null);
   const [dataFetchedOnce, setDataFetchedOnce] = useState(false);
-  const publicClient = usePublicClient();
   const VISIBLE_PARTICIPANTS_COLLAPSED = 3;
 
   // Calculate isLeader in real-time based on current userAddress
@@ -460,6 +461,38 @@ function StateExplorerDetailView({
     enabled: channel.participants.length > 0,
   });
 
+  const mptKeyContracts = useMemo(() => {
+    if (channel.participants.length === 0) return [];
+    return channel.participants.map((participant) => ({
+      address: ROLLUP_BRIDGE_CORE_ADDRESS,
+      abi: ROLLUP_BRIDGE_CORE_ABI,
+      functionName: "getL2MptKey",
+      args: [BigInt(channel.id), participant as `0x${string}`],
+    }));
+  }, [channel.id, channel.participants]);
+
+  const { data: mptKeyData } = useContractReads({
+    contracts: mptKeyContracts,
+    enabled: mptKeyContracts.length > 0,
+  });
+
+  const participantKeys = useMemo(() => {
+    if (!mptKeyData || channel.participants.length === 0) return [];
+    return channel.participants
+      .map((address, idx) => {
+        const result = mptKeyData[idx];
+        if (!result || result.status !== "success" || result.result === undefined) {
+          return null;
+        }
+        const mptKey = result.result as bigint;
+        return {
+          address,
+          mptKey: `0x${mptKey.toString(16).padStart(64, "0")}`,
+        };
+      })
+      .filter((entry): entry is { address: string; mptKey: string } => Boolean(entry));
+  }, [mptKeyData, channel.participants]);
+
   // Helper function to get ZIP content (supports both file-based and legacy base64)
   const getZipContentForProof = useCallback(async (
     proofKey: string,
@@ -487,7 +520,7 @@ function StateExplorerDetailView({
     decimalsVal: number
   ) => {
     // Check cache first
-    const cacheKey = `${channel.id}-${proofKey}`;
+    const cacheKey = `${channel.id}-${proofKey}-${participantKeys.length}`;
     if (zipParseCache.has(cacheKey)) {
       return zipParseCache.get(cacheKey)!;
     }
@@ -495,18 +528,24 @@ function StateExplorerDetailView({
     // Parse and cache
     const parsed = await parseProofFromBase64Zip(zipContent);
     if (parsed.instance && parsed.snapshot) {
-      const analysis = analyzeProof(parsed.instance, parsed.snapshot, decimalsVal);
+      const analysis = await analyzeProof(
+        parsed.instance,
+        parsed.snapshot,
+        decimalsVal,
+        channel.participants,
+        participantKeys
+      );
       const result = { instance: parsed.instance, snapshot: parsed.snapshot, analysis };
       zipParseCache.set(cacheKey, result);
       return result;
     }
     return null;
-  }, [channel.id]);
+  }, [channel.id, channel.participants, participantKeys]);
 
   // OPTIMIZED: Single unified data fetch function
   // This replaces the previous 3 separate functions that were fetching the same data
   const fetchAllChannelData = useCallback(async (forceRefresh = false) => {
-    if (!publicClient || !initialDeposits || channel.participants.length === 0) {
+    if (!initialDeposits || channel.participants.length === 0) {
       return;
     }
 
@@ -515,6 +554,7 @@ function StateExplorerDetailView({
       return;
     }
 
+    const requestId = ++fetchRequestIdRef.current;
     setIsLoadingBalances(true);
     setIsLoadingProofs(true);
     setIsLoadingTransitions(true);
@@ -545,7 +585,7 @@ function StateExplorerDetailView({
       const { parseProofFromBase64Zip, analyzeProof } = await import("@/lib/proofAnalyzer");
 
       // ============ PROCESS VERIFIED PROOFS ============
-      let latestProofBalances: any = null;
+      let latestProofBalancesByAddress: Map<string, any> | null = null;
       const transitions: StateTransition[] = [];
       let previousBalances: any[] = [];
 
@@ -575,6 +615,12 @@ function StateExplorerDetailView({
 
             if (cached) {
               const { analysis } = cached;
+              const balancesByAddress = new Map<string, any>();
+              analysis.balances.forEach((balance: any) => {
+                if (balance.l1Addr) {
+                  balancesByAddress.set(balance.l1Addr.toLowerCase(), balance);
+                }
+              });
 
               // Set merkle roots from first and last proofs
               if (proof === firstProof) {
@@ -582,22 +628,30 @@ function StateExplorerDetailView({
               }
               if (proof === lastProof) {
                 setCurrentMerkleRoot(analysis.merkleRoots.resulting);
-                latestProofBalances = analysis.balances;
+                latestProofBalancesByAddress = balancesByAddress;
               }
 
               // Calculate balance changes for transitions
-              const balanceChanges = analysis.balances.map((bal: any, idx: number) => {
-                const beforeBalanceRaw = previousBalances[idx]?.balanceFormatted || 
-                  (initialDeposits?.[idx]?.result 
+              const previousBalancesByAddress = new Map<string, any>();
+              previousBalances.forEach((balance: any) => {
+                if (balance.l1Addr) {
+                  previousBalancesByAddress.set(balance.l1Addr.toLowerCase(), balance);
+                }
+              });
+              const balanceChanges = channel.participants.map((participant, idx: number) => {
+                const participantKey = participant.toLowerCase();
+                const beforeBalanceRaw = previousBalancesByAddress.get(participantKey)
+                  ?.balanceFormatted ||
+                  (initialDeposits?.[idx]?.result
                     ? formatUnits(initialDeposits[idx].result as bigint, decimals)
                     : "0.00");
-                const afterBalanceRaw = bal.balanceFormatted;
+                const afterBalanceRaw = balancesByAddress.get(participantKey)?.balanceFormatted || beforeBalanceRaw;
                 const beforeBalance = parseFloat(beforeBalanceRaw).toFixed(2);
                 const afterBalance = parseFloat(afterBalanceRaw).toFixed(2);
                 const change = (parseFloat(afterBalance) - parseFloat(beforeBalance)).toFixed(2);
 
                 return {
-                  address: channel.participants[idx],
+                  address: participant,
                   before: beforeBalance,
                   after: afterBalance,
                   change: parseFloat(change) >= 0 ? `+${change}` : change,
@@ -621,6 +675,10 @@ function StateExplorerDetailView({
         }
       }
 
+      if (requestId !== fetchRequestIdRef.current) {
+        return;
+      }
+
       setStateTransitions(transitions);
 
       // ============ SET PARTICIPANT BALANCES ============
@@ -628,8 +686,9 @@ function StateExplorerDetailView({
         const initialDeposit = (initialDeposits?.[idx]?.result as bigint) || BigInt(0);
         const initialDepositFormatted = formatUnits(initialDeposit, decimals);
         let currentBalance = initialDepositFormatted;
-        if (latestProofBalances && latestProofBalances[idx]) {
-          currentBalance = latestProofBalances[idx].balanceFormatted;
+        const latestBalance = latestProofBalancesByAddress?.get(participant.toLowerCase());
+        if (latestBalance) {
+          currentBalance = latestBalance.balanceFormatted;
         }
         return {
           address: participant,
@@ -743,6 +802,9 @@ function StateExplorerDetailView({
       setDataFetchedOnce(true);
 
     } catch (error) {
+      if (requestId !== fetchRequestIdRef.current) {
+        return;
+      }
       console.error("Error fetching channel data:", error);
       // Fallback for balances
       const fallbackBalances: ParticipantBalance[] = channel.participants.map((participant, idx) => {
@@ -757,6 +819,9 @@ function StateExplorerDetailView({
       });
       setParticipantBalances(fallbackBalances);
     } finally {
+      if (requestId !== fetchRequestIdRef.current) {
+        return;
+      }
       setIsLoadingBalances(false);
       setIsLoadingProofs(false);
       setIsLoadingTransitions(false);
@@ -765,7 +830,6 @@ function StateExplorerDetailView({
     initialDeposits,
     channel.id,
     channel.participants,
-    publicClient,
     decimals,
     symbol,
     dataFetchedOnce,
@@ -779,6 +843,19 @@ function StateExplorerDetailView({
       fetchAllChannelData();
     }
   }, [initialDeposits, channel.participants.length, dataFetchedOnce, fetchAllChannelData]);
+
+  const lastParticipantKeysLength = useRef(participantKeys.length);
+
+  useEffect(() => {
+    if (
+      participantKeys.length > 0 &&
+      lastParticipantKeysLength.current === 0 &&
+      dataFetchedOnce
+    ) {
+      fetchAllChannelData(true);
+    }
+    lastParticipantKeysLength.current = participantKeys.length;
+  }, [participantKeys.length, dataFetchedOnce, fetchAllChannelData]);
 
   const [isVerifying, setIsVerifying] = useState<string | null>(null);
   const [selectedProofForApproval, setSelectedProofForApproval] = useState<
@@ -1909,7 +1986,6 @@ function StateExplorerDetailView({
 // Main Page Component
 function StateExplorerPage() {
   const { address, isConnected } = useAccount();
-  const publicClient = usePublicClient();
   const searchParams = useSearchParams();
   const router = useRouter();
   const [selectedChannel, setSelectedChannel] = useState<OnChainChannel | null>(
@@ -1988,11 +2064,8 @@ function StateExplorerPage() {
 
   // Fetch user's channels from blockchain
   const fetchChannels = async (forceRefresh = false) => {
-    if (!address || !publicClient) {
-      console.log("State Explorer: Missing address or publicClient", {
-        address,
-        publicClient: !!publicClient,
-      });
+    if (!address) {
+      console.log("State Explorer: Missing address");
       return;
     }
 
@@ -2016,11 +2089,16 @@ function StateExplorerPage() {
 
     try {
       // Get the next channel ID to know how many channels exist
-      const nextChannelId = (await publicClient.readContract({
-        address: ROLLUP_BRIDGE_CORE_ADDRESS,
-        abi: ROLLUP_BRIDGE_CORE_ABI,
-        functionName: "nextChannelId",
-      })) as bigint;
+      const totalChannelsData = await readContracts({
+        contracts: [
+          {
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: "getTotalChannels",
+          },
+        ],
+      });
+      const nextChannelId = totalChannelsData?.[0]?.result as bigint;
 
       const totalChannels = Number(nextChannelId);
       console.log(
@@ -2033,13 +2111,46 @@ function StateExplorerPage() {
       // Check each channel if user is a participant
       for (let i = 0; i < totalChannels; i++) {
         try {
+          const channelReadResults = await readContracts({
+            contracts: [
+              {
+                address: ROLLUP_BRIDGE_CORE_ADDRESS,
+                abi: ROLLUP_BRIDGE_CORE_ABI,
+                functionName: "getChannelLeader",
+                args: [BigInt(i)],
+              },
+              {
+                address: ROLLUP_BRIDGE_CORE_ADDRESS,
+                abi: ROLLUP_BRIDGE_CORE_ABI,
+                functionName: "getChannelParticipants",
+                args: [BigInt(i)],
+              },
+              {
+                address: ROLLUP_BRIDGE_CORE_ADDRESS,
+                abi: ROLLUP_BRIDGE_CORE_ABI,
+                functionName: "getChannelInfo",
+                args: [BigInt(i)],
+              },
+              {
+                address: ROLLUP_BRIDGE_CORE_ADDRESS,
+                abi: ROLLUP_BRIDGE_CORE_ABI,
+                functionName: "getChannelPublicKey",
+                args: [BigInt(i)],
+              },
+              {
+                address: ROLLUP_BRIDGE_CORE_ADDRESS,
+                abi: ROLLUP_BRIDGE_CORE_ABI,
+                functionName: "getChannelTargetContract",
+                args: [BigInt(i)],
+              },
+            ],
+          });
+
           // First check if channel exists by getting the leader
-          const leader = (await publicClient.readContract({
-            address: ROLLUP_BRIDGE_CORE_ADDRESS,
-            abi: ROLLUP_BRIDGE_CORE_ABI,
-            functionName: "getChannelLeader",
-            args: [BigInt(i)],
-          })) as string;
+          const leader =
+            channelReadResults?.[0]?.status === "success"
+              ? (channelReadResults[0].result as string)
+              : undefined;
 
           // Skip if channel doesn't exist (zero address)
           if (
@@ -2050,12 +2161,10 @@ function StateExplorerPage() {
           }
 
           // Get participants to check if user has access
-          const participants = await publicClient.readContract({
-            address: ROLLUP_BRIDGE_CORE_ADDRESS,
-            abi: ROLLUP_BRIDGE_CORE_ABI,
-            functionName: "getChannelParticipants",
-            args: [BigInt(i)],
-          }) as string[];
+          const participants =
+            channelReadResults?.[1]?.status === "success"
+              ? (channelReadResults[1].result as string[])
+              : [];
 
           // Check if user is a participant (case-insensitive comparison)
           const isParticipant = participants.some(
@@ -2073,28 +2182,28 @@ function StateExplorerPage() {
           console.log(`State Explorer: Adding channel ${i} to channels list`);
           // Fetch remaining channel details
           // getChannelInfo returns: [targetAddress, state, participantCount, initialRoot]
-          const [channelInfo, publicKey, targetAddress] = await Promise.all([
-            publicClient.readContract({
-              address: ROLLUP_BRIDGE_CORE_ADDRESS,
-              abi: ROLLUP_BRIDGE_CORE_ABI,
-              functionName: "getChannelInfo",
-              args: [BigInt(i)],
-            }) as Promise<
-              readonly [`0x${string}`, number, bigint, `0x${string}`]
-            >,
-            publicClient.readContract({
-              address: ROLLUP_BRIDGE_CORE_ADDRESS,
-              abi: ROLLUP_BRIDGE_CORE_ABI,
-              functionName: "getChannelPublicKey",
-              args: [BigInt(i)],
-            }) as Promise<[bigint, bigint]>,
-            publicClient.readContract({
-              address: ROLLUP_BRIDGE_CORE_ADDRESS,
-              abi: ROLLUP_BRIDGE_CORE_ABI,
-              functionName: "getChannelTargetContract",
-              args: [BigInt(i)],
-            }) as Promise<string>,
-          ]);
+          const channelInfo =
+            channelReadResults?.[2]?.status === "success"
+              ? (channelReadResults[2].result as readonly [
+                  `0x${string}`,
+                  number,
+                  bigint,
+                  `0x${string}`
+                ])
+              : undefined;
+          const publicKey =
+            channelReadResults?.[3]?.status === "success"
+              ? (channelReadResults[3].result as [bigint, bigint])
+              : [0n, 0n];
+          const targetAddress =
+            channelReadResults?.[4]?.status === "success"
+              ? (channelReadResults[4].result as string)
+              : undefined;
+
+          if (!channelInfo || !targetAddress) {
+            console.warn(`State Explorer: Channel ${i} read failed`);
+            continue;
+          }
 
           // channelInfo structure: [targetAddress, state, participantCount, initialRoot]
           const state = channelInfo[1];
@@ -2133,7 +2242,7 @@ function StateExplorerPage() {
 
   // Fetch channels on mount and when address changes
   useEffect(() => {
-    if (isConnected && address && publicClient) {
+    if (isConnected && address) {
       // If cache was already loaded in useLayoutEffect, skip fetching
       if (cacheLoaded) {
         // Cache was loaded, optionally update in background (but don't show loading)
@@ -2162,7 +2271,7 @@ function StateExplorerPage() {
       setIsLoading(false);
       setCacheLoaded(false);
     }
-  }, [isConnected, address, publicClient, cacheLoaded]);
+  }, [isConnected, address, cacheLoaded]);
 
   // State for direct channel loading from URL
   const [isLoadingDirectChannel, setIsLoadingDirectChannel] = useState(false);
@@ -2170,32 +2279,54 @@ function StateExplorerPage() {
 
   // Fetch a single channel directly by ID (more efficient than loading all channels)
   const fetchSingleChannel = async (channelIdNum: number): Promise<OnChainChannel | null> => {
-    if (!publicClient) return null;
-    
     try {
       const channelIdBigInt = BigInt(channelIdNum);
       
       // Fetch channel info directly from smart contract
-      const [channelInfo, participants, leader] = await Promise.all([
-        publicClient.readContract({
-          address: ROLLUP_BRIDGE_CORE_ADDRESS,
-          abi: ROLLUP_BRIDGE_CORE_ABI,
-          functionName: "getChannelInfo",
-          args: [channelIdBigInt],
-        }) as Promise<readonly [`0x${string}`, number, bigint, `0x${string}`]>,
-        publicClient.readContract({
-          address: ROLLUP_BRIDGE_CORE_ADDRESS,
-          abi: ROLLUP_BRIDGE_CORE_ABI,
-          functionName: "getChannelParticipants",
-          args: [channelIdBigInt],
-        }) as Promise<readonly `0x${string}`[]>,
-        publicClient.readContract({
-          address: ROLLUP_BRIDGE_CORE_ADDRESS,
-          abi: ROLLUP_BRIDGE_CORE_ABI,
-          functionName: "getChannelLeader",
-          args: [channelIdBigInt],
-        }) as Promise<`0x${string}`>,
-      ]);
+      const channelReadResults = await readContracts({
+        contracts: [
+          {
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: "getChannelInfo",
+            args: [channelIdBigInt],
+          },
+          {
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: "getChannelParticipants",
+            args: [channelIdBigInt],
+          },
+          {
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: "getChannelLeader",
+            args: [channelIdBigInt],
+          },
+        ],
+      });
+
+      const channelInfo =
+        channelReadResults?.[0]?.status === "success"
+          ? (channelReadResults[0].result as readonly [
+              `0x${string}`,
+              number,
+              bigint,
+              `0x${string}`
+            ])
+          : undefined;
+      const participants =
+        channelReadResults?.[1]?.status === "success"
+          ? (channelReadResults[1].result as readonly `0x${string}`[])
+          : [];
+      const leader =
+        channelReadResults?.[2]?.status === "success"
+          ? (channelReadResults[2].result as `0x${string}`)
+          : undefined;
+
+      if (!channelInfo || !leader) {
+        return null;
+      }
 
       const [tokenAddress, status, timeout, latestCommittedState] = channelInfo;
       
@@ -2226,9 +2357,6 @@ function StateExplorerPage() {
       
       // Skip if no channelId in URL or already have selected channel
       if (!channelIdParam || selectedChannel) return;
-      
-      // Skip if publicClient not ready
-      if (!publicClient) return;
       
       const channelIdNum = parseInt(channelIdParam, 10);
       if (isNaN(channelIdNum)) return;
@@ -2263,7 +2391,7 @@ function StateExplorerPage() {
     };
 
     loadDirectChannel();
-  }, [searchParams, publicClient, selectedChannel, channels, isLoading, router]);
+  }, [searchParams, selectedChannel, channels, isLoading, router]);
 
   const handleSelectChannel = (channel: OnChainChannel) => {
     setSelectedChannel(channel);

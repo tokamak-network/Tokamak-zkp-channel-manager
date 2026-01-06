@@ -32,7 +32,7 @@ export function useChannelData(): UseChannelDataReturn {
   const { data: totalChannels } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
-    functionName: 'nextChannelId',
+    functionName: "getTotalChannels",
     enabled: isConnected,
   });
 
@@ -221,7 +221,7 @@ export function useAvailableChannels() {
   const { data: totalChannels } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
-    functionName: 'nextChannelId',
+    functionName: "getTotalChannels",
     enabled: isConnected,
   });
 
@@ -248,7 +248,7 @@ export function useUserChannelRoles() {
   const { data: totalChannels } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
-    functionName: 'nextChannelId',
+    functionName: "getTotalChannels",
     enabled: isConnected,
   });
 

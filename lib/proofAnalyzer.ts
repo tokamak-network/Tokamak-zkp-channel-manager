@@ -6,27 +6,15 @@
  * - Participant balance changes
  */
 
+import { StateSnapshot } from '@/Tokamak-Zk-EVM/packages/frontend/synthesizer/src/TokamakL2JS';
 import type { JSZipObject } from 'jszip';
+import { fetchChannelData } from './ethers';
+import { ETHERS_RPC_URL } from './rpc';
 
 export interface InstanceData {
   a_pub_user: string[];
   a_pub_block: string[];
   a_pub_function: string[];
-}
-
-export interface StateSnapshotData {
-  stateRoot: string;
-  registeredKeys: string[];
-  storageEntries: Array<{
-    index: number;
-    key: string;
-    value: string;
-  }>;
-  contractAddress: string;
-  preAllocatedLeaves?: Array<{
-    key: string;
-    value: string;
-  }>;
 }
 
 export interface ProofAnalysisResult {
@@ -35,13 +23,33 @@ export interface ProofAnalysisResult {
     resulting: string;
   };
   balances: Array<{
-    participantIndex: number;
+    l1Addr: string;
     mptKey: string;
     balance: string; // in wei (hex)
     balanceFormatted: string; // in ETH (decimal)
   }>;
   contractAddress: string;
 }
+
+export interface ParticipantKey {
+  address: string;
+  mptKey: string;
+}
+
+// export interface StateSnapshotData {
+//   stateRoot: string;
+//   registeredKeys: string[];
+//   storageEntries: Array<{
+//     index: number;
+//     key: string;
+//     value: string;
+//   }>;
+//   contractAddress: string;
+//   preAllocatedLeaves?: Array<{
+//     key: string;
+//     value: string;
+//   }>;
+// }
 
 /**
  * Combines two 16-byte hex strings into a 32-byte hash
@@ -53,6 +61,11 @@ function combine16ByteChunks(lower: string, upper: string): string {
   
   // Combine: upper comes first in the final hash
   return '0x' + upperClean + lowerClean;
+}
+
+function normalizeStorageKey(key: string): string {
+  const raw = key.startsWith("0x") ? key.slice(2) : key;
+  return "0x" + raw.padStart(64, "0").toLowerCase();
 }
 
 /**
@@ -94,22 +107,52 @@ export function extractMerkleRoots(instanceData: InstanceData): {
  * 
  * storageEntries are in participant order (index 0 = participant 0, etc.)
  */
-export function extractParticipantBalances(
-  snapshotData: StateSnapshotData,
-  decimals: number = 18
-): Array<{
-  participantIndex: number;
+export async function extractParticipantBalances(
+  snapshotData: StateSnapshot,
+  decimals: number = 18,
+  participants?: string[],
+  participantKeys?: ParticipantKey[]
+): Promise<Array<{
+  l1Addr: string;
   mptKey: string;
   balance: string;
   balanceFormatted: string;
-}> {
-  return snapshotData.storageEntries.map((entry) => {
+}>> {
+  const participantByKey = new Map<string, string>();
+  let fallbackParticipants = participants && participants.length > 0 ? participants : null;
+
+  if (participantKeys && participantKeys.length > 0) {
+    for (const { address, mptKey } of participantKeys) {
+      if (!mptKey) continue;
+      participantByKey.set(normalizeStorageKey(mptKey), address);
+    }
+  }
+
+  if (participantByKey.size === 0 && !fallbackParticipants && ETHERS_RPC_URL) {
+    try {
+      const channelData = await fetchChannelData(ETHERS_RPC_URL, snapshotData.channelId);
+      channelData.storageEntries.forEach((entry, idx) => {
+        const participant = channelData.participants[idx];
+        if (!participant) return;
+        participantByKey.set(normalizeStorageKey(entry.key), participant);
+      });
+      fallbackParticipants = channelData.participants;
+    } catch (error) {
+      console.warn("extractParticipantBalances: failed to fetch channel data", error);
+    }
+  }
+
+  return snapshotData.storageEntries.map((entry, idx) => {
     // Convert hex balance to decimal
-    const balanceWei = entry.value === '0x' ? 0n : BigInt(entry.value);
+    const balanceWei = entry.value === "0x" ? 0n : BigInt(entry.value);
     const balanceEth = Number(balanceWei) / Math.pow(10, decimals);
-    
+    const keyLower = normalizeStorageKey(entry.key);
+    const l1Addr =
+      (keyLower ? participantByKey.get(keyLower) : null) ||
+      (fallbackParticipants ? fallbackParticipants[idx] : "");
+
     return {
-      participantIndex: entry.index,
+      l1Addr: l1Addr || "",
       mptKey: entry.key,
       balance: entry.value,
       balanceFormatted: balanceEth.toFixed(decimals),
@@ -120,13 +163,20 @@ export function extractParticipantBalances(
 /**
  * Analyze complete proof data
  */
-export function analyzeProof(
+export async function analyzeProof(
   instanceData: InstanceData,
-  snapshotData: StateSnapshotData,
-  decimals: number = 18
-): ProofAnalysisResult {
+  snapshotData: StateSnapshot,
+  decimals: number = 18,
+  participants?: string[],
+  participantKeys?: ParticipantKey[]
+): Promise<ProofAnalysisResult> {
   const merkleRoots = extractMerkleRoots(instanceData);
-  const balances = extractParticipantBalances(snapshotData, decimals);
+  const balances = await extractParticipantBalances(
+    snapshotData,
+    decimals,
+    participants,
+    participantKeys
+  );
   
   return {
     merkleRoots,
@@ -143,7 +193,7 @@ export async function parseProofFromBase64Zip(
   base64Content: string
 ): Promise<{
   instance: InstanceData | null;
-  snapshot: StateSnapshotData | null;
+  snapshot: StateSnapshot | null;
   error?: string;
 }> {
   try {
@@ -183,7 +233,7 @@ export async function parseProofFromBase64Zip(
     }
     
     // Extract state_snapshot.json (search by filename only)
-    let snapshot: StateSnapshotData | null = null;
+    let snapshot: StateSnapshot | null = null;
     const snapshotFile = findFileByName('state_snapshot.json');
     if (snapshotFile) {
       const content = await snapshotFile.async('string');

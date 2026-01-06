@@ -22,7 +22,7 @@ export function MobileNavigation({ showMobileMenu, setShowMobileMenu }: MobileNa
   const { data: totalChannels } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
-    functionName: 'nextChannelId',
+    functionName: "getTotalChannels",
     enabled: isConnected,
   });
 

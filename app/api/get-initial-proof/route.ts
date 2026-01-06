@@ -10,22 +10,19 @@ import {
   ROLLUP_BRIDGE_PROOF_MANAGER_ADDRESS,
   ROLLUP_BRIDGE_CORE_ADDRESS,
 } from "@/lib/contracts";
-import { ALCHEMY_KEY } from "@/lib/constants";
+import { ETHERS_RPC_URL, HAS_ETHERS_RPC_CONFIG } from "@/lib/rpc";
 
 // Create a public client for reading blockchain data
 function getPublicClient() {
-  const envRpcUrl = process.env.NEXT_PUBLIC_ALCHEMY_SEPOLIA_URL;
-  const alchemyUrl =
-    envRpcUrl || (ALCHEMY_KEY ? `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}` : "");
-  if (!alchemyUrl) {
+  if (!HAS_ETHERS_RPC_CONFIG) {
     throw new Error(
-      "NEXT_PUBLIC_ALCHEMY_SEPOLIA_URL or NEXT_PUBLIC_ALCHEMY_API_KEY environment variable is not set"
+      "NEXT_ETHERS_RPC_URL environment variable is not set"
     );
   }
 
   return createPublicClient({
     chain: sepolia,
-    transport: http(alchemyUrl),
+    transport: http(ETHERS_RPC_URL),
   });
 }
 
@@ -38,14 +35,14 @@ const channelOpenedEvent = parseAbiItem(
   "event ChannelOpened(uint256 indexed channelId, address[] allowedTokens)"
 );
 
-// Search for logs in chunks (to handle RPC limitations - Alchemy free tier = 10 blocks max)
+// Search for logs in chunks (to handle RPC provider limits)
 async function searchLogsInChunks(
   address: `0x${string}`,
   event: any,
   args: any,
   startBlock: bigint,
   endBlock: bigint,
-  chunkSize: bigint = BigInt(9) // Alchemy free tier limit
+  chunkSize: bigint = BigInt(9) // Default small chunk size
 ): Promise<any[]> {
   const allLogs: any[] = [];
   let currentBlock = startBlock;

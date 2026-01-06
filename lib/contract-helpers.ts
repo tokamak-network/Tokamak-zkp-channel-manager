@@ -3,7 +3,7 @@
  * Functions to fetch data from RollupBridgeCore contract
  */
 
-import { readContract } from "@wagmi/core";
+import { readContracts } from "@wagmi/core";
 import { ROLLUP_BRIDGE_ABI, ROLLUP_BRIDGE_ADDRESS } from "./contracts";
 
 /**
@@ -12,66 +12,94 @@ import { ROLLUP_BRIDGE_ABI, ROLLUP_BRIDGE_ADDRESS } from "./contracts";
 export async function fetchChannelDataFromContract(channelId: string) {
   try {
     // 1. Get channel info (includes initialRoot)
-    const channelInfo = await readContract({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
-      functionName: "getChannelInfo",
-      args: [BigInt(channelId)],
+    const [
+      channelInfoResult,
+      participantsResult,
+      allowedTokensResult,
+      publicKeyResult,
+      treeSizeResult,
+    ] = await readContracts({
+      contracts: [
+        {
+          address: ROLLUP_BRIDGE_ADDRESS,
+          abi: ROLLUP_BRIDGE_ABI,
+          functionName: "getChannelInfo",
+          args: [BigInt(channelId)],
+        },
+        {
+          address: ROLLUP_BRIDGE_ADDRESS,
+          abi: ROLLUP_BRIDGE_ABI,
+          functionName: "getChannelParticipants",
+          args: [BigInt(channelId)],
+        },
+        {
+          address: ROLLUP_BRIDGE_ADDRESS,
+          abi: ROLLUP_BRIDGE_ABI,
+          functionName: "getChannelTargetContract",
+          args: [BigInt(channelId)],
+        },
+        {
+          address: ROLLUP_BRIDGE_ADDRESS,
+          abi: ROLLUP_BRIDGE_ABI,
+          functionName: "getChannelPublicKey",
+          args: [BigInt(channelId)],
+        },
+        {
+          address: ROLLUP_BRIDGE_ADDRESS,
+          abi: ROLLUP_BRIDGE_ABI,
+          functionName: "getChannelTreeSize",
+          args: [BigInt(channelId)],
+        },
+      ],
     });
 
-    // 2. Get participants
-    const participants = await readContract({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
-      functionName: "getChannelParticipants",
-      args: [BigInt(channelId)],
-    });
-
-    // 3. Get target contract (for token information)
-    const allowedTokens = await readContract({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
-      functionName: "getChannelTargetContract",
-      args: [BigInt(channelId)],
-    });
-
-    // 4. Get DKG public key
-    const [pkx, pky] = await readContract({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
-      functionName: "getChannelPublicKey",
-      args: [BigInt(channelId)],
-    });
+    const channelInfo = channelInfoResult?.result as readonly [
+      `0x${string}`,
+      number,
+      bigint,
+      `0x${string}`
+    ];
+    const participants = participantsResult?.result as string[];
+    const allowedTokens = allowedTokensResult?.result as `0x${string}`;
+    const [pkx, pky] = (publicKeyResult?.result as [bigint, bigint]) || [
+      0n,
+      0n,
+    ];
+    const treeSize = treeSizeResult?.result as bigint;
 
     // Get preallocated keys
-    const preAllocatedKeys = await readContract({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
-      functionName: "getPreAllocatedKeys",
-      args: [allowedTokens],
+    const preAllocatedKeysResult = await readContracts({
+      contracts: [
+        {
+          address: ROLLUP_BRIDGE_ADDRESS,
+          abi: ROLLUP_BRIDGE_ABI,
+          functionName: "getPreAllocatedKeys",
+          args: [allowedTokens],
+        },
+      ],
     });
+    const preAllocatedKeys =
+      (preAllocatedKeysResult?.[0]?.result as string[]) || [];
+
     // Get MPT keys for each participant
-    const mptKeyList: string[] = [];
-    for (const participant of participants as string[]) {
-      const mptKey = await readContract({
+    const mptKeyResults = await readContracts({
+      contracts: (participants || []).map((participant) => ({
         address: ROLLUP_BRIDGE_ADDRESS,
         abi: ROLLUP_BRIDGE_ABI,
         functionName: "getL2MptKey",
         args: [BigInt(channelId), participant as `0x${string}`],
-      });
-      if (mptKey && BigInt(mptKey as bigint) > 0n) {
-        mptKeyList.push((mptKey as bigint).toString(16));
-      }
-    }
-    const registeredKeys = [...preAllocatedKeys, ...mptKeyList];
-
-    // 6. Get channel tree size (merkle tree depth)
-    const treeSize = await readContract({
-      address: ROLLUP_BRIDGE_ADDRESS,
-      abi: ROLLUP_BRIDGE_ABI,
-      functionName: "getChannelTreeSize",
-      args: [BigInt(channelId)],
+      })),
     });
+    const mptKeyList: string[] = [];
+    mptKeyResults.forEach((result) => {
+      if (result?.status !== "success" || result.result === undefined) return;
+      const mptKey = result.result as bigint;
+      if (mptKey > 0n) {
+        mptKeyList.push(mptKey.toString(16));
+      }
+    });
+
+    const registeredKeys = [...preAllocatedKeys, ...mptKeyList];
 
     return {
       // From contract
@@ -117,4 +145,3 @@ export async function fetchInitializeProofFromTransaction(txHash: string) {
     C: { x: "0", y: "0" },
   };
 }
-

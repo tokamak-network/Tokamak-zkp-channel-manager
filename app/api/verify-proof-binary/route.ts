@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import JSZip from "jszip";
-
-const execAsync = promisify(exec);
+import {
+  assertPathExists,
+  execAsync,
+  getTokamakBinaryPath,
+  getTokamakDistRoot,
+  getTokamakLibraryPath,
+  getTokamakResourcePath,
+} from "@/lib/server/tokamak-utils";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minutes timeout for verification
@@ -14,31 +18,8 @@ interface VerifyProofRequest {
   proofZipBase64: string; // Base64 encoded ZIP file containing proof files
 }
 
-async function assertPathExists(targetPath: string, kind: "file" | "dir") {
-  try {
-    const stat = await fs.stat(targetPath);
-    if (kind === "file" && !stat.isFile()) {
-      throw new Error(
-        `Required file is not a file: ${targetPath}. Install Tokamak-zk-EVM first.`
-      );
-    }
-    if (kind === "dir" && !stat.isDirectory()) {
-      throw new Error(
-        `Required directory is not a directory: ${targetPath}. Install Tokamak-zk-EVM first.`
-      );
-    }
-  } catch (err: any) {
-    if (err?.code === "ENOENT") {
-      throw new Error(
-        `Required ${kind} not found: ${targetPath}. Install Tokamak-zk-EVM first.`
-      );
-    }
-    throw new Error(`Failed to access required ${kind}: ${targetPath}`);
-  }
-}
-
 export async function POST(req: Request) {
-  const distRoot = path.join(process.cwd(), "Tokamak-Zk-EVM", "dist");
+  const distRoot = getTokamakDistRoot();
   const tempDir = path.join(distRoot, "outputs", `verify-${Date.now()}`);
 
   try {
@@ -121,11 +102,19 @@ export async function POST(req: Request) {
     }
 
     // Build paths for verify binary
-    const verifyBinaryPath = path.join(distRoot, "bin", "verify");
-    const libraryPath = path.join(distRoot, "backend-lib", "icicle", "lib");
-    const qapPath = path.join(distRoot, "resource", "qap-compiler", "library");
-    const setupPath = path.join(distRoot, "resource", "setup", "output");
-    const preprocessPath = path.join(distRoot, "resource", "preprocess", "output");
+    const verifyBinaryPath = getTokamakBinaryPath("verify", distRoot);
+    const libraryPath = getTokamakLibraryPath(distRoot);
+    const qapPath = getTokamakResourcePath(
+      distRoot,
+      "qap-compiler",
+      "library"
+    );
+    const setupPath = getTokamakResourcePath(distRoot, "setup", "output");
+    const preprocessPath = getTokamakResourcePath(
+      distRoot,
+      "preprocess",
+      "output"
+    );
 
     await assertPathExists(verifyBinaryPath, "file");
     await assertPathExists(libraryPath, "dir");
@@ -216,4 +205,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
