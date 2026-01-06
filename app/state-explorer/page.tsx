@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Suspense } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, Suspense } from "react";
 import { useAccount, useContractReads } from "wagmi";
 import { readContracts } from "@wagmi/core";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -407,7 +407,6 @@ function StateExplorerDetailView({
   const [isLoadingTransitions, setIsLoadingTransitions] = useState(false);
   const [isTransitionsExpanded, setIsTransitionsExpanded] = useState(false);
   const [isDownloadingProofs, setIsDownloadingProofs] = useState(false);
-  const fetchRequestIdRef = useRef(0);
   // Cache for verified proofs data to avoid refetching
   const [cachedVerifiedProofs, setCachedVerifiedProofs] = useState<any>(null);
   const [dataFetchedOnce, setDataFetchedOnce] = useState(false);
@@ -461,38 +460,6 @@ function StateExplorerDetailView({
     enabled: channel.participants.length > 0,
   });
 
-  const mptKeyContracts = useMemo(() => {
-    if (channel.participants.length === 0) return [];
-    return channel.participants.map((participant) => ({
-      address: ROLLUP_BRIDGE_CORE_ADDRESS,
-      abi: ROLLUP_BRIDGE_CORE_ABI,
-      functionName: "getL2MptKey",
-      args: [BigInt(channel.id), participant as `0x${string}`],
-    }));
-  }, [channel.id, channel.participants]);
-
-  const { data: mptKeyData } = useContractReads({
-    contracts: mptKeyContracts,
-    enabled: mptKeyContracts.length > 0,
-  });
-
-  const participantKeys = useMemo(() => {
-    if (!mptKeyData || channel.participants.length === 0) return [];
-    return channel.participants
-      .map((address, idx) => {
-        const result = mptKeyData[idx];
-        if (!result || result.status !== "success" || result.result === undefined) {
-          return null;
-        }
-        const mptKey = result.result as bigint;
-        return {
-          address,
-          mptKey: `0x${mptKey.toString(16).padStart(64, "0")}`,
-        };
-      })
-      .filter((entry): entry is { address: string; mptKey: string } => Boolean(entry));
-  }, [mptKeyData, channel.participants]);
-
   // Helper function to get ZIP content (supports both file-based and legacy base64)
   const getZipContentForProof = useCallback(async (
     proofKey: string,
@@ -520,7 +487,7 @@ function StateExplorerDetailView({
     decimalsVal: number
   ) => {
     // Check cache first
-    const cacheKey = `${channel.id}-${proofKey}-${participantKeys.length}`;
+    const cacheKey = `${channel.id}-${proofKey}`;
     if (zipParseCache.has(cacheKey)) {
       return zipParseCache.get(cacheKey)!;
     }
@@ -528,19 +495,13 @@ function StateExplorerDetailView({
     // Parse and cache
     const parsed = await parseProofFromBase64Zip(zipContent);
     if (parsed.instance && parsed.snapshot) {
-      const analysis = await analyzeProof(
-        parsed.instance,
-        parsed.snapshot,
-        decimalsVal,
-        channel.participants,
-        participantKeys
-      );
+      const analysis = await analyzeProof(parsed.instance, parsed.snapshot, decimalsVal);
       const result = { instance: parsed.instance, snapshot: parsed.snapshot, analysis };
       zipParseCache.set(cacheKey, result);
       return result;
     }
     return null;
-  }, [channel.id, channel.participants, participantKeys]);
+  }, [channel.id]);
 
   // OPTIMIZED: Single unified data fetch function
   // This replaces the previous 3 separate functions that were fetching the same data
@@ -554,7 +515,6 @@ function StateExplorerDetailView({
       return;
     }
 
-    const requestId = ++fetchRequestIdRef.current;
     setIsLoadingBalances(true);
     setIsLoadingProofs(true);
     setIsLoadingTransitions(true);
@@ -585,7 +545,7 @@ function StateExplorerDetailView({
       const { parseProofFromBase64Zip, analyzeProof } = await import("@/lib/proofAnalyzer");
 
       // ============ PROCESS VERIFIED PROOFS ============
-      let latestProofBalancesByAddress: Map<string, any> | null = null;
+      let latestProofBalances: any = null;
       const transitions: StateTransition[] = [];
       let previousBalances: any[] = [];
 
@@ -615,12 +575,6 @@ function StateExplorerDetailView({
 
             if (cached) {
               const { analysis } = cached;
-              const balancesByAddress = new Map<string, any>();
-              analysis.balances.forEach((balance: any) => {
-                if (balance.l1Addr) {
-                  balancesByAddress.set(balance.l1Addr.toLowerCase(), balance);
-                }
-              });
 
               // Set merkle roots from first and last proofs
               if (proof === firstProof) {
@@ -628,30 +582,22 @@ function StateExplorerDetailView({
               }
               if (proof === lastProof) {
                 setCurrentMerkleRoot(analysis.merkleRoots.resulting);
-                latestProofBalancesByAddress = balancesByAddress;
+                latestProofBalances = analysis.balances;
               }
 
               // Calculate balance changes for transitions
-              const previousBalancesByAddress = new Map<string, any>();
-              previousBalances.forEach((balance: any) => {
-                if (balance.l1Addr) {
-                  previousBalancesByAddress.set(balance.l1Addr.toLowerCase(), balance);
-                }
-              });
-              const balanceChanges = channel.participants.map((participant, idx: number) => {
-                const participantKey = participant.toLowerCase();
-                const beforeBalanceRaw = previousBalancesByAddress.get(participantKey)
-                  ?.balanceFormatted ||
-                  (initialDeposits?.[idx]?.result
+              const balanceChanges = analysis.balances.map((bal: any, idx: number) => {
+                const beforeBalanceRaw = previousBalances[idx]?.balanceFormatted || 
+                  (initialDeposits?.[idx]?.result 
                     ? formatUnits(initialDeposits[idx].result as bigint, decimals)
                     : "0.00");
-                const afterBalanceRaw = balancesByAddress.get(participantKey)?.balanceFormatted || beforeBalanceRaw;
+                const afterBalanceRaw = bal.balanceFormatted;
                 const beforeBalance = parseFloat(beforeBalanceRaw).toFixed(2);
                 const afterBalance = parseFloat(afterBalanceRaw).toFixed(2);
                 const change = (parseFloat(afterBalance) - parseFloat(beforeBalance)).toFixed(2);
 
                 return {
-                  address: participant,
+                  address: channel.participants[idx],
                   before: beforeBalance,
                   after: afterBalance,
                   change: parseFloat(change) >= 0 ? `+${change}` : change,
@@ -675,10 +621,6 @@ function StateExplorerDetailView({
         }
       }
 
-      if (requestId !== fetchRequestIdRef.current) {
-        return;
-      }
-
       setStateTransitions(transitions);
 
       // ============ SET PARTICIPANT BALANCES ============
@@ -686,9 +628,8 @@ function StateExplorerDetailView({
         const initialDeposit = (initialDeposits?.[idx]?.result as bigint) || BigInt(0);
         const initialDepositFormatted = formatUnits(initialDeposit, decimals);
         let currentBalance = initialDepositFormatted;
-        const latestBalance = latestProofBalancesByAddress?.get(participant.toLowerCase());
-        if (latestBalance) {
-          currentBalance = latestBalance.balanceFormatted;
+        if (latestProofBalances && latestProofBalances[idx]) {
+          currentBalance = latestProofBalances[idx].balanceFormatted;
         }
         return {
           address: participant,
@@ -802,9 +743,6 @@ function StateExplorerDetailView({
       setDataFetchedOnce(true);
 
     } catch (error) {
-      if (requestId !== fetchRequestIdRef.current) {
-        return;
-      }
       console.error("Error fetching channel data:", error);
       // Fallback for balances
       const fallbackBalances: ParticipantBalance[] = channel.participants.map((participant, idx) => {
@@ -819,9 +757,6 @@ function StateExplorerDetailView({
       });
       setParticipantBalances(fallbackBalances);
     } finally {
-      if (requestId !== fetchRequestIdRef.current) {
-        return;
-      }
       setIsLoadingBalances(false);
       setIsLoadingProofs(false);
       setIsLoadingTransitions(false);
@@ -843,19 +778,6 @@ function StateExplorerDetailView({
       fetchAllChannelData();
     }
   }, [initialDeposits, channel.participants.length, dataFetchedOnce, fetchAllChannelData]);
-
-  const lastParticipantKeysLength = useRef(participantKeys.length);
-
-  useEffect(() => {
-    if (
-      participantKeys.length > 0 &&
-      lastParticipantKeysLength.current === 0 &&
-      dataFetchedOnce
-    ) {
-      fetchAllChannelData(true);
-    }
-    lastParticipantKeysLength.current = participantKeys.length;
-  }, [participantKeys.length, dataFetchedOnce, fetchAllChannelData]);
 
   const [isVerifying, setIsVerifying] = useState<string | null>(null);
   const [selectedProofForApproval, setSelectedProofForApproval] = useState<

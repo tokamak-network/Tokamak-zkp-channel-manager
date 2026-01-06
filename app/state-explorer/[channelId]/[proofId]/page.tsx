@@ -205,38 +205,6 @@ export default function ProofDetailPage() {
     enabled: depositContracts.length > 0,
   });
 
-  const mptKeyContracts = useMemo(() => {
-    if (!channel || channel.participants.length === 0) return [];
-    return channel.participants.map((participant: string) => ({
-      address: ROLLUP_BRIDGE_CORE_ADDRESS,
-      abi: ROLLUP_BRIDGE_CORE_ABI,
-      functionName: "getL2MptKey",
-      args: [BigInt(channel.id), participant as `0x${string}`],
-    }));
-  }, [channel]);
-
-  const { data: mptKeyData } = useContractReads({
-    contracts: mptKeyContracts,
-    enabled: mptKeyContracts.length > 0,
-  });
-
-  const participantKeys = useMemo(() => {
-    if (!mptKeyData || !channel || channel.participants.length === 0) return [];
-    return channel.participants
-      .map((address, idx) => {
-        const result = mptKeyData[idx];
-        if (!result || result.status !== "success" || result.result === undefined) {
-          return null;
-        }
-        const mptKey = result.result as bigint;
-        return {
-          address,
-          mptKey: `0x${mptKey.toString(16).padStart(64, "0")}`,
-        };
-      })
-      .filter((entry): entry is { address: string; mptKey: string } => Boolean(entry));
-  }, [mptKeyData, channel]);
-
   // Fetch proof data from Firebase
   useEffect(() => {
     const fetchProof = async () => {
@@ -366,13 +334,7 @@ export default function ProofDetailPage() {
               if (error) {
                 console.error('Error parsing proof ZIP:', error);
               } else if (instance && snapshot) {
-                const analysis = await analyzeProof(
-                  instance,
-                  snapshot,
-                  decimals,
-                  channel?.participants,
-                  participantKeys
-                );
+                const analysis = await analyzeProof(instance, snapshot, decimals);
                 setProofAnalysis(analysis);
                 console.log('Proof analysis completed:', analysis);
               }
@@ -391,7 +353,7 @@ export default function ProofDetailPage() {
     };
 
     fetchProof();
-  }, [channelId, proofId, decimals, channel?.participants, participantKeys]);
+  }, [channelId, proofId, decimals]);
 
   // Fetch ZIP content (handles both file-based and legacy formats)
   useEffect(() => {

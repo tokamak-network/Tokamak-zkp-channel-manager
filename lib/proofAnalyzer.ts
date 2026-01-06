@@ -31,11 +31,6 @@ export interface ProofAnalysisResult {
   contractAddress: string;
 }
 
-export interface ParticipantKey {
-  address: string;
-  mptKey: string;
-}
-
 // export interface StateSnapshotData {
 //   stateRoot: string;
 //   registeredKeys: string[];
@@ -61,11 +56,6 @@ function combine16ByteChunks(lower: string, upper: string): string {
   
   // Combine: upper comes first in the final hash
   return '0x' + upperClean + lowerClean;
-}
-
-function normalizeStorageKey(key: string): string {
-  const raw = key.startsWith("0x") ? key.slice(2) : key;
-  return "0x" + raw.padStart(64, "0").toLowerCase();
 }
 
 /**
@@ -110,49 +100,21 @@ export function extractMerkleRoots(instanceData: InstanceData): {
 export async function extractParticipantBalances(
   snapshotData: StateSnapshot,
   decimals: number = 18,
-  participants?: string[],
-  participantKeys?: ParticipantKey[]
 ): Promise<Array<{
   l1Addr: string;
   mptKey: string;
   balance: string;
   balanceFormatted: string;
 }>> {
-  const participantByKey = new Map<string, string>();
-  let fallbackParticipants = participants && participants.length > 0 ? participants : null;
-
-  if (participantKeys && participantKeys.length > 0) {
-    for (const { address, mptKey } of participantKeys) {
-      if (!mptKey) continue;
-      participantByKey.set(normalizeStorageKey(mptKey), address);
-    }
-  }
-
-  if (participantByKey.size === 0 && !fallbackParticipants && ETHERS_RPC_URL) {
-    try {
-      const channelData = await fetchChannelData(ETHERS_RPC_URL, snapshotData.channelId);
-      channelData.storageEntries.forEach((entry, idx) => {
-        const participant = channelData.participants[idx];
-        if (!participant) return;
-        participantByKey.set(normalizeStorageKey(entry.key), participant);
-      });
-      fallbackParticipants = channelData.participants;
-    } catch (error) {
-      console.warn("extractParticipantBalances: failed to fetch channel data", error);
-    }
-  }
-
-  return snapshotData.storageEntries.map((entry, idx) => {
+  const channelData = await fetchChannelData(ETHERS_RPC_URL, snapshotData.channelId);
+  return snapshotData.storageEntries.map((entry) => {
     // Convert hex balance to decimal
-    const balanceWei = entry.value === "0x" ? 0n : BigInt(entry.value);
+    const balanceWei = entry.value === '0x' ? 0n : BigInt(entry.value);
     const balanceEth = Number(balanceWei) / Math.pow(10, decimals);
-    const keyLower = normalizeStorageKey(entry.key);
-    const l1Addr =
-      (keyLower ? participantByKey.get(keyLower) : null) ||
-      (fallbackParticipants ? fallbackParticipants[idx] : "");
-
+    const participantIndex = channelData.storageEntries.findIndex( (storage) => storage.key === entry.key )
+    const paritcipant = channelData.participants[participantIndex];
     return {
-      l1Addr: l1Addr || "",
+      l1Addr: paritcipant,
       mptKey: entry.key,
       balance: entry.value,
       balanceFormatted: balanceEth.toFixed(decimals),
@@ -166,17 +128,10 @@ export async function extractParticipantBalances(
 export async function analyzeProof(
   instanceData: InstanceData,
   snapshotData: StateSnapshot,
-  decimals: number = 18,
-  participants?: string[],
-  participantKeys?: ParticipantKey[]
+  decimals: number = 18
 ): Promise<ProofAnalysisResult> {
   const merkleRoots = extractMerkleRoots(instanceData);
-  const balances = await extractParticipantBalances(
-    snapshotData,
-    decimals,
-    participants,
-    participantKeys
-  );
+  const balances = await extractParticipantBalances(snapshotData, decimals);
   
   return {
     merkleRoots,
