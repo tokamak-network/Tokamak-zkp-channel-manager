@@ -72,7 +72,7 @@ export default function CreateChannelPage() {
   const { data: totalChannels } = useContractRead({
     address: ROLLUP_BRIDGE_CORE_ADDRESS,
     abi: ROLLUP_BRIDGE_CORE_ABI,
-    functionName: 'nextChannelId',
+    functionName: 'getTotalChannels',
     enabled: isConnected,
   });
 

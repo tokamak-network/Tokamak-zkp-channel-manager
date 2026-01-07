@@ -28,8 +28,8 @@ import {
   getDownloadSize,
 } from "@/lib/clientProofGeneration";
 import { fetchChannelDataFromContract } from "@/lib/contract-helpers";
+import { readContracts } from "@wagmi/core";
 import { useUserRolesDynamic } from "@/hooks/useUserRolesDynamic";
-import { ALCHEMY_KEY } from "@/lib/constants";
 import {
   Unlock,
   Link,
@@ -305,35 +305,27 @@ export default function UnfreezeStatePage() {
       const balances: FinalBalances = {};
       const missingParticipants: string[] = [];
 
-      const { createPublicClient, http } = await import("viem");
-      const { sepolia } = await import("viem/chains");
-
-      const publicClient = createPublicClient({
-        chain: sepolia,
-        transport: http(`https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`),
+      const l2MptKeyResults = await readContracts({
+        contracts: participants.map((participant) => ({
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: "getL2MptKey",
+          args: [BigInt(channelId), participant as `0x${string}`],
+        })),
       });
 
-      const results = await Promise.all(
-        participants.map(async (participant) => {
-          try {
-            const l2MptKey = (await publicClient.readContract({
-              address: ROLLUP_BRIDGE_CORE_ADDRESS,
-              abi: ROLLUP_BRIDGE_CORE_ABI,
-              functionName: "getL2MptKey",
-              args: [BigInt(channelId), participant as `0x${string}`],
-            })) as bigint;
+      const results = l2MptKeyResults.map((result, index) => {
+        const participant = participants[index];
 
-            const keyHex = `0x${l2MptKey.toString(16).padStart(64, "0")}`;
-            return { participant, key: normalizeStorageKey(keyHex) };
-          } catch (error) {
-            console.error(
-              `Failed to fetch L2 MPT key for ${participant}:`,
-              error
-            );
-            return { participant, key: "" };
-          }
-        })
-      );
+        if (!result || result.status === "failure" || result.result === undefined) {
+          console.error(`Failed to fetch L2 MPT key for ${participant}`);
+          return { participant, key: "" };
+        }
+
+        const l2MptKey = result.result as bigint;
+        const keyHex = `0x${l2MptKey.toString(16).padStart(64, "0")}`;
+        return { participant, key: normalizeStorageKey(keyHex) };
+      });
 
       results.forEach(({ participant, key }) => {
         if (!key) {

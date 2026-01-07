@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useCallback, Suspense } from "react";
-import { useAccount, usePublicClient, useContractReads } from "wagmi";
+import { useAccount, useContractReads } from "wagmi";
+import { readContracts } from "@wagmi/core";
 import { useSearchParams, useRouter } from "next/navigation";
 import { formatUnits } from "viem";
 import { Layout } from "@/components/Layout";
@@ -409,7 +410,6 @@ function StateExplorerDetailView({
   // Cache for verified proofs data to avoid refetching
   const [cachedVerifiedProofs, setCachedVerifiedProofs] = useState<any>(null);
   const [dataFetchedOnce, setDataFetchedOnce] = useState(false);
-  const publicClient = usePublicClient();
   const VISIBLE_PARTICIPANTS_COLLAPSED = 3;
 
   // Calculate isLeader in real-time based on current userAddress
@@ -495,7 +495,7 @@ function StateExplorerDetailView({
     // Parse and cache
     const parsed = await parseProofFromBase64Zip(zipContent);
     if (parsed.instance && parsed.snapshot) {
-      const analysis = analyzeProof(parsed.instance, parsed.snapshot, decimalsVal);
+      const analysis = await analyzeProof(parsed.instance, parsed.snapshot, decimalsVal);
       const result = { instance: parsed.instance, snapshot: parsed.snapshot, analysis };
       zipParseCache.set(cacheKey, result);
       return result;
@@ -506,7 +506,7 @@ function StateExplorerDetailView({
   // OPTIMIZED: Single unified data fetch function
   // This replaces the previous 3 separate functions that were fetching the same data
   const fetchAllChannelData = useCallback(async (forceRefresh = false) => {
-    if (!publicClient || !initialDeposits || channel.participants.length === 0) {
+    if (!initialDeposits || channel.participants.length === 0) {
       return;
     }
 
@@ -765,7 +765,6 @@ function StateExplorerDetailView({
     initialDeposits,
     channel.id,
     channel.participants,
-    publicClient,
     decimals,
     symbol,
     dataFetchedOnce,
@@ -1909,7 +1908,6 @@ function StateExplorerDetailView({
 // Main Page Component
 function StateExplorerPage() {
   const { address, isConnected } = useAccount();
-  const publicClient = usePublicClient();
   const searchParams = useSearchParams();
   const router = useRouter();
   const [selectedChannel, setSelectedChannel] = useState<OnChainChannel | null>(
@@ -1988,11 +1986,8 @@ function StateExplorerPage() {
 
   // Fetch user's channels from blockchain
   const fetchChannels = async (forceRefresh = false) => {
-    if (!address || !publicClient) {
-      console.log("State Explorer: Missing address or publicClient", {
-        address,
-        publicClient: !!publicClient,
-      });
+    if (!address) {
+      console.log("State Explorer: Missing address");
       return;
     }
 
@@ -2016,11 +2011,16 @@ function StateExplorerPage() {
 
     try {
       // Get the next channel ID to know how many channels exist
-      const nextChannelId = (await publicClient.readContract({
-        address: ROLLUP_BRIDGE_CORE_ADDRESS,
-        abi: ROLLUP_BRIDGE_CORE_ABI,
-        functionName: "nextChannelId",
-      })) as bigint;
+      const totalChannelsData = await readContracts({
+        contracts: [
+          {
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: "getTotalChannels",
+          },
+        ],
+      });
+      const nextChannelId = totalChannelsData?.[0]?.result as bigint;
 
       const totalChannels = Number(nextChannelId);
       console.log(
@@ -2033,13 +2033,46 @@ function StateExplorerPage() {
       // Check each channel if user is a participant
       for (let i = 0; i < totalChannels; i++) {
         try {
+          const channelReadResults = await readContracts({
+            contracts: [
+              {
+                address: ROLLUP_BRIDGE_CORE_ADDRESS,
+                abi: ROLLUP_BRIDGE_CORE_ABI,
+                functionName: "getChannelLeader",
+                args: [BigInt(i)],
+              },
+              {
+                address: ROLLUP_BRIDGE_CORE_ADDRESS,
+                abi: ROLLUP_BRIDGE_CORE_ABI,
+                functionName: "getChannelParticipants",
+                args: [BigInt(i)],
+              },
+              {
+                address: ROLLUP_BRIDGE_CORE_ADDRESS,
+                abi: ROLLUP_BRIDGE_CORE_ABI,
+                functionName: "getChannelInfo",
+                args: [BigInt(i)],
+              },
+              {
+                address: ROLLUP_BRIDGE_CORE_ADDRESS,
+                abi: ROLLUP_BRIDGE_CORE_ABI,
+                functionName: "getChannelPublicKey",
+                args: [BigInt(i)],
+              },
+              {
+                address: ROLLUP_BRIDGE_CORE_ADDRESS,
+                abi: ROLLUP_BRIDGE_CORE_ABI,
+                functionName: "getChannelTargetContract",
+                args: [BigInt(i)],
+              },
+            ],
+          });
+
           // First check if channel exists by getting the leader
-          const leader = (await publicClient.readContract({
-            address: ROLLUP_BRIDGE_CORE_ADDRESS,
-            abi: ROLLUP_BRIDGE_CORE_ABI,
-            functionName: "getChannelLeader",
-            args: [BigInt(i)],
-          })) as string;
+          const leader =
+            channelReadResults?.[0]?.status === "success"
+              ? (channelReadResults[0].result as string)
+              : undefined;
 
           // Skip if channel doesn't exist (zero address)
           if (
@@ -2050,12 +2083,10 @@ function StateExplorerPage() {
           }
 
           // Get participants to check if user has access
-          const participants = await publicClient.readContract({
-            address: ROLLUP_BRIDGE_CORE_ADDRESS,
-            abi: ROLLUP_BRIDGE_CORE_ABI,
-            functionName: "getChannelParticipants",
-            args: [BigInt(i)],
-          }) as string[];
+          const participants =
+            channelReadResults?.[1]?.status === "success"
+              ? (channelReadResults[1].result as string[])
+              : [];
 
           // Check if user is a participant (case-insensitive comparison)
           const isParticipant = participants.some(
@@ -2073,28 +2104,28 @@ function StateExplorerPage() {
           console.log(`State Explorer: Adding channel ${i} to channels list`);
           // Fetch remaining channel details
           // getChannelInfo returns: [targetAddress, state, participantCount, initialRoot]
-          const [channelInfo, publicKey, targetAddress] = await Promise.all([
-            publicClient.readContract({
-              address: ROLLUP_BRIDGE_CORE_ADDRESS,
-              abi: ROLLUP_BRIDGE_CORE_ABI,
-              functionName: "getChannelInfo",
-              args: [BigInt(i)],
-            }) as Promise<
-              readonly [`0x${string}`, number, bigint, `0x${string}`]
-            >,
-            publicClient.readContract({
-              address: ROLLUP_BRIDGE_CORE_ADDRESS,
-              abi: ROLLUP_BRIDGE_CORE_ABI,
-              functionName: "getChannelPublicKey",
-              args: [BigInt(i)],
-            }) as Promise<[bigint, bigint]>,
-            publicClient.readContract({
-              address: ROLLUP_BRIDGE_CORE_ADDRESS,
-              abi: ROLLUP_BRIDGE_CORE_ABI,
-              functionName: "getChannelTargetContract",
-              args: [BigInt(i)],
-            }) as Promise<string>,
-          ]);
+          const channelInfo =
+            channelReadResults?.[2]?.status === "success"
+              ? (channelReadResults[2].result as readonly [
+                  `0x${string}`,
+                  number,
+                  bigint,
+                  `0x${string}`
+                ])
+              : undefined;
+          const publicKey =
+            channelReadResults?.[3]?.status === "success"
+              ? (channelReadResults[3].result as [bigint, bigint])
+              : [0n, 0n];
+          const targetAddress =
+            channelReadResults?.[4]?.status === "success"
+              ? (channelReadResults[4].result as string)
+              : undefined;
+
+          if (!channelInfo || !targetAddress) {
+            console.warn(`State Explorer: Channel ${i} read failed`);
+            continue;
+          }
 
           // channelInfo structure: [targetAddress, state, participantCount, initialRoot]
           const state = channelInfo[1];
@@ -2133,7 +2164,7 @@ function StateExplorerPage() {
 
   // Fetch channels on mount and when address changes
   useEffect(() => {
-    if (isConnected && address && publicClient) {
+    if (isConnected && address) {
       // If cache was already loaded in useLayoutEffect, skip fetching
       if (cacheLoaded) {
         // Cache was loaded, optionally update in background (but don't show loading)
@@ -2162,7 +2193,7 @@ function StateExplorerPage() {
       setIsLoading(false);
       setCacheLoaded(false);
     }
-  }, [isConnected, address, publicClient, cacheLoaded]);
+  }, [isConnected, address, cacheLoaded]);
 
   // State for direct channel loading from URL
   const [isLoadingDirectChannel, setIsLoadingDirectChannel] = useState(false);
@@ -2170,32 +2201,54 @@ function StateExplorerPage() {
 
   // Fetch a single channel directly by ID (more efficient than loading all channels)
   const fetchSingleChannel = async (channelIdNum: number): Promise<OnChainChannel | null> => {
-    if (!publicClient) return null;
-    
     try {
       const channelIdBigInt = BigInt(channelIdNum);
       
       // Fetch channel info directly from smart contract
-      const [channelInfo, participants, leader] = await Promise.all([
-        publicClient.readContract({
-          address: ROLLUP_BRIDGE_CORE_ADDRESS,
-          abi: ROLLUP_BRIDGE_CORE_ABI,
-          functionName: "getChannelInfo",
-          args: [channelIdBigInt],
-        }) as Promise<readonly [`0x${string}`, number, bigint, `0x${string}`]>,
-        publicClient.readContract({
-          address: ROLLUP_BRIDGE_CORE_ADDRESS,
-          abi: ROLLUP_BRIDGE_CORE_ABI,
-          functionName: "getChannelParticipants",
-          args: [channelIdBigInt],
-        }) as Promise<readonly `0x${string}`[]>,
-        publicClient.readContract({
-          address: ROLLUP_BRIDGE_CORE_ADDRESS,
-          abi: ROLLUP_BRIDGE_CORE_ABI,
-          functionName: "getChannelLeader",
-          args: [channelIdBigInt],
-        }) as Promise<`0x${string}`>,
-      ]);
+      const channelReadResults = await readContracts({
+        contracts: [
+          {
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: "getChannelInfo",
+            args: [channelIdBigInt],
+          },
+          {
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: "getChannelParticipants",
+            args: [channelIdBigInt],
+          },
+          {
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: "getChannelLeader",
+            args: [channelIdBigInt],
+          },
+        ],
+      });
+
+      const channelInfo =
+        channelReadResults?.[0]?.status === "success"
+          ? (channelReadResults[0].result as readonly [
+              `0x${string}`,
+              number,
+              bigint,
+              `0x${string}`
+            ])
+          : undefined;
+      const participants =
+        channelReadResults?.[1]?.status === "success"
+          ? (channelReadResults[1].result as readonly `0x${string}`[])
+          : [];
+      const leader =
+        channelReadResults?.[2]?.status === "success"
+          ? (channelReadResults[2].result as `0x${string}`)
+          : undefined;
+
+      if (!channelInfo || !leader) {
+        return null;
+      }
 
       const [tokenAddress, status, timeout, latestCommittedState] = channelInfo;
       
@@ -2226,9 +2279,6 @@ function StateExplorerPage() {
       
       // Skip if no channelId in URL or already have selected channel
       if (!channelIdParam || selectedChannel) return;
-      
-      // Skip if publicClient not ready
-      if (!publicClient) return;
       
       const channelIdNum = parseInt(channelIdParam, 10);
       if (isNaN(channelIdNum)) return;
@@ -2263,7 +2313,7 @@ function StateExplorerPage() {
     };
 
     loadDirectChannel();
-  }, [searchParams, publicClient, selectedChannel, channels, isLoading, router]);
+  }, [searchParams, selectedChannel, channels, isLoading, router]);
 
   const handleSelectChannel = (channel: OnChainChannel) => {
     setSelectedChannel(channel);

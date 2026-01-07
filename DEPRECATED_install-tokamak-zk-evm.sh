@@ -10,9 +10,9 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-RPC_KEY="$(sed -n 's/^NEXT_PUBLIC_ALCHEMY_API_KEY=//p' "$ENV_FILE" | head -n1 | tr -d '"' | tr -d "'")"
-if [ -z "$RPC_KEY" ]; then
-  echo "NEXT_PUBLIC_ALCHEMY_API_KEY is empty in .env.local" >&2
+RPC_URL="$(sed -n 's/^NEXT_ETHERS_RPC_URL=//p' "$ENV_FILE" | head -n1 | tr -d '"' | tr -d "'")"
+if [ -z "$RPC_URL" ]; then
+  echo "NEXT_ETHERS_RPC_URL is empty in .env.local" >&2
   exit 1
 fi
 
@@ -34,5 +34,5 @@ fi
 
 (
   cd "$SUBMODULE_DIR"
-  TOKAMAK_ZK_EVM_ROOT="$SUBMODULE_DIR" "$TOKAMAK_CLI" --install "$RPC_KEY" --bun
+  TOKAMAK_ZK_EVM_ROOT="$SUBMODULE_DIR" "$TOKAMAK_CLI" --install "$RPC_URL" --bun
 )

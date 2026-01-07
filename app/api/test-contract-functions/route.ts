@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createPublicClient, http } from 'viem';
-import { sepolia } from 'viem/chains';
+import { readContracts } from '@wagmi/core';
+import type { Address } from 'viem';
 import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
-import { ALCHEMY_KEY } from '@/lib/constants';
+import '@/lib/wagmi-core';
 
 export const dynamic = 'force-static';
-
-const publicClient = createPublicClient({
-  chain: sepolia,
-  transport: http(`https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`)
-});
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,27 +19,37 @@ export async function GET(request: NextRequest) {
 
     // Test basic functions first
     try {
-      const totalChannels = await publicClient.readContract({
-        address: ROLLUP_BRIDGE_CORE_ADDRESS,
-        abi: ROLLUP_BRIDGE_CORE_ABI,
-        functionName: 'nextChannelId'
+      const totalChannelsData = await readContracts({
+        contracts: [
+          {
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: 'getTotalChannels'
+          }
+        ]
       });
+      const totalChannels = totalChannelsData?.[0]?.result as bigint;
       results.totalChannels = totalChannels.toString();
-      console.log('✓ nextChannelId works:', totalChannels);
+      console.log('✓ totalChannels works:', totalChannels);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       results.totalChannelsError = errorMessage;
-      console.log('✗ nextChannelId failed:', errorMessage);
+      console.log('✗ totalChannels failed:', errorMessage);
     }
 
     // Test getChannelParticipants
     try {
-      const participants = await publicClient.readContract({
-        address: ROLLUP_BRIDGE_CORE_ADDRESS,
-        abi: ROLLUP_BRIDGE_CORE_ABI,
-        functionName: 'getChannelParticipants',
-        args: [BigInt(channelId)]
+      const participantsData = await readContracts({
+        contracts: [
+          {
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: 'getChannelParticipants',
+            args: [BigInt(channelId)]
+          }
+        ]
       });
+      const participants = participantsData?.[0]?.result as readonly Address[];
       results.participants = participants;
       console.log('✓ getChannelParticipants works:', participants);
     } catch (error) {
@@ -59,12 +64,17 @@ export async function GET(request: NextRequest) {
         const participant = results.participants[0];
         const testToken = '0x79E0d92670106c85E9067b56B8F674340dCa0Bbd';
         
-        const l2MptKey = await publicClient.readContract({
-          address: ROLLUP_BRIDGE_CORE_ADDRESS,
-          abi: ROLLUP_BRIDGE_CORE_ABI,
-          functionName: 'getL2MptKey',
-          args: [BigInt(channelId), participant]
+        const l2MptKeyData = await readContracts({
+          contracts: [
+            {
+              address: ROLLUP_BRIDGE_CORE_ADDRESS,
+              abi: ROLLUP_BRIDGE_CORE_ABI,
+              functionName: 'getL2MptKey',
+              args: [BigInt(channelId), participant]
+            }
+          ]
         });
+        const l2MptKey = l2MptKeyData?.[0]?.result as bigint;
         results.l2MptKey = l2MptKey.toString();
         console.log('✓ getL2MptKey works:', l2MptKey);
       } catch (error) {
@@ -80,12 +90,17 @@ export async function GET(request: NextRequest) {
         const testToken = '0x79E0d92670106c85E9067b56B8F674340dCa0Bbd';
         const participant = results.participants[0];
         
-        const keysList = await publicClient.readContract({
-          address: ROLLUP_BRIDGE_CORE_ADDRESS,
-          abi: ROLLUP_BRIDGE_CORE_ABI,
-          functionName: 'getL2MptKey',
-          args: [BigInt(channelId), participant]
+        const keysListData = await readContracts({
+          contracts: [
+            {
+              address: ROLLUP_BRIDGE_CORE_ADDRESS,
+              abi: ROLLUP_BRIDGE_CORE_ABI,
+              functionName: 'getL2MptKey',
+              args: [BigInt(channelId), participant]
+            }
+          ]
         });
+        const keysList = keysListData?.[0]?.result as bigint;
         results.l2MptKeysList = keysList.toString();
         console.log('✓ getL2MptKey (bulk) works:', keysList);
       } catch (error) {

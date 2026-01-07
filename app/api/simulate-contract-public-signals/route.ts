@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createPublicClient, http } from 'viem';
-import { sepolia } from 'viem/chains';
+import { readContracts } from '@wagmi/core';
 import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
-import { ALCHEMY_KEY } from '@/lib/constants';
+import '@/lib/wagmi-core';
 
 export const dynamic = 'force-static';
-
-const publicClient = createPublicClient({
-  chain: sepolia,
-  transport: http(`https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`)
-});
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,31 +16,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get channel info
-    const channelStats = await publicClient.readContract({
-      address: ROLLUP_BRIDGE_CORE_ADDRESS,
-      abi: ROLLUP_BRIDGE_CORE_ABI,
-      functionName: 'getChannelInfo',
-      args: [BigInt(channelId)]
-    }) as readonly [string, number, bigint, string];
+    const channelReadResults = await readContracts({
+      contracts: [
+        {
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: 'getChannelInfo',
+          args: [BigInt(channelId)]
+        },
+        {
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: 'getChannelLeader',
+          args: [BigInt(channelId)]
+        },
+        {
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: 'getChannelParticipants',
+          args: [BigInt(channelId)]
+        }
+      ]
+    });
+
+    const channelStats = channelReadResults?.[0]?.result as readonly [
+      string,
+      number,
+      bigint,
+      string
+    ];
 
     const [targetContract, state, participantCount, initialRoot] = channelStats;
     
-    // Get leader separately
-    const leader = await publicClient.readContract({
-      address: ROLLUP_BRIDGE_CORE_ADDRESS,
-      abi: ROLLUP_BRIDGE_CORE_ABI,
-      functionName: 'getChannelLeader',
-      args: [BigInt(channelId)]
-    }) as string;
-
-    // Get channel participants
-    const participants = await publicClient.readContract({
-      address: ROLLUP_BRIDGE_CORE_ADDRESS,
-      abi: ROLLUP_BRIDGE_CORE_ABI,
-      functionName: 'getChannelParticipants',
-      args: [BigInt(channelId)]
-    }) as readonly string[];
+    const leader = channelReadResults?.[1]?.result as string;
+    const participants = channelReadResults?.[2]?.result as readonly string[];
 
     const totalEntries = participants.length; // Only one token per channel now
     
@@ -72,24 +75,34 @@ export async function POST(request: NextRequest) {
     let entryIndex = 0;
     for (const participant of participants) {
       // Get balance for the single target contract
-      const balance = await publicClient.readContract({
-        address: ROLLUP_BRIDGE_CORE_ADDRESS,
-        abi: ROLLUP_BRIDGE_CORE_ABI,
-        functionName: 'getParticipantDeposit',
-        args: [BigInt(channelId), participant as `0x${string}`]
-      }) as bigint;
+      const [balanceResult, l2MptKeyResult] = await readContracts({
+        contracts: [
+          {
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: 'getParticipantDeposit',
+            args: [BigInt(channelId), participant as `0x${string}`]
+          },
+          {
+            address: ROLLUP_BRIDGE_CORE_ADDRESS,
+            abi: ROLLUP_BRIDGE_CORE_ABI,
+            functionName: 'getL2MptKey',
+            args: [BigInt(channelId), participant as `0x${string}`]
+          }
+        ]
+      });
+
+      if (!balanceResult || balanceResult.status !== 'success') {
+        throw new Error('Failed to fetch participant balance');
+      }
+
+      const balance = balanceResult.result as bigint;
 
       // Get L2 MPT key
       let l2MptKey = '0';
-      try {
-        const l2MptKeyResult = await publicClient.readContract({
-          address: ROLLUP_BRIDGE_CORE_ADDRESS,
-          abi: ROLLUP_BRIDGE_CORE_ABI,
-          functionName: 'getL2MptKey',
-          args: [BigInt(channelId), participant as `0x${string}`]
-        }) as bigint;
-        l2MptKey = l2MptKeyResult.toString();
-      } catch (error) {
+      if (l2MptKeyResult?.status === 'success' && l2MptKeyResult.result !== undefined) {
+        l2MptKey = (l2MptKeyResult.result as bigint).toString();
+      } else {
         console.warn(`Could not fetch L2 MPT key for ${participant}`);
       }
 

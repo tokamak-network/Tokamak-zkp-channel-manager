@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useAccount, useSignMessage } from "wagmi";
 import { Key, Calculator, AlertCircle, Copy, CheckCircle2 } from "lucide-react";
 import { L2_PRV_KEY_MESSAGE } from "@/lib/l2KeyMessage";
-import { deriveL2KeysAndAddressFromSignature, DerivedL2Account } from "@/lib/mptKeyUtils";
+import { deriveL2KeysAndAddressFromSignature, DerivedL2Account } from "@/lib/tokamakl2js";
 interface L2MPTKeyBannerProps {
   className?: string;
 }

@@ -7,6 +7,7 @@ import {
   useWaitForTransaction,
   useAccount,
 } from "wagmi";
+import { readContracts } from "@wagmi/core";
 import { formatUnits } from "viem";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Sidebar } from "@/components/Sidebar";
@@ -31,7 +32,6 @@ import {
 } from "@/lib/clientProofGeneration";
 import { useUserRolesDynamic } from "@/hooks/useUserRolesDynamic";
 import { updateData } from "@/lib/db-client";
-import { ALCHEMY_KEY } from "@/lib/constants";
 import {
   Settings,
   Link,
@@ -407,29 +407,28 @@ export default function InitializeStatePage() {
         `Fetching ${preAllocCount} pre-allocated leaves...`
       );
 
-      for (let i = 0; i < (preAllocatedKeys as `0x${string}`[]).length; i++) {
-        const key = (preAllocatedKeys as `0x${string}`[])[i];
-
-        try {
-          // Get pre-allocated leaf value directly from contract using viem
-          const { createPublicClient, http } = await import("viem");
-          const { sepolia } = await import("viem/chains");
-
-          const publicClient = createPublicClient({
-            chain: sepolia,
-            transport: http(
-              `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`
-            ),
-          });
-
-          const result = (await publicClient.readContract({
+      const preAllocatedKeysList = preAllocatedKeys as `0x${string}`[];
+      try {
+        const preAllocatedResults = await readContracts({
+          contracts: preAllocatedKeysList.map((key) => ({
             address: ROLLUP_BRIDGE_CORE_ADDRESS,
             abi: ROLLUP_BRIDGE_CORE_ABI,
             functionName: "getPreAllocatedLeaf",
             args: [channelTargetContract, key],
-          })) as [bigint, boolean];
+          })),
+        });
 
-          const [value, exists] = result;
+        preAllocatedResults.forEach((result, i) => {
+          const key = preAllocatedKeysList[i];
+
+          if (!result || result.status === "failure" || !result.result) {
+            console.log(
+              `Skipping pre-allocated leaf ${i} (doesn't exist or failed to fetch)`
+            );
+            return;
+          }
+
+          const [value, exists] = result.result as [bigint, boolean];
 
           if (exists) {
             // Apply modulo R_MOD as the contract does
@@ -443,16 +442,9 @@ export default function InitializeStatePage() {
               `Pre-allocated leaf ${i}: key=${key} -> ${modedKey}, value=${value.toString()} -> ${modedValue}`
             );
           }
-        } catch (error) {
-          console.error(
-            `Failed to fetch pre-allocated leaf for key ${key}:`,
-            error
-          );
-          // Continue without throwing - some pre-allocated keys might not exist
-          console.log(
-            `Skipping pre-allocated leaf ${i} (doesn't exist or failed to fetch)`
-          );
-        }
+        });
+      } catch (error) {
+        console.error("Failed to fetch pre-allocated leaves:", error);
       }
     }
 
@@ -474,62 +466,39 @@ export default function InitializeStatePage() {
       let deposit = "0";
 
       try {
-        // Get L2 MPT key directly from contract
-        try {
-          const { createPublicClient, http } = await import("viem");
-          const { sepolia } = await import("viem/chains");
+        const [l2MptKeyResult, depositResult] = await readContracts({
+          contracts: [
+            {
+              address: ROLLUP_BRIDGE_CORE_ADDRESS,
+              abi: ROLLUP_BRIDGE_CORE_ABI,
+              functionName: "getL2MptKey",
+              args: [BigInt(selectedChannel.id), participant as `0x${string}`],
+            },
+            {
+              address: ROLLUP_BRIDGE_CORE_ADDRESS,
+              abi: ROLLUP_BRIDGE_CORE_ABI,
+              functionName: "getParticipantDeposit",
+              args: [BigInt(selectedChannel.id), participant as `0x${string}`],
+            },
+          ],
+        });
 
-          const publicClient = createPublicClient({
-            chain: sepolia,
-            transport: http(
-              `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`
-            ),
-          });
-
-          const l2MptKeyResult = (await publicClient.readContract({
-            address: ROLLUP_BRIDGE_CORE_ADDRESS,
-            abi: ROLLUP_BRIDGE_CORE_ABI,
-            functionName: "getL2MptKey",
-            args: [BigInt(selectedChannel.id), participant as `0x${string}`],
-          })) as bigint;
-
-          l2MptKey = l2MptKeyResult.toString();
-        } catch (keyError) {
-          console.error(
-            `L2 MPT key fetch failed for ${participant}:`,
-            keyError
-          );
-          // Use default value
-          l2MptKey = "0";
+        if (
+          l2MptKeyResult?.status === "success" &&
+          l2MptKeyResult.result !== undefined
+        ) {
+          l2MptKey = (l2MptKeyResult.result as bigint).toString();
+        } else {
+          console.error(`L2 MPT key fetch failed for ${participant}`);
         }
 
-        // Get deposit amount directly from contract
-        try {
-          const { createPublicClient, http } = await import("viem");
-          const { sepolia } = await import("viem/chains");
-
-          const publicClient = createPublicClient({
-            chain: sepolia,
-            transport: http(
-              `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`
-            ),
-          });
-
-          const depositResult = (await publicClient.readContract({
-            address: ROLLUP_BRIDGE_CORE_ADDRESS,
-            abi: ROLLUP_BRIDGE_CORE_ABI,
-            functionName: "getParticipantDeposit",
-            args: [BigInt(selectedChannel.id), participant as `0x${string}`],
-          })) as bigint;
-
-          deposit = depositResult.toString();
-        } catch (depositError) {
-          console.error(
-            `Deposit fetch failed for ${participant}:`,
-            depositError
-          );
-          // Use default value
-          deposit = "0";
+        if (
+          depositResult?.status === "success" &&
+          depositResult.result !== undefined
+        ) {
+          deposit = (depositResult.result as bigint).toString();
+        } else {
+          console.error(`Deposit fetch failed for ${participant}`);
         }
 
         // Apply modulo R_MOD as the contract does (lines 143-144)
