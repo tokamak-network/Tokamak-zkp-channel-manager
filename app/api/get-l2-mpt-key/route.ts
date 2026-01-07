@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createPublicClient, http } from 'viem';
-import { sepolia } from 'viem/chains';
+import { readContracts } from '@wagmi/core';
 import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
-import { ALCHEMY_KEY } from '@/lib/constants';
-
-
-const publicClient = createPublicClient({
-  chain: sepolia,
-  transport: http(`https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`)
-});
+import '@/lib/wagmi-core';
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,12 +17,17 @@ export async function GET(request: NextRequest) {
     }
 
     // Get L2 MPT key from contract
-    const l2MptKey = await publicClient.readContract({
-      address: ROLLUP_BRIDGE_CORE_ADDRESS,
-      abi: ROLLUP_BRIDGE_CORE_ABI,
-      functionName: 'getL2MptKey',
-      args: [BigInt(channelId), participant as `0x${string}`]
+    const l2MptKeyData = await readContracts({
+      contracts: [
+        {
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: 'getL2MptKey',
+          args: [BigInt(channelId), participant as `0x${string}`]
+        }
+      ]
     });
+    const l2MptKey = l2MptKeyData?.[0]?.result as bigint | undefined;
 
     return NextResponse.json({
       success: true,

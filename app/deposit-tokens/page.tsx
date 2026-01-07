@@ -44,8 +44,8 @@ export default function DepositTokensPage() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showPublicKeyWarning, setShowPublicKeyWarning] = useState(false);
 
-  // Use dynamic hook to get channels where user participates
-  const { participatingChannels, channelStatsData } = useUserRolesDynamic();
+  // Use dynamic hook to get channels where user is whitelisted (eligible to deposit)
+  const { whitelistedChannels, channelStatsData } = useUserRolesDynamic();
 
   // Get public key status for selected channel
   const { data: isPublicKeySet } = useContractRead({
@@ -74,7 +74,7 @@ export default function DepositTokensPage() {
   });
 
   // Get available channels for deposits (state = 1 means initialized)
-  const availableChannels = participatingChannels
+  const availableChannels = whitelistedChannels
     .map(channelId => {
       const stats = channelStatsData[channelId];
       if (!stats || stats[2] !== 1) return null; // Only initialized channels (state = 1)

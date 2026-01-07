@@ -1,8 +1,8 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { useAccount, usePublicClient, useContractReads } from 'wagmi';
+import { useEffect, useMemo, useState } from 'react';
+import { useContractReads } from 'wagmi';
 import { formatUnits } from 'viem';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,7 @@ import {
   type ProofAnalysisResult 
 } from '@/lib/proofAnalyzer';
 import JSZip from 'jszip';
+import { addHexPrefix, hexToBigInt } from '@ethereumjs/util';
 
 // Participant Balance Type
 interface ParticipantBalance {
@@ -95,7 +96,13 @@ export default function ProofDetailPage() {
   const channelId = params.channelId as string;
   // Decode the proofId to handle URL-encoded characters like # (%23)
   const proofId = params.proofId ? decodeURIComponent(params.proofId as string) : '';
-  const publicClient = usePublicClient();
+  const channelIdBigInt = useMemo(() => {
+    try {
+      return BigInt(channelId);
+    } catch {
+      return null;
+    }
+  }, [channelId]);
   
   const [proof, setProof] = useState<ProofData | null>(null);
   const [channel, setChannel] = useState<any>(null);
@@ -114,6 +121,89 @@ export default function ProofDetailPage() {
   } | null>(null);
   const [zipContent, setZipContent] = useState<string | null>(null);
   const [isLoadingZip, setIsLoadingZip] = useState(false);
+
+  const channelContracts = useMemo(() => {
+    if (channelIdBigInt === null) return undefined;
+    return [
+      {
+        address: ROLLUP_BRIDGE_CORE_ADDRESS,
+        abi: ROLLUP_BRIDGE_CORE_ABI,
+        functionName: "getChannelInfo",
+        args: [channelIdBigInt],
+      },
+      {
+        address: ROLLUP_BRIDGE_CORE_ADDRESS,
+        abi: ROLLUP_BRIDGE_CORE_ABI,
+        functionName: "getChannelParticipants",
+        args: [channelIdBigInt],
+      },
+      {
+        address: ROLLUP_BRIDGE_CORE_ADDRESS,
+        abi: ROLLUP_BRIDGE_CORE_ABI,
+        functionName: "getChannelLeader",
+        args: [channelIdBigInt],
+      },
+    ] as const;
+  }, [channelIdBigInt]);
+
+  const { data: channelReads } = useContractReads({
+    contracts: channelContracts,
+    enabled: Boolean(channelContracts),
+  });
+
+  const channelInfo = channelReads?.[0]?.result as
+    | readonly [`0x${string}`, number, bigint, `0x${string}`]
+    | undefined;
+  const channelParticipants = channelReads?.[1]?.result as
+    | readonly `0x${string}`[]
+    | undefined;
+  const channelLeader = channelReads?.[2]?.result as `0x${string}` | undefined;
+
+  const tokenAddress = channelInfo?.[0];
+  const isEthToken = useMemo(() => {
+    if (!tokenAddress) return false;
+    return (
+      tokenAddress === ETH_TOKEN_ADDRESS ||
+      tokenAddress === "0x0000000000000000000000000000000000000001" ||
+      tokenAddress === "0x0000000000000000000000000000000000000000"
+    );
+  }, [tokenAddress]);
+
+  const tokenContracts = useMemo(() => {
+    if (!tokenAddress || isEthToken) return undefined;
+    return [
+      {
+        address: tokenAddress as `0x${string}`,
+        abi: ERC20_ABI,
+        functionName: "decimals",
+      },
+      {
+        address: tokenAddress as `0x${string}`,
+        abi: ERC20_ABI,
+        functionName: "symbol",
+      },
+    ] as const;
+  }, [tokenAddress, isEthToken]);
+
+  const { data: tokenData } = useContractReads({
+    contracts: tokenContracts,
+    enabled: Boolean(tokenContracts),
+  });
+
+  const depositContracts = useMemo(() => {
+    if (!channel || channel.participants.length === 0) return [];
+    return channel.participants.map((participant: string) => ({
+      address: ROLLUP_BRIDGE_CORE_ADDRESS,
+      abi: ROLLUP_BRIDGE_CORE_ABI,
+      functionName: "getParticipantDeposit",
+      args: [BigInt(channel.id), participant as `0x${string}`],
+    }));
+  }, [channel]);
+
+  const { data: depositData } = useContractReads({
+    contracts: depositContracts,
+    enabled: depositContracts.length > 0,
+  });
 
   // Fetch proof data from Firebase
   useEffect(() => {
@@ -244,7 +334,7 @@ export default function ProofDetailPage() {
               if (error) {
                 console.error('Error parsing proof ZIP:', error);
               } else if (instance && snapshot) {
-                const analysis = analyzeProof(instance, snapshot, decimals);
+                const analysis = await analyzeProof(instance, snapshot, decimals);
                 setProofAnalysis(analysis);
                 console.log('Proof analysis completed:', analysis);
               }
@@ -303,144 +393,87 @@ export default function ProofDetailPage() {
 
   // Fetch channel data and participants
   useEffect(() => {
-    const fetchChannelData = async () => {
-      if (!publicClient || !channelId) return;
+    if (!channelInfo || !channelParticipants || !channelLeader) return;
 
-      try {
-        const channelIdNum = BigInt(channelId);
-        
-        // Get channel info
-        const [channelInfo, participants, leader] = await Promise.all([
-          publicClient.readContract({
-            address: ROLLUP_BRIDGE_CORE_ADDRESS,
-            abi: ROLLUP_BRIDGE_CORE_ABI,
-            functionName: "getChannelInfo",
-            args: [channelIdNum],
-          }) as Promise<readonly [`0x${string}`, number, bigint, `0x${string}`]>,
-          publicClient.readContract({
-            address: ROLLUP_BRIDGE_CORE_ADDRESS,
-            abi: ROLLUP_BRIDGE_CORE_ABI,
-            functionName: "getChannelParticipants",
-            args: [channelIdNum],
-          }) as Promise<readonly `0x${string}`[]>,
-          publicClient.readContract({
-            address: ROLLUP_BRIDGE_CORE_ADDRESS,
-            abi: ROLLUP_BRIDGE_CORE_ABI,
-            functionName: "getChannelLeader",
-            args: [channelIdNum],
-          }) as Promise<`0x${string}`>,
-        ]);
+    const state = channelInfo[1];
+    const participantCount = Number(channelInfo[2]);
 
-        const targetAddress = channelInfo[0];
-        const state = channelInfo[1];
-        const participantCount = Number(channelInfo[2]);
+    setChannel({
+      id: Number(channelId),
+      targetAddress: channelInfo[0],
+      state,
+      participantCount,
+      participants: channelParticipants.map((p) => p.toLowerCase()),
+      leader: channelLeader.toLowerCase(),
+    });
+  }, [channelInfo, channelParticipants, channelLeader, channelId]);
 
-        setChannel({
-          id: Number(channelId),
-          targetAddress,
-          state,
-          participantCount,
-          participants: participants.map(p => p.toLowerCase()),
-          leader: leader.toLowerCase(),
-        });
+  useEffect(() => {
+    if (!tokenAddress) return;
 
-        // Get token info
-        const isETH =
-          targetAddress === ETH_TOKEN_ADDRESS ||
-          targetAddress === "0x0000000000000000000000000000000000000001" ||
-          targetAddress === "0x0000000000000000000000000000000000000000";
+    if (isEthToken) {
+      setDecimals(18);
+      setSymbol("ETH");
+      return;
+    }
 
-        if (!isETH && targetAddress !== "0x0000000000000000000000000000000000000000") {
-          const [tokenDecimals, tokenSymbol] = await Promise.all([
-            publicClient.readContract({
-              address: targetAddress as `0x${string}`,
-              abi: ERC20_ABI,
-              functionName: "decimals",
-            }),
-            publicClient.readContract({
-              address: targetAddress as `0x${string}`,
-              abi: ERC20_ABI,
-              functionName: "symbol",
-            }),
-          ]);
+    const tokenDecimals = tokenData?.[0]?.result;
+    const tokenSymbol = tokenData?.[1]?.result;
 
-          setDecimals(Number(tokenDecimals) || 18);
-          setSymbol(String(tokenSymbol) || 'TOKEN');
-        } else {
-          setDecimals(18);
-          setSymbol('ETH');
-        }
-      } catch (error) {
-        console.error('Error fetching channel data:', error);
-      }
-    };
-
-    fetchChannelData();
-  }, [publicClient, channelId]);
+    setDecimals(Number(tokenDecimals ?? 18));
+    setSymbol(String(tokenSymbol ?? "TOKEN"));
+  }, [tokenAddress, isEthToken, tokenData]);
 
   // Fetch participant balances - Uses state_snapshot.json from the proof
   useEffect(() => {
-    const fetchBalances = async () => {
-      if (!publicClient || !channel || channel.participants.length === 0) return;
+    if (!channel || channel.participants.length === 0) return;
+    if (!depositData || depositData.length === 0) return;
 
-      try {
-        // Get initial deposits from contract
-        const depositPromises = channel.participants.map((participant: string) =>
-          publicClient.readContract({
-            address: ROLLUP_BRIDGE_CORE_ADDRESS,
-            abi: ROLLUP_BRIDGE_CORE_ABI,
-            functionName: "getParticipantDeposit",
-            args: [BigInt(channel.id), participant as `0x${string}`],
-          })
-        );
+    // Build balances from state_snapshot.json (proofAnalysis)
+    const balances: ParticipantBalance[] = channel.participants.map(
+      (participant: string, idx: number) => {
+        const initialDeposit =
+          (depositData[idx]?.result as bigint | undefined) ?? BigInt(0);
+        const initialDepositFormatted = parseFloat(
+          formatUnits(initialDeposit, decimals)
+        ).toFixed(2);
 
-        const initialDeposits = await Promise.all(depositPromises);
+        // Get balance from proof's state_snapshot.json
+        let currentBalance = initialDepositFormatted;
+        let hasProofBalance = false;
 
-        // Build balances from state_snapshot.json (proofAnalysis)
-        const balances: ParticipantBalance[] = channel.participants.map(
-          (participant: string, idx: number) => {
-            const initialDeposit = (initialDeposits[idx] as bigint) || BigInt(0);
-            const initialDepositFormatted = parseFloat(formatUnits(initialDeposit, decimals)).toFixed(2);
+        if (proofAnalysis && proofAnalysis.balances) {
+          // Find balance by participant index
+          const proofBalance = proofAnalysis.balances.find(
+            (b) => hexToBigInt(addHexPrefix(b.l1Addr)) === hexToBigInt(addHexPrefix(participant))
+          );
 
-            // Get balance from proof's state_snapshot.json
-            let currentBalance = initialDepositFormatted;
-            let hasProofBalance = false;
-            
-            if (proofAnalysis && proofAnalysis.balances) {
-              // Find balance by participant index
-              const proofBalance = proofAnalysis.balances.find(
-                (b) => b.participantIndex === idx
-              );
-              
-              if (proofBalance) {
-                currentBalance = parseFloat(proofBalance.balanceFormatted).toFixed(2);
-                hasProofBalance = true;
-              }
-            }
-
-            // Check if balance changed from initial deposit
-            const hasChange = hasProofBalance && currentBalance !== initialDepositFormatted;
-
-            return {
-              address: participant,
-              initialDeposit: initialDepositFormatted,
-              currentBalance: currentBalance, // Balance from state_snapshot.json
-              newBalance: undefined, // Not used in this simplified view
-              symbol: symbol,
-              decimals: decimals,
-              hasChange: hasChange,
-            };
+          if (proofBalance) {
+            currentBalance = parseFloat(proofBalance.balanceFormatted).toFixed(
+              2
+            );
+            hasProofBalance = true;
           }
-        );
+        }
 
-        setParticipantBalances(balances);
-      } catch (error) {
-        console.error('Error fetching balances:', error);
+        // Check if balance changed from initial deposit
+        const hasChange =
+          hasProofBalance && currentBalance !== initialDepositFormatted;
+
+        return {
+          address: participant,
+          initialDeposit: initialDepositFormatted,
+          currentBalance: currentBalance, // Balance from state_snapshot.json
+          newBalance: undefined, // Not used in this simplified view
+          symbol: symbol,
+          decimals: decimals,
+          hasChange: hasChange,
+        };
       }
-    };
+    );
 
-    fetchBalances();
-  }, [publicClient, channel, channelId, decimals, symbol, proofAnalysis]);
+    setParticipantBalances(balances);
+  }, [channel, depositData, decimals, symbol, proofAnalysis]);
 
   if (isLoading || !proof) {
     return (
@@ -825,4 +858,3 @@ export default function ProofDetailPage() {
     </Layout>
   );
 }
-

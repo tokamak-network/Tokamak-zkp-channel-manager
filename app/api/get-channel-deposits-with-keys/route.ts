@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createPublicClient, http } from 'viem';
-import { sepolia } from 'viem/chains';
+import { readContracts } from '@wagmi/core';
 import { ROLLUP_BRIDGE_CORE_ADDRESS, ROLLUP_BRIDGE_CORE_ABI } from '@/lib/contracts';
-import { ALCHEMY_KEY } from '@/lib/constants';
+import '@/lib/wagmi-core';
 
 export const dynamic = 'force-static';
-
-const publicClient = createPublicClient({
-  chain: sepolia,
-  transport: http(`https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`)
-});
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,45 +17,58 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get channel participants first
-    const participants = await publicClient.readContract({
-      address: ROLLUP_BRIDGE_CORE_ADDRESS,
-      abi: ROLLUP_BRIDGE_CORE_ABI,
-      functionName: 'getChannelParticipants',
-      args: [BigInt(channelId)]
-    }) as readonly string[];
-
-    // Get target contract for the channel
-    const targetContract = await publicClient.readContract({
-      address: ROLLUP_BRIDGE_CORE_ADDRESS,
-      abi: ROLLUP_BRIDGE_CORE_ABI,
-      functionName: 'getChannelTargetContract',
-      args: [BigInt(channelId)]
-    }) as string;
+    const channelReadResults = await readContracts({
+      contracts: [
+        {
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: 'getChannelParticipants',
+          args: [BigInt(channelId)]
+        },
+        {
+          address: ROLLUP_BRIDGE_CORE_ADDRESS,
+          abi: ROLLUP_BRIDGE_CORE_ABI,
+          functionName: 'getChannelTargetContract',
+          args: [BigInt(channelId)]
+        }
+      ]
+    });
+    const participants = channelReadResults?.[0]?.result as readonly string[];
+    const targetContract = channelReadResults?.[1]?.result as string;
 
     // Fetch all deposits and generate circuit inputs
     const deposits: Array<{ participant: string; amount: string; mptKey: string }> = [];
     
     for (const participant of participants) {
       try {
-        const amount = await publicClient.readContract({
-          address: ROLLUP_BRIDGE_CORE_ADDRESS,
-          abi: ROLLUP_BRIDGE_CORE_ABI,
-          functionName: 'getParticipantDeposit',
-          args: [BigInt(channelId), participant as `0x${string}`]
-        }) as bigint;
+        const [amountResult, l2MptKeyResult] = await readContracts({
+          contracts: [
+            {
+              address: ROLLUP_BRIDGE_CORE_ADDRESS,
+              abi: ROLLUP_BRIDGE_CORE_ABI,
+              functionName: 'getParticipantDeposit',
+              args: [BigInt(channelId), participant as `0x${string}`]
+            },
+            {
+              address: ROLLUP_BRIDGE_CORE_ADDRESS,
+              abi: ROLLUP_BRIDGE_CORE_ABI,
+              functionName: 'getL2MptKey',
+              args: [BigInt(channelId), participant as `0x${string}`]
+            }
+          ]
+        });
+
+        if (!amountResult || amountResult.status !== 'success') {
+          throw new Error('Failed to fetch participant deposit');
+        }
+
+        const amount = amountResult.result as bigint;
 
         // Try to get actual L2 MPT key, fall back to deterministic generation
         let mptKey = '0';
-        try {
-          const l2MptKeyResult = await publicClient.readContract({
-            address: ROLLUP_BRIDGE_CORE_ADDRESS,
-            abi: ROLLUP_BRIDGE_CORE_ABI,
-            functionName: 'getL2MptKey',
-            args: [BigInt(channelId), participant as `0x${string}`]
-          }) as bigint;
-          mptKey = l2MptKeyResult.toString();
-        } catch {
+        if (l2MptKeyResult?.status === 'success' && l2MptKeyResult.result !== undefined) {
+          mptKey = (l2MptKeyResult.result as bigint).toString();
+        } else {
           // Generate deterministic MPT key based on participant only (no token needed)
           const hash = BigInt(`0x${Buffer.from(participant).toString('hex').slice(0, 64).padStart(64, '0')}`);
           mptKey = (hash % BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE')).toString();

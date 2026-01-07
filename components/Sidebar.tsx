@@ -30,7 +30,7 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
   const isAuthorized = true;
 
   // Use the custom hook for dynamic channel leadership and participation checking
-  const { hasChannels, isParticipant, isLoading: leadershipLoading } = useUserRolesDynamic();
+  const { hasChannels, isParticipant, whitelistedChannels, isLoading: leadershipLoading } = useUserRolesDynamic();
 
   // Base navigation items
   const baseNavigation = [
@@ -64,8 +64,9 @@ export function Sidebar({ isConnected, onCollapse }: SidebarProps) {
       });
     }
 
-    // Deposit and Withdraw - available for both participants and leaders
-    if (isParticipant || hasChannels) {
+    // Deposit and Withdraw - available for whitelisted users, participants, and leaders
+    const hasWhitelistedChannels = whitelistedChannels && whitelistedChannels.length > 0;
+    if (isParticipant || hasChannels || hasWhitelistedChannels) {
       userActions.push(
         {
           name: 'Freeze State',

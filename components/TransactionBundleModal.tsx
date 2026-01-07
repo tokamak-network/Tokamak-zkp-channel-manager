@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import JSZip from "jszip";
 import {
   Dialog,
@@ -35,22 +35,29 @@ import {
   getCurrentStateNumber,
   updateData,
 } from "@/lib/db-client";
-import { createPublicClient, http } from "viem";
+import { readContracts } from "@wagmi/core";
 
 // Local type definitions (previously from firebase-types)
 type Channel = any;
-type StateSnapshot = any;
 type UserBalance = any;
 type Participant = any;
-import { sepolia } from "viem/chains";
 import {
   ROLLUP_BRIDGE_CORE_ADDRESS,
   ROLLUP_BRIDGE_CORE_ABI,
+  TON_TOKEN_ADDRESS,
 } from "@/lib/contracts";
 import { parseProofFromBase64Zip } from "@/lib/proofAnalyzer";
 import { useSignMessage, useAccount } from "wagmi";
 import { L2_PRV_KEY_MESSAGE } from "@/lib/l2KeyMessage";
-import { ALCHEMY_KEY } from "@/lib/constants";
+import { ETHERS_RPC_URL, HAS_ETHERS_RPC_CONFIG } from "@/lib/rpc";
+import { StateSnapshot } from "@/Tokamak-Zk-EVM/packages/frontend/synthesizer/src/TokamakL2JS/stateManager/types";
+import { Common, CommonOpts, Mainnet } from "@ethereumjs/common";
+import { getEddsaPublicKey, poseidon } from "@/Tokamak-Zk-EVM/packages/frontend/synthesizer/src/TokamakL2JS/crypto";
+import { createERC20TransferTx } from "@/lib/tokamakl2js";
+import { fetchChannelData, getBlockInfo, getBlockNumber, getContractCode } from "@/lib/ethers";
+import { SynthesizeTxRequest } from "@/app/api/tokamak-zk-evm/route";
+import { addHexPrefix, bytesToHex } from "@ethereumjs/util";
+import { getInitializationTxHash, getLatestStateSnapshot } from "@/lib/server/db-host";
 
 interface TransactionBundleModalProps {
   isOpen: boolean;
@@ -83,18 +90,18 @@ export function TransactionBundleModal({
 
   // Transaction input fields
   const [step, setStep] = useState<ModalStep>("input");
-  const [isSigned, setIsSigned] = useState(false);
-  const [toAddress, setToAddress] = useState("");
-  const [tokenAmount, setTokenAmount] = useState("");
+  const [recipient, setRecipient] = useState<`0x${string}` | null>(null);
+  const [tokenAmount, setTokenAmount] = useState<string | null>(null);
   const [currentStateNumber, setCurrentStateNumber] = useState<number | null>(
     null
   );
+  const [keySeed, setKeySeed] = useState<`0x${string}` | null>(null);
   const [isSigning, setIsSigning] = useState(false);
-  const [signature, setSignature] = useState<`0x${string}` | null>(null);
   const [signedTxData, setSignedTxData] = useState<any>(null);
   const [includeProof, setIncludeProof] = useState(false); // Option to run prove binary
   const [generatedZipBlob, setGeneratedZipBlob] = useState<Blob | null>(null); // Store generated ZIP for proof submission
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
+  const isSubmittingProofRef = useRef(false);
 
   // Wagmi hooks for MetaMask signing
   const { signMessageAsync } = useSignMessage();
@@ -108,14 +115,13 @@ export function TransactionBundleModal({
     // Reset form when modal opens
     if (isOpen) {
       setStep("input");
-      setIsSigned(false);
-      setSignature(null);
-      setToAddress("");
-      setTokenAmount("");
+      setKeySeed(null);
+      setRecipient(null);
+      setTokenAmount(null);
       setCurrentStateNumber(null);
       setError(null);
       setDownloadComplete(false);
-      setSignedTxData(null);
+      setIsSigning(false);
     }
   }, [isOpen, defaultChannelId]);
 
@@ -149,19 +155,24 @@ export function TransactionBundleModal({
       let participants = firebaseParticipants;
       if (!participants || participants.length === 0) {
         try {
-          const publicClient = createPublicClient({
-            chain: sepolia,
-            transport: http(
-              `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_KEY}`
-            ),
-          });
+          if (!HAS_ETHERS_RPC_CONFIG) {
+            throw new Error(
+              "Missing NEXT_ETHERS_RPC_URL"
+            );
+          }
 
-          const contractParticipants = (await publicClient.readContract({
-            address: ROLLUP_BRIDGE_CORE_ADDRESS,
-            abi: ROLLUP_BRIDGE_CORE_ABI,
-            functionName: "getChannelParticipants",
-            args: [BigInt(channelId)],
-          })) as readonly `0x${string}`[];
+          const contractParticipantsData = await readContracts({
+            contracts: [
+              {
+                address: ROLLUP_BRIDGE_CORE_ADDRESS,
+                abi: ROLLUP_BRIDGE_CORE_ABI,
+                functionName: "getChannelParticipants",
+                args: [BigInt(channelId)],
+              },
+            ],
+          });
+          const contractParticipants = contractParticipantsData?.[0]
+            ?.result as readonly `0x${string}`[];
 
           // Convert contract addresses to Participant format
           participants = contractParticipants.map((address) => ({
@@ -195,8 +206,8 @@ export function TransactionBundleModal({
     }
   };
 
-  // Sign message with MetaMask
-  const handleSign = async () => {
+  // Generate key pair using MetaMask
+  const generateKeySeed = async () => {
     if (!isConnected || !address) {
       setError("Please connect your wallet first");
       return;
@@ -207,25 +218,22 @@ export function TransactionBundleModal({
       return;
     }
 
-    setIsSigning(true);
     setError(null);
-
+    setIsSigning(true);
     try {
       const message = L2_PRV_KEY_MESSAGE + selectedChannelId;
-      const signedMessage = await signMessageAsync({ message });
-      setSignature(signedMessage);
-      setIsSigned(true);
+      const seed = await signMessageAsync({ message });
+      setKeySeed(seed);
     } catch (err) {
       if (err instanceof Error && err.message.includes("User rejected")) {
         setError("Signature cancelled by user");
       } else {
-        console.error("Failed to sign:", err);
+        console.error("Failed to generate a seed from user signature:", err);
         setError(
-          err instanceof Error ? err.message : "Failed to sign with MetaMask"
+          err instanceof Error ? err.message : "Failed in interaction with MetaMask"
         );
       }
-      setIsSigned(false);
-      setSignature(null);
+      setKeySeed(null);
     } finally {
       setIsSigning(false);
     }
@@ -234,89 +242,54 @@ export function TransactionBundleModal({
   // Validate all input fields
   const isFormValid = () => {
     return (
-      isSigned &&
-      toAddress.trim().length > 0 &&
+      keySeed !== null &&
+      recipient !== null &&
+      tokenAmount !== null &&
+      recipient.trim().length > 0 &&
       tokenAmount.trim().length > 0 &&
       !isNaN(Number(tokenAmount)) &&
       Number(tokenAmount) > 0
     );
   };
 
-  // Generate L2 signed transaction using synthesizer binary
-  const synthesizeL2Transfer = async (
-    initTxHash: string,
-    previousStateSnapshot?: any
+  // Create an L2 ERC20 transfer (signed) and run synthesizer
+  const runSynthesizer = async (
+    initTxHash: `0x${string}`,
+    previousStateSnapshot: StateSnapshot
   ) => {
-    if (!signature) {
-      throw new Error("Signature is required to synthesize L2 transfer");
+    if (!isFormValid) {
+      throw new Error('Tx input format is not filled.')
     }
 
-    const response = await fetch("/api/synthesize-l2-transfer", {
+    const signedTx = await createERC20TransferTx(
+      0,
+      recipient!,
+      BigInt(tokenAmount!.trim()),
+      keySeed!,
+      TON_TOKEN_ADDRESS,
+    );
+    const signedTxStr= bytesToHex(signedTx.serialize());
+    const postMessage: SynthesizeTxRequest = {
+      channelId: selectedChannelId,
+      channelInitTxHash: initTxHash,
+      signedTxRlpStr: signedTxStr,
+      previousStateSnapshot,
+      includeProof,
+    }
+
+    const response = await fetch("/api/tokamak-zk-evm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        channelId: selectedChannelId,
-        initTx: initTxHash,
-        signature,
-        recipient: toAddress.trim(),
-        amount: tokenAmount.trim(),
-        useSepolia: true,
-        previousStateSnapshot: previousStateSnapshot || null,
-        includeProof,
-      }),
+      body: JSON.stringify(postMessage),
     });
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.error || "Failed to synthesize L2 transfer");
+      throw new Error(errorData.error || "Failed to synthesize L2 transaction");
     }
 
     // Response is a ZIP file blob
     return await response.blob();
-  };
-
-  // Legacy: Generate L2 signed transaction (kept for backwards compatibility)
-  const generateSignedTransaction = async () => {
-    if (!signature) {
-      throw new Error("Signature is required to generate signed transaction");
-    }
-
-    // Encode transfer callData: transfer(address to, uint256 amount)
-    // Function selector for transfer(address,uint256) = 0xa9059cbb
-    const functionSelector = "0xa9059cbb";
-    const paddedToAddress = toAddress
-      .trim()
-      .toLowerCase()
-      .replace("0x", "")
-      .padStart(64, "0");
-    // Convert token amount to wei (assuming 18 decimals)
-    const amountInWei = BigInt(Math.floor(Number(tokenAmount) * 1e18));
-    const paddedAmount = amountInWei.toString(16).padStart(64, "0");
-    const callData =
-      `${functionSelector}${paddedToAddress}${paddedAmount}` as `0x${string}`;
-
-    // L2 contract address (TON token on L2)
-    const l2ContractAddress =
-      "0xa30fe40285B8f5c0457DbC3B7C8A280373c40044" as `0x${string}`;
-
-    const response = await fetch("/api/create-l2-signed-transaction", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        signature,
-        nonce: currentStateNumber || 0, // Use current state number as nonce
-        to: l2ContractAddress,
-        callData,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Failed to create signed transaction");
-    }
-
-    const result = await response.json();
-    return result;
   };
 
   // Handle proceed to summary
@@ -335,94 +308,7 @@ export function TransactionBundleModal({
     setError(null);
   };
 
-  // OPTIMIZED: Helper to get initializationTxHash with minimal Firebase calls
-  const getInitializationTxHash = async (
-    channelId: string,
-    channelData: Channel | null
-  ): Promise<string | null> => {
-    // 1. Try from already loaded channel data first (no Firebase call)
-    // Note: initializationTxHash is stored dynamically and not in the Channel type
-    const channelAny = channelData as any;
-    if (channelAny?.initializationTxHash) {
-      return channelAny.initializationTxHash;
-    }
-    if (channelAny?.initialProof?.initializationTxHash) {
-      return channelAny.initialProof.initializationTxHash;
-    }
-
-    // 2. Single Firebase call to get initialProof (most common location)
-    try {
-      const initialProofData = await getData<any>(
-        `channels/${channelId}/initialProof`
-      );
-      if (initialProofData?.initializationTxHash) {
-        return initialProofData.initializationTxHash;
-      }
-    } catch (err) {
-      console.warn("Failed to get initializationTxHash:", err);
-    }
-
-    return null;
-  };
-
-  // OPTIMIZED: Helper to get latest verified proof's state snapshot
-  const getLatestStateSnapshot = async (
-    channelId: string
-  ): Promise<any | null> => {
-    try {
-      // Get only the metadata first (without zipFile.content if possible)
-      // Note: Firebase doesn't support partial reads, so we get the whole thing
-      // but we only need the latest proof's content
-      const verifiedProofsData = await getData<any>(
-        `channels/${channelId}/verifiedProofs`
-      );
-
-      if (!verifiedProofsData) return null;
-
-      // Find the latest proof key (highest sequenceNumber)
-      const entries = Object.entries(verifiedProofsData);
-      if (entries.length === 0) return null;
-
-      let latestKey = entries[0][0];
-      let latestSeq = (entries[0][1] as any)?.sequenceNumber || 0;
-
-      for (const [key, value] of entries) {
-        const seq = (value as any)?.sequenceNumber || 0;
-        if (seq > latestSeq) {
-          latestSeq = seq;
-          latestKey = key;
-        }
-      }
-
-      // Get zipFile content from the latest proof
-      const latestProof = verifiedProofsData[latestKey];
-      let zipFileContent = latestProof?.zipFile?.content;
-
-      // If content not in initial fetch, get it separately (this handles Firebase's lazy loading)
-      if (!zipFileContent) {
-        try {
-          const zipFileData = await getData<any>(
-            `channels/${channelId}/verifiedProofs/${latestKey}/zipFile`
-          );
-          zipFileContent = zipFileData?.content;
-        } catch (err) {
-          console.warn("Failed to fetch zipFile content:", err);
-          return null;
-        }
-      }
-
-      if (!zipFileContent) return null;
-
-      // Parse and extract state_snapshot
-      const { snapshot } = await parseProofFromBase64Zip(zipFileContent);
-      return snapshot || null;
-    } catch (err) {
-      console.warn("Failed to get latest state snapshot:", err);
-      return null;
-    }
-  };
-
-  // Synthesize L2 transfer and download result
+  // Synthesize L2 transaction and download result
   const handleSynthesizerDownload = async () => {
     if (!selectedChannelId) {
       setError("No channel selected");
@@ -440,10 +326,9 @@ export function TransactionBundleModal({
 
     try {
       // OPTIMIZED: Use already loaded bundleData.channel, only fetch if missing
-      const initTxHash = await getInitializationTxHash(
-        selectedChannelId,
-        bundleData?.channel || null
-      );
+      const initTxHash = bundleData?.channel?.initializationTxHash === undefined ? 
+        await getInitializationTxHash(selectedChannelId) :
+        bundleData?.channel?.initializationTxHash;
 
       if (!initTxHash) {
         throw new Error(
@@ -452,20 +337,27 @@ export function TransactionBundleModal({
       }
 
       // OPTIMIZED: Get state snapshot with single efficient call
-      const previousStateSnapshot = await getLatestStateSnapshot(
+      let previousStateSnapshot = await getLatestStateSnapshot(
         selectedChannelId
       );
-
-      console.log("Synthesizing L2 transfer with:", {
-        channelId: selectedChannelId,
-        initTx: initTxHash,
-        recipient: toAddress.trim(),
-        amount: tokenAmount.trim(),
-        hasPreviousState: !!previousStateSnapshot,
-      });
+      if (previousStateSnapshot === null) {
+        const channelId = Number(addHexPrefix(selectedChannelId));
+        const channelData = await fetchChannelData(
+          ETHERS_RPC_URL, 
+          channelId,
+        );
+        previousStateSnapshot = {
+          channelId,
+          stateRoot: channelData.initialRoot,
+          registeredKeys: channelData.registeredKeys,
+          storageEntries: channelData.storageEntries,
+          contractAddress: channelData.contractAddress,
+          preAllocatedLeaves: channelData.preAllocatedLeaves,
+        };
+      }
 
       // Call synthesizer API
-      const zipBlob = await synthesizeL2Transfer(
+      const zipBlob = await runSynthesizer(
         initTxHash,
         previousStateSnapshot
       );
@@ -480,7 +372,7 @@ export function TransactionBundleModal({
         const url = URL.createObjectURL(zipBlob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `l2-transfer-channel-${selectedChannelId}.zip`;
+        link.download = `l2-transaction-channel-${selectedChannelId}.zip`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -492,9 +384,9 @@ export function TransactionBundleModal({
         }, 2000);
       }
     } catch (err) {
-      console.error("Failed to synthesize L2 transfer:", err);
+      console.error("Failed to synthesize L2 transaction:", err);
       setError(
-        err instanceof Error ? err.message : "Failed to synthesize L2 transfer"
+        err instanceof Error ? err.message : "Failed to synthesize L2 transaction"
       );
       setStep("summary");
     } finally {
@@ -518,11 +410,16 @@ export function TransactionBundleModal({
 
   // Handle submitting the proof to Firebase (same logic as SubmitProofModal)
   const handleSubmitProof = async () => {
+    if (isSubmittingProofRef.current) {
+      return;
+    }
+
     if (!generatedZipBlob || !selectedChannelId || !address) {
       setError("Missing required data for proof submission");
       return;
     }
 
+    isSubmittingProofRef.current = true;
     setIsSubmittingProof(true);
     setError(null);
 
@@ -592,152 +489,22 @@ export function TransactionBundleModal({
       console.error("Failed to submit proof:", err);
       setError(err instanceof Error ? err.message : "Failed to submit proof");
     } finally {
+      isSubmittingProofRef.current = false;
       setIsSubmittingProof(false);
     }
   };
 
-  // OPTIMIZED: Removed duplicate handleDownload - use handleSynthesizerDownload instead
-  // The legacy handleDownload had 8+ redundant Firebase calls that have been consolidated
-  const handleDownload = async () => {
-    if (!selectedChannelId) {
-      setError("No channel selected");
-      return;
-    }
-
-    if (!isFormValid()) {
-      setError("Please fill in all fields correctly");
-      return;
-    }
-
-    setStep("downloading");
-    setIsDownloading(true);
-    setError(null);
-
-    try {
-      // Generate L2 signed transaction first
-      let l2SignedTx = null;
-      if (signature) {
-        try {
-          console.log("Generating L2 signed transaction...");
-          l2SignedTx = await generateSignedTransaction();
-          console.log("L2 signed transaction generated:", l2SignedTx);
-          setSignedTxData(l2SignedTx);
-        } catch (txErr) {
-          console.error("Failed to generate L2 signed transaction:", txErr);
-          setError(
-            `Warning: L2 transaction generation failed - ${
-              txErr instanceof Error ? txErr.message : String(txErr)
-            }`
-          );
-        }
-      }
-
-      // OPTIMIZED: Use already loaded bundleData (fetched once in fetchBundleData)
-      const channel = bundleData?.channel;
-      const snapshot = bundleData?.snapshot;
-
-      const zip = new JSZip();
-
-      // OPTIMIZED: Single call to get initializationTxHash
-      const initializationTxHash = await getInitializationTxHash(
-        selectedChannelId,
-        channel || null
-      );
-
-      if (!initializationTxHash) {
-        throw new Error(
-          `Could not find initialization transaction hash for channel ${selectedChannelId}. Please ensure the channel has been initialized.`
-        );
-      }
-
-      // OPTIMIZED: Single call to get latest state snapshot
-      const latestStateSnapshot = await getLatestStateSnapshot(
-        selectedChannelId
-      );
-
-      // Create transaction-info.json
-      const transactionInfo = {
-        channelId: selectedChannelId,
-        initializedTxHash: initializationTxHash,
-        toAddress: toAddress.trim(),
-        tokenAmount: tokenAmount.trim(),
-        currentStateNumber,
-        signed: isSigned,
-        ...(signature && { signature }),
-      };
-      zip.file(
-        "transaction-info.json",
-        JSON.stringify(transactionInfo, null, 2)
-      );
-
-      // Add L2 signed transaction if available
-      if (l2SignedTx) {
-        zip.file(
-          "signed-transaction.json",
-          JSON.stringify(l2SignedTx, null, 2)
-        );
-      }
-
-      // Add state_snapshot.json if available
-      if (latestStateSnapshot) {
-        zip.file(
-          "state_snapshot.json",
-          JSON.stringify(latestStateSnapshot, null, 2)
-        );
-      }
-
-      // Generate and download
-      const content = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(content);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `tokamak-channel-${
-        channel?.channelId || selectedChannelId
-      }-state-v${snapshot?.sequenceNumber || 0}.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      setDownloadComplete(true);
-      setTimeout(() => {
-        handleClose();
-      }, 2000);
-    } catch (err) {
-      console.error("Failed to create bundle:", err);
-      setError(err instanceof Error ? err.message : "Failed to create bundle");
-      setStep("summary");
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  const handleOpenDesktopApp = () => {
-    // Try to open with custom protocol
-    // This would need to be registered by the desktop app
-    const customProtocolUrl = `tokamak-app://create-transaction`;
-
-    // Try opening with custom protocol
-    window.location.href = customProtocolUrl;
-
-    // Fallback: Show instructions
-    setTimeout(() => {
-      // If we're still here, the protocol didn't work
-      // The modal stays open so users can see the instructions
-    }, 500);
-  };
 
   const handleClose = () => {
     setDownloadComplete(false);
     setError(null);
     setBundleData(null);
     setStep("input");
-    setIsSigned(false);
-    setSignature(null);
-    setToAddress("");
-    setTokenAmount("");
+    setKeySeed(null);
+    setRecipient(null);
+    setTokenAmount(null);
     setCurrentStateNumber(null);
-    setSignedTxData(null);
+    setIsSigning(false);
     onClose();
   };
 
@@ -807,14 +574,14 @@ export function TransactionBundleModal({
                   Sign with MetaMask
                 </label>
                 <div className="bg-[#0a1930] border border-[#4fc3f7]/30 rounded p-3">
-                  {isSigned ? (
+                  {keySeed ? (
                     <div className="flex items-center gap-2 text-green-400">
                       <CheckCircle className="w-4 h-4" />
                       <span className="text-sm">Signed successfully</span>
                     </div>
                   ) : (
                     <Button
-                      onClick={handleSign}
+                      onClick={generateKeySeed}
                       disabled={isSigning}
                       className="w-full bg-[#4fc3f7] hover:bg-[#4fc3f7]/80 text-[#0a1930] font-medium disabled:opacity-50"
                     >
@@ -838,13 +605,13 @@ export function TransactionBundleModal({
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
                   <Wallet className="w-4 h-4 text-[#4fc3f7]" />
-                  Recipient L2 Address (To)
+                  Recipient L2 Address
                 </label>
                 <Input
                   type="text"
                   placeholder="0x..."
-                  value={toAddress}
-                  onChange={(e) => setToAddress(e.target.value)}
+                  value={recipient ?? ""}
+                  onChange={(e) => setRecipient(addHexPrefix(e.target.value))}
                   className="bg-[#0a1930] border-[#4fc3f7]/30 text-white placeholder:text-gray-500 focus:border-[#4fc3f7]"
                 />
               </div>
@@ -859,7 +626,7 @@ export function TransactionBundleModal({
                   type="text"
                   inputMode="decimal"
                   placeholder="0.0"
-                  value={tokenAmount}
+                  value={tokenAmount ?? ""}
                   onChange={(e) => {
                     const value = e.target.value;
                     // Allow only numbers and decimal point
@@ -947,7 +714,7 @@ export function TransactionBundleModal({
                       To Address
                     </span>
                     <span className="text-white font-mono text-sm">
-                      {toAddress.slice(0, 6)}...{toAddress.slice(-4)}
+                      {(recipient?? "").slice(0, 6)}...{(recipient ?? "").slice(-4)}
                     </span>
                   </div>
 
@@ -1065,7 +832,7 @@ export function TransactionBundleModal({
                   <div className="flex justify-between">
                     <span className="text-gray-400">Recipient</span>
                     <span className="text-white font-mono text-xs">
-                      {toAddress.slice(0, 10)}...{toAddress.slice(-8)}
+                      {(recipient ?? "").slice(0, 10)}...{(recipient ?? "").slice(-8)}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -1083,6 +850,7 @@ export function TransactionBundleModal({
                 <Button
                   onClick={handleSubmitProof}
                   disabled={isSubmittingProof}
+                  aria-busy={isSubmittingProof}
                   className="w-full bg-[#4fc3f7] hover:bg-[#4fc3f7]/80 text-[#0a1930] font-medium disabled:opacity-50"
                 >
                   {isSubmittingProof ? (
